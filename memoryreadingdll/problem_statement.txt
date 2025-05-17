@@ -1,0 +1,24 @@
+We built this DLL on another machine (win11), and it worked there.
+This DLL is a proxy DLL designed to provide memory access into a specific exe.
+That exe (normally) loads iphlpapi.dll from the system and uses (just) the GetAdaptersAddresses function, which it imports by name.
+This DLL dynamically loads the system's iphlpapi.dll and proxies the function call.
+
+Now we're operating on a new machine (win10) and the dll results in an error firing multiple times (possibly representing multiple GetAdaptersAddresses calls? Not sure).
+The dll has been rebuilt on this machine, so that should eliminate static link incompatability.
+The error text is 
+"The Procedure entry point GetIfEntry could not be located in the dynamic link library C:\Windows\system32\NLAapi.dll"
+
+I don't know what GetIfEntry is or what NLAapi.dll is - the target exe doesn't depend on this dll directly nor import that function, and when we load our built dll into a dependencies viewer, I can't see GetIfEntry or that NLAapi.dll in there either.
+
+We have the dependency viewer tool "Dependencies.exe" in PATH.  I recommend using -depth 3 with dependencies, or some calls will take an extremely long time and produce a lot of output.
+The target exe is E:\NexusTK\NexusTK.exe.
+Bear in mind, the terminal is powershell - we don't have cat, just running "dependencies.exe -modules -depth 3 "E:\NexusTK\NexusTK.exe"" will output results to terminal.
+
+Questions:
+When I load the built dll in dependencies, I don't see the system's iphlpapi listed as a dependency.  Is this because of how we're loading the dll?
+Lots of other dynamic link dependencies show up in the dependencies tool - why not this one?
+
+If it's the system's copy of iphlpapi that's trying to call GetIfEntry, why would that fail?
+Wouldn't the system dll load NLAapi.dll of its own accord if it needs it?  Why would my dll need to do that?
+
+How do we resolve the error?

@@ -58,6 +58,7 @@ typedef ULONG(WINAPI* PGETADAPTERSADDRESSES)(ULONG, ULONG, PVOID, PIP_ADAPTER_AD
 
 // Global variables
 HMODULE hOriginalIphlpapi = NULL;
+HMODULE hNlaapi = NULL;  // Add handle for NLAapi.dll
 PGETADAPTERSADDRESSES RealGetAdaptersAddresses = NULL;
 HANDLE hMapFile = NULL;
 LPVOID pBuf = NULL;
@@ -78,26 +79,28 @@ void UnloadOriginalDll() {
     } else {
         LogToFile("Attempted to unload original DLL, but it was not loaded.");
     }
+    
+    if (hNlaapi) {
+        LogToFile("Unloading NLAapi.dll.");
+        FreeLibrary(hNlaapi);
+        hNlaapi = NULL;
+    }
 }
 
 // Function to load the original IPHLPAPI.DLL and get the function pointer
 bool LoadOriginalDll() {
     LogToFile("Attempting to load original IPHLPAPI.DLL...");
     
-    // try system32 first
+    // Get system directory path
     char systemPath[MAX_PATH];
     GetSystemDirectoryA(systemPath, MAX_PATH);
     strcat_s(systemPath, "\\IPHLPAPI.DLL");
     LogToFile(std::string("System path for DLL: ") + systemPath);
 
-    hOriginalIphlpapi = LoadLibraryA(systemPath);
+    // Load IPHLPAPI.DLL with altered search path to ensure proper dependency loading
+    hOriginalIphlpapi = LoadLibraryExA(systemPath, NULL, 
+        LOAD_WITH_ALTERED_SEARCH_PATH | LOAD_LIBRARY_SEARCH_SYSTEM32);
     
-    // if system32 fails, try current directory as fallback
-    if (!hOriginalIphlpapi) {
-        LogToFile("Failed to load from system32, trying current directory...");
-        hOriginalIphlpapi = LoadLibraryA("IPHLPAPI.DLL");
-    }
-
     if (!hOriginalIphlpapi) {
         DWORD error = GetLastError();
         std::ostringstream oss;
@@ -110,10 +113,10 @@ bool LoadOriginalDll() {
     // get function pointer with error handling
     RealGetAdaptersAddresses = (PGETADAPTERSADDRESSES)GetProcAddress(hOriginalIphlpapi, "GetAdaptersAddresses");
     if (!RealGetAdaptersAddresses) {
-        DWORD error = GetLastError();
-        std::ostringstream oss;
-        oss << "Failed to get GetProcAddress for GetAdaptersAddresses. Error code: " << error;
-        LogToFile(oss.str());
+         DWORD error = GetLastError();
+         std::ostringstream oss;
+         oss << "Failed to get GetProcAddress for GetAdaptersAddresses. Error code: " << error;
+         LogToFile(oss.str());
         UnloadOriginalDll(); // cleanup on failure
         return false;
     }
