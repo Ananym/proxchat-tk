@@ -1,0 +1,277 @@
+﻿<Window x:Class="ProxChatClient.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ProxChatClient"
+        xmlns:vm="clr-namespace:ProxChatClient.ViewModels"
+        xmlns:converters="clr-namespace:ProxChatClient.Converters"
+        xmlns:controls="clr-namespace:ProxChatClient.Controls"
+        mc:Ignorable="d"
+        Title="Proximity Chat" Width="800" MinHeight="550" MinWidth="700"
+        SizeToContent="Height"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel, IsDesignTimeCreatable=True}" 
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        <converters:MuteButtonContentConverter x:Key="MuteButtonContentConverter"/>
+        <converters:EditButtonContentConverter x:Key="EditButtonContentConverter"/>
+        <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <converters:InputLevelThresholdColorConverter x:Key="InputLevelThresholdColorConverter"/>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="350"/>
+            <ColumnDefinition Width="*" MinWidth="300"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Column -->
+        <Grid Grid.Column="0" Margin="0,0,5,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Audio Device Selection (Row 0) -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <Label Content="Input Device:"/>
+            <ComboBox ItemsSource="{Binding InputDevices}"
+                      SelectedItem="{Binding SelectedInputDevice}"
+                      IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBooleanConverter}}"
+                      Margin="0,0,0,5"/>
+            <Button Content="Refresh Devices" 
+                    Command="{Binding RefreshDevicesCommand}"
+                    IsEnabled="{Binding IsRunning, Converter={StaticResource InverseBooleanConverter}}"
+                    Margin="0,0,0,10"/>
+        </StackPanel>
+
+        <!-- Audio Controls (Row 1) -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,10">
+            <Label Content="Microphone Input Volume:"/>
+            <Slider Value="{Binding InputVolumeScale}"
+                    Minimum="0" Maximum="1"
+                    TickFrequency="0.1"
+                    IsSnapToTickEnabled="True"
+                    ToolTip="Controls the volume of your microphone input when transmitting"/>
+            
+            <Label Content="Overall Output Volume:" Margin="0,10,0,0"/>
+            <Slider Value="{Binding VolumeScale}"
+                    Minimum="0" Maximum="1"
+                    TickFrequency="0.1"
+                    IsSnapToTickEnabled="True"
+                    ToolTip="Controls the overall volume of all received audio"/>
+
+            <!-- Move Threshold Above Input Level -->
+            <Label Content="Minimum Broadcast Threshold:" Margin="0,10,0,0"/>
+            <Slider Value="{Binding MinBroadcastThreshold}"
+                    Minimum="0" Maximum="1"
+                    TickFrequency="0.1"
+                    IsSnapToTickEnabled="True"
+                    ToolTip="Audio below this level will not be broadcast"/>
+
+            <!-- Input Level Display, now stretches -->
+            <Grid Margin="0,10,0,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Label Content="Input Level:" Grid.Column="0" VerticalAlignment="Center"/>
+                <ProgressBar Value="{Binding AudioLevel, Mode=OneWay}"
+                             Height="15"
+                             Minimum="0" Maximum="1"
+                             Grid.Column="1"
+                             VerticalAlignment="Center"
+                             x:Name="InputLevelBar">
+                    <ProgressBar.Foreground>
+                        <MultiBinding Converter="{StaticResource InputLevelThresholdColorConverter}">
+                            <Binding Path="AudioLevel"/>
+                            <Binding Path="MinBroadcastThreshold"/>
+                        </MultiBinding>
+                    </ProgressBar.Foreground>
+                </ProgressBar>
+            </Grid>
+
+            <!-- Push to Talk Controls, stretch KeyBindingEditor -->
+            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" 
+                    BorderThickness="1" 
+                    Margin="0,10,0,0" 
+                    Padding="5">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <CheckBox Content="Push to Talk" 
+                              IsChecked="{Binding IsPushToTalk}"
+                              VerticalAlignment="Center"
+                              Grid.Column="0"/>
+                    <controls:KeyBindingEditor x:Name="PushToTalkKeyEditor"
+                                            Key="{Binding PushToTalkKey, Mode=TwoWay}"
+                                            KeyChanged="PushToTalkKeyEditor_KeyChanged"
+                                            IsEnabled="{Binding IsPushToTalk}"
+                                            HorizontalAlignment="Stretch"
+                                            MinWidth="60"
+                                            Margin="10,0,0,0"
+                                            Grid.Column="1"/>
+                </Grid>
+            </Border>
+
+            <!-- Mute Self Controls, stretch KeyBindingEditor -->
+            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" 
+                    BorderThickness="1" 
+                    Margin="0,5,0,0" 
+                    Padding="5">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <CheckBox Content="Mute Self" 
+                              IsChecked="{Binding IsSelfMuted, Mode=OneWay}"
+                              Command="{Binding ToggleSelfMuteCommand}"
+                              VerticalAlignment="Center"
+                              Grid.Column="0"/>
+                    <controls:KeyBindingEditor x:Name="MuteSelfKeyEditor"
+                                            Key="{Binding MuteSelfKey, Mode=TwoWay}"
+                                            KeyChanged="MuteSelfKeyEditor_KeyChanged"
+                                            HorizontalAlignment="Stretch"
+                                            MinWidth="60"
+                                            Margin="10,0,0,0"
+                                            Grid.Column="1"/>
+                </Grid>
+            </Border>
+        </StackPanel>
+
+        <!-- Start/Stop Button (Row 2) -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button Content="Start" 
+                    Command="{Binding StartCommand}"
+                    Width="80" Margin="0,0,5,0"/>
+            <Button Content="Stop" 
+                    Command="{Binding StopCommand}"
+                    Width="80"/>
+        </StackPanel>
+
+            <!-- Game Position (Row 3) -->
+            <GroupBox Grid.Row="3" Header="Current Position" Margin="0,5,0,0">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Map: " FontWeight="Bold" Margin="0,0,2,0"/>
+                <TextBlock Text="{Binding CurrentMapName, FallbackValue=N/A}" Margin="0,0,10,0"/>
+                <TextBlock Text="X: " FontWeight="Bold" Margin="0,0,2,0"/>
+                <TextBlock Text="{Binding CurrentX, FallbackValue=0}" Margin="0,0,10,0"/>
+                <TextBlock Text="Y: " FontWeight="Bold" Margin="0,0,2,0"/>
+                <TextBlock Text="{Binding CurrentY, FallbackValue=0}"/>
+            </StackPanel>
+        </GroupBox>
+        
+            <!-- Debug Controls (Row 4) -->
+            <GroupBox Grid.Row="4" Header="Debug Controls" Margin="0,5,0,0"
+                  Visibility="{Binding IsDebugModeEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Label Grid.Row="0" Grid.Column="0" Content="Char Name:" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding DebugCharacterName, UpdateSourceTrigger=PropertyChanged}" Margin="5,2"/>
+
+                    <Label Grid.Row="1" Grid.Column="0" Content="Map ID:" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DebugMapId, UpdateSourceTrigger=PropertyChanged}" Margin="5,2"/>
+
+                    <Label Grid.Row="2" Grid.Column="0" Content="X Pos:" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="-" Command="{Binding DecrementDebugXCommand}" Width="25" Margin="5,2"/>
+                        <TextBox Text="{Binding DebugX, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="2" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+                        <Button Content="+" Command="{Binding IncrementDebugXCommand}" Width="25" Margin="2,2,5,2"/>
+                    </StackPanel>
+
+                    <Label Grid.Row="3" Grid.Column="0" Content="Y Pos:" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="-" Command="{Binding DecrementDebugYCommand}" Width="25" Margin="5,2"/>
+                        <TextBox Text="{Binding DebugY, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="2" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"/>
+                        <Button Content="+" Command="{Binding IncrementDebugYCommand}" Width="25" Margin="2,2,5,2"/>
+                    </StackPanel>
+
+                        <Label Grid.Row="4" Grid.Column="0" Content="Audio Input:" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="5,2">
+                            <CheckBox Content="Use MP3 File" IsChecked="{Binding UseMp3Input}" VerticalAlignment="Center"/>
+                            <TextBlock Text="(test.mp3)" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                        </StackPanel>
+                </Grid>
+            </StackPanel>
+            </GroupBox>
+        
+            <!-- Status Bar (Row 5) -->
+            <Grid Grid.Row="5" Margin="0,5,0,0">
+                <StatusBar>
+                <StatusBarItem>
+                    <TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis"/>
+                </StatusBarItem>
+            </StatusBar>
+        </Grid>
+        </Grid>
+
+        <!-- Right Column - Connected Peers -->
+        <GroupBox Grid.Column="1" Header="Connected Peers" Margin="5,0,0,0">
+            <ListView ItemsSource="{Binding ConnectedPeers}">
+                <ListView.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:PeerViewModel}"> 
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                                <ColumnDefinition Width="Auto" MinWidth="60"/>
+                                <ColumnDefinition Width="*" MinWidth="100"/>
+                                <ColumnDefinition Width="Auto" MinWidth="60"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding CharacterName, FallbackValue=Loading...}"
+                                       ToolTip="{Binding Id}" 
+                                       TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center"/>
+                            
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="5,0">
+                                <TextBlock Text="Distance: " VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding DistanceDisplay}"
+                                        ToolTip="Distance"
+                                        VerticalAlignment="Center"/>
+                            </StackPanel>
+                                        
+                            <StackPanel Grid.Column="2" Orientation="Vertical" Margin="5,0" HorizontalAlignment="Stretch">
+                                <TextBlock Text="Volume" HorizontalAlignment="Center" Margin="0,0,0,2"/>
+                                <Slider Value="{Binding Volume, Mode=TwoWay}" 
+                                        Minimum="0" Maximum="1"
+                                        SmallChange="0.05" LargeChange="0.1"
+                                        ToolTip="Peer Volume"
+                                        HorizontalAlignment="Stretch"/>
+                            </StackPanel>
+                                    
+                            <Button Grid.Column="3"
+                                    Content="{Binding IsMuted, Converter={StaticResource MuteButtonContentConverter}, FallbackValue=Mute}"
+                                    Command="{Binding DataContext.ToggleMuteCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding Id}"
+                                    MinWidth="50"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </GroupBox>
+    </Grid>
+</Window>

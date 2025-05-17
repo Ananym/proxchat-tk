@@ -1,0 +1,15 @@
+
+We're going to be making a C++ proxy-dll for a videogame.
+We're going to proxy the system version of IPHLAPI.dll, and we only need to proxy the GetAdaptersAddresses function, making sure to get the parameters and return types right.
+This call should be transparent and does not need to be modified whatsoever.
+
+Meanwhile, on dll load, we set up a non-blocking polling loop using a separate background thread, in which we read memory values.
+The memory values to read are described in memorynotes.txt (this dll will be loaded directly by the main module, so we should be able to access the base address directly using GetModuleHandle(NULL))
+We read these every second.
+The utf8 strings are not null terminated - read fixed numbers of bytes, then trim.
+
+We create a json object that contains the values and success:true, or just success:false and an error message if any of the values failed to read.  Pick a sensible json structure.
+Just use C++ to build the json with a little string concat, the object is small and simple, it should be fine.
+We write this as a string into a memory-mapped file referenced by name (pick something suitable, size is max 1kb), which we initialise on load.
+
+We'll be using the microsoft build tools, msvc.  Use the memoryreadingdll folder, and include basic build logic.

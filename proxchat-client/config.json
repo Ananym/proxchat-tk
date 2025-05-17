@@ -1,0 +1,16 @@
+{
+  "WebSocketServer": {
+    "Host": "127.0.0.1",
+    "Port": 8080
+  },
+  "MemoryAddresses": {
+    "MapId": "0x12345678",
+    "XCoord": "0x12345680",
+    "YCoord": "0x12345684"
+  },
+  "ProximityRange": 100.0,
+  "AudioSettings": {
+    "MaxDistance": 100.0,
+    "VolumeScale": 1.0
+  }
+} 
