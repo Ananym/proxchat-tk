@@ -91,6 +91,20 @@ void UnloadOriginalDll() {
 bool LoadOriginalDll() {
     LogToFile("Attempting to load original IPHLPAPI.DLL...");
     
+    // First, load NLAapi.dll to ensure it's available
+    LogToFile("Loading NLAapi.dll first...");
+    hNlaapi = LoadLibraryExA("C:\\Windows\\System32\\NLAapi.dll", NULL, 
+        LOAD_WITH_ALTERED_SEARCH_PATH | LOAD_LIBRARY_SEARCH_SYSTEM32);
+    
+    if (!hNlaapi) {
+        DWORD error = GetLastError();
+        std::ostringstream oss;
+        oss << "Failed to load NLAapi.dll. Error code: " << error;
+        LogToFile(oss.str());
+        return false;
+    }
+    LogToFile("NLAapi.dll loaded successfully.");
+
     // Get system directory path
     char systemPath[MAX_PATH];
     GetSystemDirectoryA(systemPath, MAX_PATH);
@@ -106,6 +120,11 @@ bool LoadOriginalDll() {
         std::ostringstream oss;
         oss << "Failed to load original IPHLPAPI.DLL. Error code: " << error;
         LogToFile(oss.str());
+        // Clean up NLAapi if IPHLPAPI fails to load
+        if (hNlaapi) {
+            FreeLibrary(hNlaapi);
+            hNlaapi = NULL;
+        }
         return false;
     }
     LogToFile("Original IPHLPAPI.DLL loaded successfully.");
@@ -349,4 +368,6 @@ extern "C" {
         // Call the original function
         return RealGetAdaptersAddresses(Family, Flags, Reserved, AdapterAddresses, SizePointer);
     }
-} 
+}
+
+#pragma comment(linker, "/export:GetAdaptersAddresses=_GetAdaptersAddresses@20") 
