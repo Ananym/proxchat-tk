@@ -1,0 +1,8 @@
+LIBRARY VERSION
+EXPORTS
+    GetFileVersionInfoA=C:\Windows\SysWOW64\VERSION.dll.GetFileVersionInfoA @1
+    GetFileVersionInfoW=C:\Windows\SysWOW64\VERSION.dll.GetFileVersionInfoW @2
+    GetFileVersionInfoSizeA=C:\Windows\SysWOW64\VERSION.dll.GetFileVersionInfoSizeA @3
+    GetFileVersionInfoSizeW=C:\Windows\SysWOW64\VERSION.dll.GetFileVersionInfoSizeW @4
+    VerQueryValueA=C:\Windows\SysWOW64\VERSION.dll.VerQueryValueA @5
+    VerQueryValueW=C:\Windows\SysWOW64\VERSION.dll.VerQueryValueW @6 

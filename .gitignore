@@ -69,3 +69,6 @@ nupkg/
 # general
 .DS_Store
 Thumbs.db 
+
+# allow .def files in memoryreadingdll/
+!memoryreadingdll/*.def

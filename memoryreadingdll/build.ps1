@@ -12,7 +12,7 @@ $BuildConfig = "Release"
 
 # Define the target directory for the final DLL
 $TargetGameDir = "C:\Program Files (x86)\KRU\NexusTK"
-$OutputDLLName = "IPHLPAPI.dll"
+$OutputDLLName = "VERSION.dll"
 $SourceDLLPath = Join-Path -Path $BuildDir -ChildPath "$BuildConfig\$OutputDLLName"
 $DestinationDLLPath = Join-Path -Path $TargetGameDir -ChildPath $OutputDLLName
 
