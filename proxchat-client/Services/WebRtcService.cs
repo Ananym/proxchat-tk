@@ -125,49 +125,6 @@ public class WebRtcService : IDisposable
         }
     }
 
-    // Helper method to parse SSRC from SDP string for the audio media description
-    private static uint ParseSsrcFromSdp(string sdp)
-    {
-        try
-        {
-            // Find the audio media line
-            var sdpLines = sdp.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-            int audioMLineIndex = -1;
-            for (int i = 0; i < sdpLines.Length; i++)
-            {
-                if (sdpLines[i].StartsWith("m=audio"))
-                {
-                    audioMLineIndex = i;
-                    break;
-                }
-            }
-
-            if (audioMLineIndex == -1) return 0;
-
-            // Search for a=ssrc below the m=audio line until the next m= line or end of SDP
-            for (int i = audioMLineIndex + 1; i < sdpLines.Length; i++)
-            {
-                if (sdpLines[i].StartsWith("m=")) break; // Next media description
-
-                if (sdpLines[i].StartsWith("a=ssrc:"))
-                {
-                    var parts = sdpLines[i].Substring("a=ssrc:".Length).Split(' ');
-                    if (parts.Length > 0 && uint.TryParse(parts[0], out uint ssrc))
-                    {
-                        return ssrc;
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            // Log this? For now, just return 0 if parsing fails.
-            // Consider adding a log if verbose debugging is needed.
-            Console.WriteLine($"Error parsing SSRC from SDP: {ex.Message}");
-        }
-        return 0;
-    }
-
     public async Task CreatePeerConnection(string peerId, bool isInitiator)
     {
         EnsureInitialized();
@@ -202,68 +159,42 @@ public class WebRtcService : IDisposable
                 {
                     try 
                     {
-                        uint incomingSsrc = rtpPacket.Header.SyncSource;
                         string? foundPeerId = null;
 
-                        // First, try to find by already known SSRC
+                        // Find our application-level peerId by matching the pc instance that fired the event
                         foreach (var entry in _peerConnections)
                         {
-                            if (entry.Value.RemoteAudioSsrc == incomingSsrc && entry.Value.RemoteAudioSsrc != 0) // Ensure known SSRC is not 0
+                            if (object.ReferenceEquals(entry.Value.PeerConnection, pc))
                             {
                                 foundPeerId = entry.Key;
                                 break;
                             }
                         }
 
-                        // If not found by direct SSRC match, and incomingSsrc is valid, try to associate dynamically
-                        if (foundPeerId == null && incomingSsrc != 0)
-                        {
-                            // Attempt to find a connected peer that doesn't have an SSRC associated yet.
-                            // This is a heuristic. Ideally, SSRC is known from SDP.
-                            foreach (var entry in _peerConnections.ToList()) 
-                            {
-                                if (entry.Value.PeerConnection != null && 
-                                    entry.Value.PeerConnection.connectionState == RTCPeerConnectionState.connected &&
-                                    entry.Value.RemoteAudioSsrc == 0) // This peer doesn't have an SSRC yet
-                                {
-                                    // Basic heuristic: if there's only one such peer, or if we had a more reliable check (like ep), associate.
-                                    // For now, let's assume if we find one, it's the one. This could be problematic with multiple peers connecting simultaneously without SDP SSRC resolution.
-                                    _debugLog.LogWebRtc($"Dynamically associating incoming SSRC {incomingSsrc} with peer {entry.Key} (who had no SSRC). Endpoint check temporarily bypassed.");
-                                    entry.Value.RemoteAudioSsrc = incomingSsrc; // Associate the *incoming* SSRC
-                                    foundPeerId = entry.Key;
-                                    break; 
-                                }
-                            }
-                        }
-
                         if (foundPeerId != null)
                         {
+                            uint incomingSsrc = rtpPacket.Header.SyncSource; // Get SSRC for logging
+
                             bool hasAudio = false;
                             if (rtpPacket.Payload.Length > 0)
                             {
-                                hasAudio = rtpPacket.Payload.Any(b => b != 0xFF);
+                                hasAudio = rtpPacket.Payload.Any(b => b != 0xFF); // MuLaw silence is 0xFF
                             }
 
                             if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
                             {
-                                _debugLog.LogWebRtc($"(Sampled Log) RTP for SSRC {incomingSsrc} (Peer {foundPeerId}): seq={rtpPacket.Header.SequenceNumber}, pt={rtpPacket.Header.PayloadType}, size={rtpPacket.Payload.Length}, hasAudio={hasAudio}");
+                                _debugLog.LogWebRtc($"(Sampled Log) RTP for peer {foundPeerId} (Identified by PC instance, incoming packet SSRC: {incomingSsrc}): seq={rtpPacket.Header.SequenceNumber}, pt={rtpPacket.Header.PayloadType}, size={rtpPacket.Payload.Length}, hasAudio={hasAudio}");
                             }
 
-                            // Call AudioService to play the audio
                             _audioService.PlayAudio(foundPeerId, rtpPacket.Payload, rtpPacket.Payload.Length);
                         }
                         else
                         {
-                            if (_random.NextDouble() < LOG_PROBABILITY) // Log if SSRC is unknown only occasionally
-                            {
-                                _debugLog.LogWebRtc($"[WARNING] Received audio RTP packet with SSRC {incomingSsrc} but no associated peer found.");
-                            }
+                            _debugLog.LogWebRtc($"[ERROR] Received audio RTP packet (SSRC: {rtpPacket.Header.SyncSource}) on an RTCPeerConnection instance that was not found in the _peerConnections dictionary.");
                         }
                     }
                     catch (Exception ex)
                     {
-                        // The original peerId in this log was from the closure of CreatePeerConnection, which isn't correct for this context.
-                        // Logging general error now.
                         _debugLog.LogWebRtc($"Error processing received audio RTP packet: {ex.Message}");
                     }
                 }
@@ -340,61 +271,7 @@ public class WebRtcService : IDisposable
 
                     await _signalingService.SendOfferAsync(peerId, offer.toJSON()).ConfigureAwait(false);
 
-                    var offerSdp = JsonConvert.DeserializeObject<RTCSessionDescriptionInit>(offer.sdp); 
-                    if (offerSdp == null) return;
-                    
-                    _debugLog.LogWebRtc($"Set remote description from offer for {peerId} successfully.");
-                    if (pc.AudioRemoteTrack?.Ssrc != 0 && pc.AudioRemoteTrack?.Ssrc != null)
-                    {
-                        state.RemoteAudioSsrc = pc.AudioRemoteTrack.Ssrc;
-                        _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} (from AudioRemoteTrack) with offering peer {peerId}.");
-                    }
-                    else
-                    {
-                        _debugLog.LogWebRtc($"[WARNING] Could not get remote audio SSRC for offering peer {peerId} from AudioRemoteTrack (SSRC: {pc.AudioRemoteTrack?.Ssrc}). Attempting manual SDP parse from received offer.");
-                        uint parsedSsrc = ParseSsrcFromSdp(offerSdp.sdp); 
-                        if (parsedSsrc != 0)
-                        {
-                            state.RemoteAudioSsrc = parsedSsrc;
-                            _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} (from SDP parse of offer) with offering peer {peerId}.");
-                        }
-                        else
-                        {
-                            _debugLog.LogWebRtc($"[ERROR] Failed to parse SSRC from offer SDP for peer {peerId}. SDP was: {offerSdp.sdp}");
-                        }
-                    }
-
-                    var answer = pc.createAnswer(); // Synchronous
-                    _debugLog.LogWebRtc($"Created answer for {peerId} with SDP: {answer.sdp}");
-
-                    await pc.setLocalDescription(answer); // Async, Task (void)
-                    _debugLog.LogWebRtc($"Set local description with answer for {peerId}.");
-
-                    await _signalingService.SendAnswerAsync(peerId, answer.toJSON()).ConfigureAwait(false);
-
-                    var answerSdp = JsonConvert.DeserializeObject<RTCSessionDescriptionInit>(answer.sdp); 
-                    if (answerSdp == null) return;
-                    
-                    _debugLog.LogWebRtc($"Set remote description from answer for {peerId} successfully.");
-                    if (state.PeerConnection.AudioRemoteTrack?.Ssrc != 0 && state.PeerConnection.AudioRemoteTrack?.Ssrc != null)
-                    {
-                        state.RemoteAudioSsrc = state.PeerConnection.AudioRemoteTrack.Ssrc; 
-                        _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} (from AudioRemoteTrack) with answering peer {peerId}.");
-                    }
-                    else
-                    {
-                         _debugLog.LogWebRtc($"[WARNING] Could not get remote audio SSRC for answering peer {peerId} from AudioRemoteTrack (SSRC: {state.PeerConnection.AudioRemoteTrack?.Ssrc}). Attempting manual SDP parse from received answer.");
-                         uint parsedSsrc = ParseSsrcFromSdp(answerSdp.sdp);
-                         if (parsedSsrc != 0)
-                         {
-                             state.RemoteAudioSsrc = parsedSsrc;
-                             _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} (from SDP parse of answer) with answering peer {peerId}.");
-                         }
-                         else
-                         {
-                             _debugLog.LogWebRtc($"[ERROR] Failed to parse SSRC from answer SDP for peer {peerId}. SDP was: {answerSdp.sdp}");
-                         }
-                    }
+                    _debugLog.LogWebRtc($"Offer sent to {peerId}. Local description is set. Waiting for answer.");
                 }
                 catch (Exception ex)
                 {
@@ -495,25 +372,6 @@ public class WebRtcService : IDisposable
                 else
                 {
                     _debugLog.LogWebRtc($"Set remote description from offer for {peerId} successfully.");
-                    if (pc.AudioRemoteTrack?.Ssrc != 0 && pc.AudioRemoteTrack?.Ssrc != null)
-                    {
-                        state.RemoteAudioSsrc = pc.AudioRemoteTrack.Ssrc;
-                        _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} (from AudioRemoteTrack) with offering peer {peerId}.");
-                    }
-                    else
-                    {
-                        _debugLog.LogWebRtc($"[WARNING] Could not get remote audio SSRC for offering peer {peerId} from AudioRemoteTrack (SSRC: {pc.AudioRemoteTrack?.Ssrc}). Attempting manual SDP parse from received offer.");
-                        uint parsedSsrc = ParseSsrcFromSdp(offerSdp.sdp); 
-                        if (parsedSsrc != 0)
-                        {
-                            state.RemoteAudioSsrc = parsedSsrc;
-                            _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} (from SDP parse of offer) with offering peer {peerId}.");
-                        }
-                        else
-                        {
-                            _debugLog.LogWebRtc($"[ERROR] Failed to parse SSRC from offer SDP for peer {peerId}. SDP was: {offerSdp.sdp}");
-                        }
-                    }
                 }
 
                 var answer = pc.createAnswer(); // Synchronous
@@ -557,25 +415,6 @@ public class WebRtcService : IDisposable
                     else
                     {
                         _debugLog.LogWebRtc($"Set remote description from answer for {peerId} successfully.");
-                        if (state.PeerConnection.AudioRemoteTrack?.Ssrc != 0 && state.PeerConnection.AudioRemoteTrack?.Ssrc != null)
-                        {
-                            state.RemoteAudioSsrc = state.PeerConnection.AudioRemoteTrack.Ssrc; 
-                            _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} (from AudioRemoteTrack) with answering peer {peerId}.");
-                        }
-                        else
-                        {
-                             _debugLog.LogWebRtc($"[WARNING] Could not get remote audio SSRC for answering peer {peerId} from AudioRemoteTrack (SSRC: {state.PeerConnection.AudioRemoteTrack?.Ssrc}). Attempting manual SDP parse from received answer.");
-                             uint parsedSsrc = ParseSsrcFromSdp(answerSdp.sdp);
-                             if (parsedSsrc != 0)
-                             {
-                                 state.RemoteAudioSsrc = parsedSsrc;
-                                 _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} (from SDP parse of answer) with answering peer {peerId}.");
-                             }
-                             else
-                             {
-                                 _debugLog.LogWebRtc($"[ERROR] Failed to parse SSRC from answer SDP for peer {peerId}. SDP was: {answerSdp.sdp}");
-                             }
-                        }
                     }
                 }
                 catch (Exception ex)
@@ -763,6 +602,6 @@ internal class PeerConnectionState
 {
     public RTCPeerConnection PeerConnection { get; set; } = null!;
     public RTCDataChannel? DataChannel { get; set; }
-    public uint RemoteAudioSsrc { get; set; } // To map received RTP packets to a peer
+    // public uint RemoteAudioSsrc { get; set; } // Removed: No longer needed by application logic for routing
     // Add other relevant state if needed, e.g., audio stream references if managed separately
 } 

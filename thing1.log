@@ -1,654 +1,528 @@
-[21:07:03.389] [T1] === Debug Log Started [19/05/2025 21:07:03] ===
-[21:07:03.458] [T1] [WEBRTC] Created WindowsAudioEndPoint with MuLaw encoder
-[21:07:03.463] [T1] [WEBRTC] Created audio track with format: PCMU, status: SendRecv
-[21:07:03.486] [T1] [WEBRTC] Started audio endpoint
-[21:07:14.995] [T1] [SIGNALING] Attempting to connect to signaling server at ws://127.0.0.1:8080/
-[21:07:15.034] [T1] [SIGNALING] Connected to signaling server.
-[21:07:15.039] [T1] [AUDIO] Microphone capture started with format: 16 bit PCM: 48000Hz 1 channels, target packet duration: 20ms
-[21:07:15.058] [T8] [SIGNALING] Sent message of type UpdatePosition
-[21:07:15.060] [T8] [SIGNALING] Received message: {"type":"NearbyPeers","data":[]}
-[21:07:15.067] [T8] [SIGNALING] Received nearby peers: 
-[21:07:15.274] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
-[21:07:16.514] [T11] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
-[21:07:16.519] [T8] [SIGNALING] Received message: {"type":"NearbyPeers","data":["fad5042b-efc8-4c62-bc51-8f23934c52df"]}
-[21:07:16.520] [T8] [SIGNALING] Received nearby peers: fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:16.520] [T8] [SIGNALING] Received message: {"type":"NearbyPeers","data":["fad5042b-efc8-4c62-bc51-8f23934c52df"]}
-[21:07:16.520] [T8] [SIGNALING] Received nearby peers: fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:17.125] [T1] [WEBRTC] Created new peer connection for fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:17.127] [T1] [WEBRTC] Added audio track to peer connection fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:17.128] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.129] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.129] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.130] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.131] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.131] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.164] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.164] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.204] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.204] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.245] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.245] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.286] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.286] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.324] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.324] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.351] [T13] [WEBRTC] Sending ICE candidate to fad5042b-efc8-4c62-bc51-8f23934c52df: {"candidate":"candidate:1983 1 udp 659136 192.168.0.44 50222 typ host generation 0","sdpMid":"0","sdpMLineIndex":0,"usernameFragment":"LREG"}
-[21:07:17.351] [T13] [SIGNALING] Sending ICE candidate to fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:17.355] [T13] [SIGNALING] Sent message of type SendIceCandidate
-[21:07:17.365] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.365] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.404] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.404] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.444] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.449] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.449] [T11] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
-[21:07:17.485] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.485] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.524] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.524] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.539] [T6] [WEBRTC] Sending ICE candidate to fad5042b-efc8-4c62-bc51-8f23934c52df: {"candidate":"candidate:5008 1 udp 659084 82.2.22.132 50222 typ srflx raddr 0.0.0.0 rport 0 generation 0","sdpMid":"0","sdpMLineIndex":0,"usernameFragment":"LREG"}
-[21:07:17.539] [T6] [SIGNALING] Sending ICE candidate to fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:17.540] [T6] [SIGNALING] Sent message of type SendIceCandidate
-[21:07:17.564] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.564] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.605] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.605] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.644] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.644] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.684] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.684] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.725] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.725] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.764] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.764] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.804] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.804] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.845] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.846] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.884] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.884] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.925] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.925] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.965] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:17.965] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.004] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.004] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.044] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.044] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.085] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.085] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.128] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.128] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.164] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.164] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.206] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.207] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.244] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.244] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.285] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.285] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.325] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.326] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.364] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.364] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.404] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.404] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.445] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.445] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.485] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.485] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.524] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.524] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.565] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.565] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.604] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.604] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.644] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.644] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.685] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.685] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.724] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.725] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.765] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.770] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.807] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.807] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.845] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.846] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.884] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.885] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.925] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.926] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.964] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:18.965] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.004] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.005] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.045] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.046] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.084] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.085] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.124] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.125] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.165] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.165] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.204] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.204] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.244] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.244] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.285] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.285] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.296] [T10] [SIGNALING] Received message: {"type":"ReceiveIceCandidate","data":{"sender_id":"fad5042b-efc8-4c62-bc51-8f23934c52df","candidate":"{\"candidate\":\"candidate:1983 1 udp 659136 192.168.0.44 50226 typ host generation 0\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0,\"usernameFragment\":\"AFYR\"}"}}
-[21:07:19.298] [T10] [SIGNALING] Received ICE candidate from fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:19.317] [T10] [SIGNALING] Received message: {"type":"ReceiveOffer","data":{"sender_id":"fad5042b-efc8-4c62-bc51-8f23934c52df","offer":"{\"type\":\"offer\",\"sdp\":\"v=0\\r\\no=- 44425 0 IN IP4 127.0.0.1\\r\\ns=sipsorcery\\r\\nt=0 0\\r\\na=group:BUNDLE 1 2\\r\\nm=audio 9 UDP/TLS/RTP/SAVP 0 101\\r\\nc=IN IP4 0.0.0.0\\r\\na=ice-ufrag:AFYR\\r\\na=ice-pwd:LQTRMWCJIKQKBXNUJGOPXIJC\\r\\na=fingerprint:sha-256 0A:EF:28:7F:B1:3A:D4:72:56:4B:B9:75:77:AB:10:AF:98:0B:16:E5:2F:F4:C5:C8:A9:64:43:EC:A7:6B:D5:EC\\r\\na=setup:actpass\\r\\na=candidate:1983 1 udp 659136 192.168.0.44 50226 typ host generation 0\\r\\na=ice-options:ice2,trickle\\r\\na=mid:1\\r\\na=rtpmap:0 PCMU/8000\\r\\na=rtpmap:101 telephone-event/8000\\r\\na=fmtp:101 0-16\\r\\na=rtcp-mux\\r\\na=rtcp:9 IN IP4 0.0.0.0\\r\\na=sendrecv\\r\\na=ssrc:2026541598 cname:923d0b72-d0f4-4231-a702-3f5d0e77d87d\\r\\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\\r\\nc=IN IP4 0.0.0.0\\r\\na=ice-ufrag:AFYR\\r\\na=ice-pwd:LQTRMWCJIKQKBXNUJGOPXIJC\\r\\na=fingerprint:sha-256 0A:EF:28:7F:B1:3A:D4:72:56:4B:B9:75:77:AB:10:AF:98:0B:16:E5:2F:F4:C5:C8:A9:64:43:EC:A7:6B:D5:EC\\r\\na=setup:actpass\\r\\na=ice-options:ice2,trickle\\r\\na=mid:2\\r\\na=sctp-port:5000\\r\\na=max-message-size:262144\\r\\n\"}"}}
-[21:07:19.320] [T10] [SIGNALING] Received offer from fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:19.323] [T13] [WEBRTC] Received offer from fad5042b-efc8-4c62-bc51-8f23934c52df with SDP: v=0
-o=- 44425 0 IN IP4 127.0.0.1
-s=sipsorcery
-t=0 0
-a=group:BUNDLE 1 2
-m=audio 9 UDP/TLS/RTP/SAVP 0 101
-c=IN IP4 0.0.0.0
-a=ice-ufrag:AFYR
-a=ice-pwd:LQTRMWCJIKQKBXNUJGOPXIJC
-a=fingerprint:sha-256 0A:EF:28:7F:B1:3A:D4:72:56:4B:B9:75:77:AB:10:AF:98:0B:16:E5:2F:F4:C5:C8:A9:64:43:EC:A7:6B:D5:EC
-a=setup:actpass
-a=candidate:1983 1 udp 659136 192.168.0.44 50226 typ host generation 0
-a=ice-options:ice2,trickle
-a=mid:1
-a=rtpmap:0 PCMU/8000
-a=rtpmap:101 telephone-event/8000
-a=fmtp:101 0-16
-a=rtcp-mux
-a=rtcp:9 IN IP4 0.0.0.0
-a=sendrecv
-a=ssrc:2026541598 cname:923d0b72-d0f4-4231-a702-3f5d0e77d87d
-m=application 9 UDP/DTLS/SCTP webrtc-datachannel
-c=IN IP4 0.0.0.0
-a=ice-ufrag:AFYR
-a=ice-pwd:LQTRMWCJIKQKBXNUJGOPXIJC
-a=fingerprint:sha-256 0A:EF:28:7F:B1:3A:D4:72:56:4B:B9:75:77:AB:10:AF:98:0B:16:E5:2F:F4:C5:C8:A9:64:43:EC:A7:6B:D5:EC
-a=setup:actpass
-a=ice-options:ice2,trickle
-a=mid:2
-a=sctp-port:5000
-a=max-message-size:262144
-
-[21:07:19.324] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.324] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.350] [T13] [WEBRTC] Set remote description from offer for fad5042b-efc8-4c62-bc51-8f23934c52df successfully.
-[21:07:19.350] [T10] [WEBRTC] Sending ICE candidate to fad5042b-efc8-4c62-bc51-8f23934c52df: {"candidate":"candidate:5008 1 udp 659084 82.2.22.132 50222 typ srflx raddr 0.0.0.0 rport 0 generation 0","sdpMid":"0","sdpMLineIndex":0,"usernameFragment":"LREG"}
-[21:07:19.350] [T10] [SIGNALING] Sending ICE candidate to fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:19.350] [T10] [SIGNALING] Sent message of type SendIceCandidate
-[21:07:19.350] [T13] [WEBRTC] [WARNING] Could not get remote audio SSRC for offering peer fad5042b-efc8-4c62-bc51-8f23934c52df from AudioRemoteTrack after processing offer (SSRC: 0).
-[21:07:19.361] [T13] [WEBRTC] Created answer for fad5042b-efc8-4c62-bc51-8f23934c52df with SDP: v=0
-o=- 20111 0 IN IP4 127.0.0.1
-s=sipsorcery
-t=0 0
-a=group:BUNDLE 1 2
-m=audio 9 UDP/TLS/RTP/SAVP 0 101
-c=IN IP4 0.0.0.0
-a=ice-ufrag:LREG
-a=ice-pwd:TNGGROAEOOCISMATQZYPNJMZ
-a=fingerprint:sha-256 F8:8B:A8:5C:D4:96:C8:6A:71:30:ED:77:BB:DA:1A:84:F2:1E:3C:20:5B:97:E8:3E:11:56:9F:3D:4C:0A:D4:1D
-a=setup:active
-a=candidate:5008 1 udp 659084 82.2.22.132 50222 typ srflx raddr 0.0.0.0 rport 0 generation 0
-a=candidate:1983 1 udp 659136 192.168.0.44 50222 typ host generation 0
-a=ice-options:ice2,trickle
-a=mid:1
-a=rtpmap:0 PCMU/8000
-a=rtpmap:101 telephone-event/8000
-a=fmtp:101 0-16
-a=rtcp-mux
-a=rtcp:9 IN IP4 0.0.0.0
-a=end-of-candidates
-a=sendrecv
-a=ssrc:1092081949 cname:90fd6772-baf3-4ce4-a030-22076d0775e3
-m=application 9 UDP/DTLS/SCTP webrtc-datachannel
-c=IN IP4 0.0.0.0
-a=ice-ufrag:LREG
-a=ice-pwd:TNGGROAEOOCISMATQZYPNJMZ
-a=fingerprint:sha-256 F8:8B:A8:5C:D4:96:C8:6A:71:30:ED:77:BB:DA:1A:84:F2:1E:3C:20:5B:97:E8:3E:11:56:9F:3D:4C:0A:D4:1D
-a=setup:active
-a=ice-options:ice2,trickle
-a=mid:2
-a=sctp-port:5000
-a=max-message-size:262144
-
-[21:07:19.361] [T13] [WEBRTC] Set local description with answer for fad5042b-efc8-4c62-bc51-8f23934c52df.
-[21:07:19.362] [T13] [SIGNALING] Sending answer to fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:19.363] [T13] [SIGNALING] Sent message of type SendAnswer
-[21:07:19.364] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.364] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.399] [T10] [WEBRTC] Peer connection state changed for fad5042b-efc8-4c62-bc51-8f23934c52df: connecting
-[21:07:19.405] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.405] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.448] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.449] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.484] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.484] [T11] [WEBRTC] Peer connection not connected for fad5042b-efc8-4c62-bc51-8f23934c52df, skipping audio send
-[21:07:19.509] [T6] [WEBRTC] Peer connection state changed for fad5042b-efc8-4c62-bc51-8f23934c52df: connected
-[21:07:19.509] [T6] [WEBRTC] WebRTC connection established with fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:19.535] [T8] [WEBRTC] Dynamically associating SSRC 2026541598 with peer fad5042b-efc8-4c62-bc51-8f23934c52df (endpoint check temporarily bypassed).
-[21:07:19.536] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.536] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.554] [T15] [WEBRTC] Received data channel 'position' from peer fad5042b-efc8-4c62-bc51-8f23934c52df. Configuring...
-[21:07:19.565] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.565] [T8] [WEBRTC] [TEMP] DC Message From fad5042b-efc8-4c62-bc51-8f23934c52df: Raw='{"MapId":0,"X":110,"Y":203,"CharacterName":"Astrael"}'
-[21:07:19.565] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.566] [T8] [WEBRTC] [TEMP] DC Position From fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=203, CharName='Astrael'
-[21:07:19.568] [T8] [MAIN] new peer fad5042b-efc8-4c62-bc51-8f23934c52df (Astrael): map=0 pos=(110,203)
-[21:07:19.579] [T8] [MAIN] peer fad5042b-efc8-4c62-bc51-8f23934c52df: renamed from 'Unknown' to 'Astrael'
-[21:07:19.580] [T8] [MAIN] peer Astrael: dist=3.0 (me:110,206 them:110,203)
-[21:07:19.581] [T8] [WEBRTC] Received position update from fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=203
-[21:07:19.605] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.605] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.645] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.645] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.685] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.685] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.725] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.725] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.771] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.771] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.806] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.807] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.844] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.845] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.885] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.886] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.925] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.925] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.965] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:19.965] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.005] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.006] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.045] [T10] [SIGNALING] Sent message of type UpdatePosition
-[21:07:20.050] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.050] [T13] [SIGNALING] Received message: {"type":"NearbyPeers","data":["fad5042b-efc8-4c62-bc51-8f23934c52df"]}
-[21:07:20.050] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.050] [T13] [SIGNALING] Received nearby peers: fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:20.051] [T10] [WEBRTC] [TEMP] DC Sending Position to fad5042b-efc8-4c62-bc51-8f23934c52df: {"MapId":0,"X":110,"Y":206,"CharacterName":"fcf7acbf"}
-[21:07:20.052] [T10] [WEBRTC] Sent position update to fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=206
-[21:07:20.052] [T10] [MAIN] Recalculated distance to peer Astrael: 3.00 units
-[21:07:20.085] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.085] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.125] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.125] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.165] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.165] [T13] [WEBRTC] (Sampled Log) RTP for SSRC 2026541598 (Peer fad5042b-efc8-4c62-bc51-8f23934c52df): seq=824, pt=0, size=160, hasAudio=True
-[21:07:20.165] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.204] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.205] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.245] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.246] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.285] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.285] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.325] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.325] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.365] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.365] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.405] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.406] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.445] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.445] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.485] [T11] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
-[21:07:20.486] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.486] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.524] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.525] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.564] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.565] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.565] [T11] [WEBRTC] (Sampled Log) Sent audio packet via PeerConnection.SendAudio to fad5042b-efc8-4c62-bc51-8f23934c52df: duration=160, size=160, local_ts_approx=40160
-[21:07:20.605] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.607] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.645] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.645] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.684] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.685] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.730] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.730] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.765] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.765] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.807] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.807] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.846] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.846] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.885] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
-[21:07:20.885] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.886] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.925] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.925] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.966] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:20.966] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.005] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.007] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.045] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.045] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.085] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.091] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.125] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.125] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.164] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.165] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.205] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.206] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.244] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.245] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.284] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.285] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.325] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.325] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.364] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.369] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.405] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.405] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.445] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.445] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.485] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.485] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.525] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.525] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.565] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.565] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.579] [T8] [WEBRTC] [TEMP] DC Message From fad5042b-efc8-4c62-bc51-8f23934c52df: Raw='{"MapId":0,"X":110,"Y":203,"CharacterName":"Astrael"}'
-[21:07:21.579] [T8] [WEBRTC] [TEMP] DC Position From fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=203, CharName='Astrael'
-[21:07:21.579] [T6] [SIGNALING] Received message: {"type":"NearbyPeers","data":["fad5042b-efc8-4c62-bc51-8f23934c52df"]}
-[21:07:21.579] [T8] [MAIN] peer Astrael: dist=3.0 (me:110,206 them:110,203)
-[21:07:21.579] [T8] [WEBRTC] Received position update from fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=203
-[21:07:21.579] [T6] [SIGNALING] Received nearby peers: fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:21.579] [T8] [WEBRTC] [TEMP] DC Message From fad5042b-efc8-4c62-bc51-8f23934c52df: Raw='{"MapId":0,"X":110,"Y":203,"CharacterName":"Astrael"}'
-[21:07:21.579] [T8] [WEBRTC] [TEMP] DC Position From fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=203, CharName='Astrael'
-[21:07:21.579] [T8] [MAIN] peer Astrael: dist=3.0 (me:110,206 them:110,203)
-[21:07:21.579] [T8] [WEBRTC] Received position update from fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=203
-[21:07:21.579] [T6] [SIGNALING] Received message: {"type":"NearbyPeers","data":["fad5042b-efc8-4c62-bc51-8f23934c52df"]}
-[21:07:21.579] [T6] [SIGNALING] Received nearby peers: fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:21.604] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.605] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.644] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.645] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.685] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.685] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.724] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.725] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.769] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.770] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.805] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.806] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.845] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.845] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.884] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.885] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.926] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.926] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.964] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:21.965] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.004] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.004] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.049] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.049] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.084] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.084] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.124] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.124] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.165] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.165] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.204] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.205] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.244] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.245] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.285] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.285] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.325] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.325] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
-[21:07:22.325] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.365] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.365] [T10] [WEBRTC] (Sampled Log) RTP for SSRC 2026541598 (Peer fad5042b-efc8-4c62-bc51-8f23934c52df): seq=934, pt=0, size=160, hasAudio=True
-[21:07:22.365] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.405] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.410] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.444] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.445] [T11] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
-[21:07:22.445] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.485] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.485] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.525] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.525] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.564] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.565] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.604] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.604] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.645] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.645] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.684] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.689] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.692] [T1] [MAIN] audio input changed: wav=True
-[21:07:22.692] [T1] [AUDIO] UseAudioFileInput changing from False to True
-[21:07:22.692] [T1] [AUDIO] Stopping current capture before switching input type
-[21:07:22.695] [T1] [AUDIO] Starting capture with new input type
-[21:07:22.697] [T1] [AUDIO] Using raw MuLaw stream for test.wav as it matches target format.
-[21:07:22.698] [T1] [AUDIO] Microphone recording stopped.
-[21:07:22.724] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.725] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.765] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.765] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.804] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.804] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.844] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.844] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.863] [T11] [WEBRTC] (Sampled Log) Sent audio packet via PeerConnection.SendAudio to fad5042b-efc8-4c62-bc51-8f23934c52df: duration=160, size=160, local_ts_approx=58560
-[21:07:22.885] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.885] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.924] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.925] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.964] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:22.965] [T11] [WEBRTC] (Sampled Log) RTP for SSRC 2026541598 (Peer fad5042b-efc8-4c62-bc51-8f23934c52df): seq=964, pt=0, size=160, hasAudio=True
-[21:07:22.965] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.005] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.006] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.044] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.045] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.088] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.089] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.125] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.125] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.165] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.165] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.189] [T6] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
-[21:07:23.205] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.205] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.245] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.245] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.285] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.285] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.324] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.325] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.365] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.365] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.405] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.405] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.445] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.445] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.482] [T10] [WEBRTC] (Sampled Log) Sent audio packet via PeerConnection.SendAudio to fad5042b-efc8-4c62-bc51-8f23934c52df: duration=160, size=160, local_ts_approx=63520
-[21:07:23.485] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.486] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.524] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.525] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.564] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.565] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.605] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.605] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.645] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.645] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.685] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.685] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.725] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.730] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.764] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.764] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.805] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.805] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.845] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.846] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.884] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.885] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.924] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.925] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.965] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:23.965] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.004] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.005] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.044] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.045] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.086] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.086] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.124] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.125] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.164] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.165] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.205] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.205] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.244] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.244] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.284] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.285] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.301] [T11] [AUDIO] (Sampled Log) File: Sent 160 bytes of audio data from file source (format: MuLaw).
-[21:07:24.326] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.326] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.364] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.364] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.409] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.410] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.446] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.446] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.471] [T10] [AUDIO] (Sampled Log) File: Sent 160 bytes of audio data from file source (format: MuLaw).
-[21:07:24.484] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.485] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.525] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.525] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.563] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
-[21:07:24.566] [T10] [WEBRTC] (Sampled Log) RTP for SSRC 2026541598 (Peer fad5042b-efc8-4c62-bc51-8f23934c52df): seq=1043, pt=0, size=160, hasAudio=True
-[21:07:24.566] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.566] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.604] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.604] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.644] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.645] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.685] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.685] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.724] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.725] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.764] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.765] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.805] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.805] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.844] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.845] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.884] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.885] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.925] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.925] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.966] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:24.966] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.004] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.005] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.045] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.049] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.084] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.085] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.118] [T8] [WEBRTC] (Sampled Log) Sent audio packet via PeerConnection.SendAudio to fad5042b-efc8-4c62-bc51-8f23934c52df: duration=160, size=160, local_ts_approx=76640
-[21:07:25.124] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.125] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.165] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.165] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.204] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.204] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.244] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.245] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.285] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.285] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.303] [T11] [SIGNALING] Sent message of type UpdatePosition
-[21:07:25.303] [T11] [WEBRTC] [TEMP] DC Sending Position to fad5042b-efc8-4c62-bc51-8f23934c52df: {"MapId":0,"X":110,"Y":206,"CharacterName":"fcf7acbf"}
-[21:07:25.303] [T11] [WEBRTC] Sent position update to fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=206
-[21:07:25.303] [T11] [MAIN] Recalculated distance to peer Astrael: 3.00 units
-[21:07:25.304] [T8] [SIGNALING] Received message: {"type":"NearbyPeers","data":["fad5042b-efc8-4c62-bc51-8f23934c52df"]}
-[21:07:25.304] [T8] [SIGNALING] Received nearby peers: fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:25.324] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.325] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.350] [T10] [WEBRTC] (Sampled Log) Sent audio packet via PeerConnection.SendAudio to fad5042b-efc8-4c62-bc51-8f23934c52df: duration=160, size=160, local_ts_approx=78400
-[21:07:25.364] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.365] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.405] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.405] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.444] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.444] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.484] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.485] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.525] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.525] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.564] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.565] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.606] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.606] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.649] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.649] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.694] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.694] [T6] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.732] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.735] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.753] [T8] [AUDIO] (Sampled Log) File: Sent 160 bytes of audio data from file source (format: MuLaw).
-[21:07:25.765] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.765] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.804] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.805] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.845] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.846] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.885] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.885] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.924] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.924] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.964] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:25.965] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.005] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.005] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.044] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.044] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.084] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.084] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.125] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.125] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.164] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.165] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.204] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.205] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.245] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.245] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.284] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.285] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.325] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.325] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.342] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
-[21:07:26.365] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.370] [T11] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.404] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.404] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.444] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.445] [T8] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.485] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.485] [T10] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.524] [T13] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.525] [T17] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.564] [T18] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.565] [T12] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.606] [T21] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.606] [T21] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.644] [T22] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.645] [T22] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.682] [T21] [AUDIO] Error in audio playback: Object reference not set to an instance of an object.
-[21:07:26.684] [T21] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.685] [T21] [AUDIO] [WARNING] PlayAudio called for unknown peer fad5042b-efc8-4c62-bc51-8f23934c52df. Audio data ignored.
-[21:07:26.698] [T24] [WEBRTC] [TEMP] DC Message From fad5042b-efc8-4c62-bc51-8f23934c52df: Raw='{"MapId":0,"X":110,"Y":203,"CharacterName":"Astrael"}'
-[21:07:26.698] [T24] [WEBRTC] [TEMP] DC Position From fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=203, CharName='Astrael'
-[21:07:26.698] [T24] [WEBRTC] Received position update from fad5042b-efc8-4c62-bc51-8f23934c52df: MapId=0, X=110, Y=203
-[21:07:26.698] [T24] [SIGNALING] Received message: {"type":"NearbyPeers","data":["fad5042b-efc8-4c62-bc51-8f23934c52df"]}
-[21:07:26.698] [T24] [SIGNALING] Received nearby peers: fad5042b-efc8-4c62-bc51-8f23934c52df
-[21:07:26.713] [T24] [AUDIO] Error in audio playback: Object reference not set to an instance of an object.
+[00:07:52.584] [T1] === Debug Log Started [20/05/2025 00:07:52] ===
+[00:07:52.673] [T1] [WEBRTC] Created WindowsAudioEndPoint with MuLaw encoder
+[00:07:52.679] [T1] [WEBRTC] Created audio track with format: PCMU, status: SendRecv
+[00:07:52.693] [T1] [WEBRTC] Started audio endpoint
+[00:08:23.816] [T1] [SIGNALING] Attempting to connect to signaling server at ws://127.0.0.1:8080/
+[00:08:23.856] [T1] [SIGNALING] Connected to signaling server.
+[00:08:23.862] [T1] [AUDIO] Microphone capture started with format: 16 bit PCM: 48000Hz 1 channels, target packet duration: 20ms
+[00:08:23.880] [T8] [SIGNALING] Sent message of type UpdatePosition
+[00:08:23.883] [T8] [SIGNALING] Received message: {"type":"NearbyPeers","data":[]}
+[00:08:23.890] [T8] [SIGNALING] Received nearby peers: 
+[00:08:24.374] [T11] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[00:08:24.648] [T10] [SIGNALING] Received message: {"type":"NearbyPeers","data":["c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba"]}
+[00:08:24.648] [T10] [SIGNALING] Received nearby peers: c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba
+[00:08:24.649] [T10] [SIGNALING] Received message: {"type":"NearbyPeers","data":["c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba"]}
+[00:08:24.649] [T10] [SIGNALING] Received nearby peers: c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba
+[00:08:25.693] [T1] [WEBRTC] Created new peer connection for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba
+[00:08:25.695] [T1] [WEBRTC] Added audio track to peer connection c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba
+[00:08:25.697] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.698] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.699] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.699] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.700] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.700] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.775] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.813] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.853] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.922] [T13] [WEBRTC] Sending ICE candidate to c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba: {"candidate":"candidate:1983 1 udp 659136 192.168.0.44 55843 typ host generation 0","sdpMid":"0","sdpMLineIndex":0,"usernameFragment":"BNZJ"}
+[00:08:25.922] [T13] [SIGNALING] Sending ICE candidate to c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba
+[00:08:25.926] [T13] [SIGNALING] Sent message of type SendIceCandidate
+[00:08:25.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.973] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:25.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.053] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.054] [T11] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[00:08:26.098] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.098] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.108] [T6] [WEBRTC] Sending ICE candidate to c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba: {"candidate":"candidate:5008 1 udp 659084 82.2.22.132 55843 typ srflx raddr 0.0.0.0 rport 0 generation 0","sdpMid":"0","sdpMLineIndex":0,"usernameFragment":"BNZJ"}
+[00:08:26.108] [T6] [SIGNALING] Sending ICE candidate to c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba
+[00:08:26.108] [T6] [SIGNALING] Sent message of type SendIceCandidate
+[00:08:26.135] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.135] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.213] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.255] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.293] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.374] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.375] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.414] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[00:08:26.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.495] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.533] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.573] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.693] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.694] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.739] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.773] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.813] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.893] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.933] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:26.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.013] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[00:08:27.013] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.137] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.254] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[00:08:27.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.334] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[00:08:27.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.335] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.373] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.374] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.418] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.418] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.455] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.493] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.533] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.575] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.655] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.695] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.695] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.695] [T11] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[00:08:27.733] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.773] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.853] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.893] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.973] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:27.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.013] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.059] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.093] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.133] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.213] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.253] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.295] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.296] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.333] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.373] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.374] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.453] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[00:08:28.453] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.573] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.613] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.693] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.694] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.737] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.737] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.824] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.825] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.856] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.857] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.895] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.895] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.943] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.943] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.951] [T14] [SIGNALING] Sent message of type UpdatePosition
+[00:08:28.952] [T14] [SIGNALING] Received message: {"type":"NearbyPeers","data":["c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba"]}
+[00:08:28.952] [T14] [SIGNALING] Received nearby peers: c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba
+[00:08:28.973] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:28.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.014] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[00:08:29.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.053] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.093] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.255] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.293] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.375] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.380] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.453] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.653] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.694] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.694] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.773] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.893] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.933] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:29.975] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.013] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.057] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.057] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.095] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.175] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.175] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.215] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.215] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.335] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.373] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.374] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.413] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.533] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.695] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.700] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.773] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.853] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.893] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:30.975] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.013] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.093] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.133] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.213] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.253] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.253] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.333] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.378] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.378] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.415] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.453] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.453] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.573] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.615] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.656] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.693] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.694] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.733] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.813] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.853] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.894] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[00:08:31.895] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.933] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:31.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.019] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.053] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.093] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.173] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.213] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.293] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.333] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.374] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.374] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.413] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.533] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.573] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.653] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.698] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.699] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.773] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.893] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:32.974] [T11] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[00:08:32.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.013] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.053] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.133] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.174] [T11] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[00:08:33.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.253] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.293] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.338] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.373] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.374] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.493] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.494] [T11] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[00:08:33.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.533] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.575] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.613] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.694] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.694] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.733] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.734] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.815] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.853] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.893] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.960] [T8] [SIGNALING] Sent message of type UpdatePosition
+[00:08:33.961] [T8] [SIGNALING] Received message: {"type":"NearbyPeers","data":["c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba"]}
+[00:08:33.962] [T8] [SIGNALING] Received nearby peers: c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba
+[00:08:33.973] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:33.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.018] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.018] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.093] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.294] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.333] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.334] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.373] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.374] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.414] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.453] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.454] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.493] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.494] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.534] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.573] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.574] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.613] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.614] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.654] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.658] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.693] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.694] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.733] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.735] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.774] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.814] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.854] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.894] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.933] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.934] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.974] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:34.975] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.014] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.053] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.054] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.093] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.094] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.134] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.135] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.174] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.175] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.214] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.254] [T11] [WEBRTC] Peer connection not connected for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba, skipping audio send
+[00:08:35.279] [T1] [WEBRTC] Peer connection state changed for c7e2c937-0c28-46b7-bda3-6c5ce33eb5ba: closed
+[00:08:35.281] [T1] [AUDIO] Microphone recording stopped.
+[00:08:35.281] [T11] [SIGNALING] Message receive operation was canceled.

@@ -80,6 +80,11 @@ WebRTC connection established successfully between two clients (data channel for
   - Reliably identify the remote peer's SSRC either via `AudioRemoteTrack.Ssrc` or by parsing the SDP.
   - If initial SSRC association fails, the refined dynamic SSRC logic in `OnRtpPacketReceived` should associate an incoming SSRC with a peer that has a connected state but no SSRC yet.
   - Pass the raw PCMU payload to `AudioService.PlayAudio` for the correctly identified peer.
+  - The audio receiving pipeline in `WebRtcService` (`OnRtpPacketReceived`) _should_ now:
+    - Identify the `peerId` by matching the `RTCPeerConnection` instance that fired the event against the `_peerConnections` dictionary.
+    - If the `RemoteAudioSsrc` for this peer was not successfully obtained from SDP (is `0`), it will be "learned" from the SSRC of the first RTP packet received on this connection instance and stored.
+    - Optionally log SSRC mismatches if an SSRC was learned/known and a subsequent packet has a different one (for debugging).
+    - Pass the raw PCMU payload to `AudioService.PlayAudio` for the correctly identified `peerId`.
 - `AudioService.PlayAudio` _should_ now:
   - Create playback components for a peer if they don't already exist.
   - Decode the PCMU data to PCM and buffer it for playback.
@@ -98,16 +103,19 @@ WebRTC connection established successfully between two clients (data channel for
 
     - **During Connection Setup (Both Clients):**
       - `WebRtcService`:
-        - Look for successful SSRC association: `Associated remote audio SSRC {ssrc} (from AudioRemoteTrack) ...` OR `Associated remote audio SSRC {ssrc} (from SDP parse of ...) ...`.
-        - If both fail, and logs show `[ERROR] Failed to parse SSRC from ... SDP...`, this is a point of failure.
+        - Look for successful SSRC association: `Associated remote audio SSRC {ssrc} (from AudioRemoteTrack) ...` OR `Associated remote audio SSRC {ssrc} (from SDP parse of ...) ...`. This is important for the library and our `PeerConnectionState.RemoteAudioSsrc`.
+        - If both fail, and logs show `[ERROR] Failed to parse SSRC from ... SDP...`, this means `RemoteAudioSsrc` will start as `0` for that peer.
         - Monitor `Dynamically associating incoming SSRC {incomingSsrc} with peer {entry.Key}...` if the above fails.
+        - `WebRtcService` (`OnOfferReceived`/`OnAnswerReceived`): No longer attempts to store `RemoteAudioSsrc` in `PeerConnectionState`. SIPSorcery internally uses SSRC from SDP.
     - **Client A (Sending Client):**
       - `AudioService`: `(Sampled Log) Mic: Sent {bytesRead} PCMU bytes...`
       - `WebRtcService`: `(Sampled Log) OnEncodedAudioPacketReadyToSend: samples={samplesInPacket}, hasAudio={true}...`
       - `WebRtcService`: `(Sampled Log) Sent audio packet via PeerConnection.SendAudio to {peerId}: duration={samplesInPacket}, size={audioData.Length}...` (ensure `hasAudio` was true prior).
     - **Client B (Receiving Client):**
-      - `WebRtcService`: `(Sampled Log) RTP for SSRC {ssrc} (Peer {foundPeerId}): ... hasAudio={true}`.
-        - **Crucially, `foundPeerId` must not be null.** If it's null, but an SSRC is seen, the SSRC association (initial and dynamic) failed.
+      - `WebRtcService`: `(Sampled Log) RTP for peer {foundPeerId} (Identified by PC instance, incoming packet SSRC: {incomingSsrc}): ... hasAudio={true}`.
+        - **Crucially, `foundPeerId` must not be null.** If it is, it means the `RTCPeerConnection` instance that received the packet wasn't found in our dictionary.
+      - `WebRtcService`: `[INFO] First RTP packet from peer {foundPeerId} has SSRC {incomingSsrc}. Storing this as RemoteAudioSsrc...` (if SSRC was learned from the packet).
+      - `WebRtcService`: `[WARNING] SSRC mismatch for peer {foundPeerId}...` (if an unexpected SSRC change occurs after initial learning/SDP).
       - `AudioService`: `PlayAudio: PeerPlayback for peer {peerId} not found. Attempting to create.` (if audio arrives before typical setup).
       - `AudioService`: `PlayAudio: Successfully created PeerPlayback for {peerId} on-the-fly.` (if applicable).
       - `AudioService`: `Played {bytesDecoded} decoded PCM bytes from peer {peerId} ...`. This confirms audio reached playback.
@@ -124,13 +132,11 @@ WebRTC connection established successfully between two clients (data channel for
 
 ## Things to Look Out For / Potential Issues
 
-- **SSRC Association Failure:**
-  - Logs: `[ERROR] Failed to parse SSRC from ... SDP...` (during offer/answer).
-  - Logs: `[WARNING] Received audio RTP packet with SSRC {ssrc} but no associated peer found.` (in `OnRtpPacketReceived`). This would indicate both SDP parsing and dynamic association failed.
-  - **If this occurs:**
-    - Verify the SDP content in the logs to ensure `a=ssrc:` lines are present for audio.
-    - Re-examine the `ParseSsrcFromSdp` regex or logic.
-    - The dynamic SSRC association might still need refinement if multiple peers connect very rapidly and SDP parsing fails for all of them.
+- **SSRC Association Failure (from SDP):**
+  - Logs: `[ERROR] Failed to parse SSRC from ... SDP...` (during offer/answer). If this occurs, `RemoteAudioSsrc` in `PeerConnectionState` will be 0 initially, and the system will rely on learning it from the first RTP packet in `OnRtpPacketReceived`.
+  - **SSRC Handling by SIPSorcery:** The application no longer manually parses SDP for SSRC or stores `RemoteAudioSsrc` in its state. SIPSorcery is responsible for interpreting SSRCs from SDP for its internal track management. Issues here might manifest as SIPSorcery failing to set up tracks correctly, though this is less likely to be directly visible in our application logs beyond general connection failures if SDP is malformed.
+- **Failure to Identify Peer in `OnRtpPacketReceived`:**
+  - Logs: `[ERROR] Received audio RTP packet (SSRC: ...) on an RTCPeerConnection instance that was not found in the _peerConnections dictionary.` This would be a critical failure in managing the `_peerConnections` collection or `RTCPeerConnection` instances.
 - **Audio Playback Issues Despite Peer Found:**
   - `AudioService` logs show `Played ... bytes...` for the correct peer, but no audio is heard: Check system volume, output device selection in Windows, potential NAudio issues.
   - `AudioService` logs `[ERROR] PlayAudio: Failed to create PeerPlayback for {peerId}...` or `[WARNING] PlayAudio: Peer {peerId} has null playback components (WaveOut or Buffer is null even after potential creation)...`. This indicates an issue in `CreatePeerPlayback`.
