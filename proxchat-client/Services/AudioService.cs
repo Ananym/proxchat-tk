@@ -541,16 +541,21 @@ public class AudioService : IDisposable
     {
         if (!_peerPlaybackStreams.TryGetValue(peerId, out var playback))
         {
-            // Don't create a playback stream if this is from an unknown peer
-            // This can happen if audio data arrives before position data
-            // The peer must first send its position to be considered connected
-            _debugLog.LogAudio($"[WARNING] PlayAudio called for unknown peer {peerId}. Audio data ignored.");
-            return;
+            // Peer playback not found, try to create it.
+            _debugLog.LogAudio($"PlayAudio: PeerPlayback for peer {peerId} not found. Attempting to create.");
+            playback = CreatePeerPlayback(peerId);
+            if (playback == null)
+            {
+                _debugLog.LogAudio($"[ERROR] PlayAudio: Failed to create PeerPlayback for {peerId}. Audio data ignored.");
+                return;
+            }
+            _debugLog.LogAudio($"PlayAudio: Successfully created PeerPlayback for {peerId} on-the-fly.");
         }
+
 
         if (playback == null || playback.WaveOut == null || playback.Buffer == null) 
         { 
-            _debugLog.LogAudio($"[WARNING] PlayAudio: Peer {peerId} has null playback components. Audio data ignored.");
+            _debugLog.LogAudio($"[WARNING] PlayAudio: Peer {peerId} has null playback components (WaveOut or Buffer is null even after potential creation). Audio data ignored.");
             return; 
         }
 

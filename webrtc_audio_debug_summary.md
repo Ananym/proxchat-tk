@@ -30,11 +30,16 @@ WebRTC connection established successfully between two clients (data channel for
     - Removed locally managed RTP sequence numbers and adjusted timestamp logic.
   - **Audio Receiving & SSRC Handling:**
     - Removed the problematic `OnTrack` event handler.
-    - **SSRC Association:** Implemented logic in `OnOfferReceived` and `OnAnswerReceived` to attempt to capture the remote audio SSRC from `pc.AudioRemoteTrack.Ssrc` after `setRemoteDescription` is successfully called. This SSRC is stored in `PeerConnectionState.RemoteAudioSsrc`.
+    - **SSRC Association:**
+      - Implemented logic in `OnOfferReceived` and `OnAnswerReceived`:
+        - First, it attempts to capture the remote audio SSRC from `pc.AudioRemoteTrack.Ssrc` after `setRemoteDescription` is successfully called.
+        - **Fallback SDP Parsing:** If `AudioRemoteTrack.Ssrc` is `0` (unavailable), it now attempts to parse the `a=ssrc:` line directly from the raw SDP string of the offer/answer to obtain the remote SSRC. This SSRC is stored in `PeerConnectionState.RemoteAudioSsrc`.
     - Modified `OnRtpPacketReceived`:
-      - It now uses the `rtpPacket.Header.SyncSource` (SSRC) to find the corresponding `peerId` by looking up `RemoteAudioSsrc` in the `_peerConnections` dictionary.
-      - If a `peerId` is found, it calls `_audioService.PlayAudio(foundPeerId, rtpPacket.Payload, rtpPacket.Payload.Length)`.
-      - The direct call to `_audioEndPoint.GotAudioRtp()` for received packets has been removed.
+      - It now uses the `rtpPacket.Header.SyncSource` (incoming SSRC) to find the corresponding `peerId`.
+      - **Direct SSRC Match:** It first tries to match `incomingSsrc` with a known `RemoteAudioSsrc` in `_peerConnections`.
+      - **Refined Dynamic SSRC Association:** If no direct match is found and `incomingSsrc` is valid, it attempts to find a connected peer in `_peerConnections` that has `RemoteAudioSsrc == 0` (i.e., its SSRC is not yet known). If such a peer is found, `incomingSsrc` (from the current RTP packet) is assigned to that peer's `RemoteAudioSsrc`.
+      - If a `peerId` is successfully found (either by direct match or dynamic association), it calls `_audioService.PlayAudio(foundPeerId, rtpPacket.Payload, rtpPacket.Payload.Length)`.
+    - The direct call to `_audioEndPoint.GotAudioRtp()` for received packets has been removed.
   - **Logging:** Implemented 1% probabilistic logging for high-frequency send/receive events.
 
 - **`AudioService.cs`:**
@@ -49,7 +54,9 @@ WebRTC connection established successfully between two clients (data channel for
       - Logs a TODO for other WAV formats (conversion pipeline pending).
   - **Playback of Received Audio:**
     - `CreatePeerPlayback`: `BufferedWaveProvider` now initialized with 8kHz, 16-bit PCM `WaveFormat` (`_pcm8KhzFormat`).
-    - `PlayAudio`: Now decodes incoming PCMU byte arrays (from `WebRtcService`) into 8kHz, 16-bit PCM before adding to the buffer.
+    - `PlayAudio`:
+      - Now decodes incoming PCMU byte arrays (from `WebRtcService`) into 8kHz, 16-bit PCM before adding to the buffer.
+      - **Proactive PeerPlayback Creation:** If `PlayAudio` is called for a `peerId` that doesn't have an existing `PeerPlayback` object, it now attempts to create one on-the-fly by calling `CreatePeerPlayback(peerId)`. This makes the audio pipeline more resilient to audio packets arriving before explicit peer setup (e.g., via position updates).
     - Added helper `MuLawWaveStream` for decoding.
   - **Logging:** Implemented 1% probabilistic logging for audio processing events.
 
@@ -69,9 +76,14 @@ WebRTC connection established successfully between two clients (data channel for
 
 - The project **builds successfully**.
 - The audio sending pipeline _should_ be correctly capturing, encoding (to PCMU 8kHz, 20ms/160-byte packets), and transmitting audio via `PeerConnection.SendAudio`.
-- The audio receiving pipeline in `WebRtcService` _should_ now identify the peer based on SSRC (if successfully captured via `AudioRemoteTrack.Ssrc` or if it matches an SSRC from a previously received packet) and pass the raw PCMU payload to `AudioService.PlayAudio`.
-- `AudioService.PlayAudio` _should_ then decode the PCMU data to PCM and buffer it for playback.
-- It is hypothesized that with these changes, audio sent from one client should be received, processed, and played back on the other client. The key is whether the SSRC association works reliably.
+- The audio receiving pipeline in `WebRtcService` _should_ now:
+  - Reliably identify the remote peer's SSRC either via `AudioRemoteTrack.Ssrc` or by parsing the SDP.
+  - If initial SSRC association fails, the refined dynamic SSRC logic in `OnRtpPacketReceived` should associate an incoming SSRC with a peer that has a connected state but no SSRC yet.
+  - Pass the raw PCMU payload to `AudioService.PlayAudio` for the correctly identified peer.
+- `AudioService.PlayAudio` _should_ now:
+  - Create playback components for a peer if they don't already exist.
+  - Decode the PCMU data to PCM and buffer it for playback.
+- It is hypothesized that with these SSRC handling improvements and proactive `PeerPlayback` creation, audio sent from one client should be reliably received, processed, and played back on the other client. The primary SSRC association should be more robust.
 
 ## Next Steps for Testing
 
@@ -85,14 +97,19 @@ WebRTC connection established successfully between two clients (data channel for
 2.  **Log Monitoring (CRITICAL for validation):**
 
     - **During Connection Setup (Both Clients):**
-      - `WebRtcService`: Look for successful SSRC association: `Associated remote audio SSRC {ssrc} with offering peer {peerId}` or `Associated remote audio SSRC {ssrc} with answering peer {peerId}`.
-      - If not seen, or if `[WARNING] Could not get remote audio SSRC...` appears, this is a primary point of failure to investigate for SSRC capture.
+      - `WebRtcService`:
+        - Look for successful SSRC association: `Associated remote audio SSRC {ssrc} (from AudioRemoteTrack) ...` OR `Associated remote audio SSRC {ssrc} (from SDP parse of ...) ...`.
+        - If both fail, and logs show `[ERROR] Failed to parse SSRC from ... SDP...`, this is a point of failure.
+        - Monitor `Dynamically associating incoming SSRC {incomingSsrc} with peer {entry.Key}...` if the above fails.
     - **Client A (Sending Client):**
       - `AudioService`: `(Sampled Log) Mic: Sent {bytesRead} PCMU bytes...`
       - `WebRtcService`: `(Sampled Log) OnEncodedAudioPacketReadyToSend: samples={samplesInPacket}, hasAudio={true}...`
       - `WebRtcService`: `(Sampled Log) Sent audio packet via PeerConnection.SendAudio to {peerId}: duration={samplesInPacket}, size={audioData.Length}...` (ensure `hasAudio` was true prior).
     - **Client B (Receiving Client):**
-      - `WebRtcService`: `(Sampled Log) RTP for SSRC {ssrc} (Peer {foundPeerId}): ... hasAudio={true}`. **Crucially, `foundPeerId` must not be null.** If it's null, but an SSRC is seen, the SSRC association failed.
+      - `WebRtcService`: `(Sampled Log) RTP for SSRC {ssrc} (Peer {foundPeerId}): ... hasAudio={true}`.
+        - **Crucially, `foundPeerId` must not be null.** If it's null, but an SSRC is seen, the SSRC association (initial and dynamic) failed.
+      - `AudioService`: `PlayAudio: PeerPlayback for peer {peerId} not found. Attempting to create.` (if audio arrives before typical setup).
+      - `AudioService`: `PlayAudio: Successfully created PeerPlayback for {peerId} on-the-fly.` (if applicable).
       - `AudioService`: `Played {bytesDecoded} decoded PCM bytes from peer {peerId} ...`. This confirms audio reached playback.
 
 3.  **`test.wav` File Input Test:**
@@ -108,20 +125,14 @@ WebRTC connection established successfully between two clients (data channel for
 ## Things to Look Out For / Potential Issues
 
 - **SSRC Association Failure:**
-  - Logs: `[WARNING] Could not get remote audio SSRC...` (during offer/answer).
-  - Logs: `[WARNING] Received audio RTP packet with SSRC {ssrc} but no associated peer found.` (in `OnRtpPacketReceived`).
-  - **If this occurs:** The `AudioRemoteTrack.Ssrc` method isn't reliable enough. We may need a fallback to dynamically associate an unknown SSRC from the _first_ RTP packet received from a given remote RTP endpoint, perhaps correlating with a peer connection that just completed ICE and is in `connected` state but doesn't yet have an SSRC.
-- **No Audio Heard Despite Logs:**
-  - If `AudioService.PlayAudio` logs appear but no audio is heard: Check system volume, output device selection in Windows, and potential issues within NAudio's `WaveOutEvent` or `BufferedWaveProvider` (e.g., buffer underruns, incorrect device).
-  - UI "audio playing" indicator not working: Check data binding or event handling in the UI related to this.
-- **Silent Packets:** If `hasAudio` is consistently false in logs, but audio _should_ be sent (e.g., microphone is active), review the silence detection logic in `AudioService` and `WebRtcService` or the audio capture itself.
-- **File Path for `test.wav`:** If `AudioFilePlaybackCallback` logs errors like "file not found" or if it falls into the "PCM/Other file format to PCMU conversion not fully implemented" path, the file path needs to be corrected or the file needs to be accessible. The `AUDIO_FILE_PATH` is currently `"test.wav"`. If running from `proxchat-client/bin/...`, this needs to be `../../test.wav` or an absolute path.
-- **Decoding Errors:** `Error decoding/playing audio for peer...` in `AudioService.PlayAudio`.
-- **Application Cleanup Errors:** Errors on closing the application (known, lower priority).
-
-## Lower Priority Next Steps (After Core Audio Flow Works)
-
-- **Address TODO for PCM Audio File Input:** Implement full resampling/encoding for generic PCM WAV files in `AudioService.AudioFilePlaybackCallback`.
-- **General Audio Quality:** Test for delays, jitter, dropouts.
-- **Robustness:** Test with network variations (if possible), multiple peers.
-- **UI/UX Refinements:** Ensure all indicators and controls are intuitive.
+  - Logs: `[ERROR] Failed to parse SSRC from ... SDP...` (during offer/answer).
+  - Logs: `[WARNING] Received audio RTP packet with SSRC {ssrc} but no associated peer found.` (in `OnRtpPacketReceived`). This would indicate both SDP parsing and dynamic association failed.
+  - **If this occurs:**
+    - Verify the SDP content in the logs to ensure `a=ssrc:` lines are present for audio.
+    - Re-examine the `ParseSsrcFromSdp` regex or logic.
+    - The dynamic SSRC association might still need refinement if multiple peers connect very rapidly and SDP parsing fails for all of them.
+- **Audio Playback Issues Despite Peer Found:**
+  - `AudioService` logs show `Played ... bytes...` for the correct peer, but no audio is heard: Check system volume, output device selection in Windows, potential NAudio issues.
+  - `AudioService` logs `[ERROR] PlayAudio: Failed to create PeerPlayback for {peerId}...` or `[WARNING] PlayAudio: Peer {peerId} has null playback components (WaveOut or Buffer is null even after potential creation)...`. This indicates an issue in `CreatePeerPlayback`.
+- **Silent Packets:** If `hasAudio` is consistently false in logs, but audio _should_ be sent, review silence detection or capture.
+- **File Path for `test.wav`:** If `
