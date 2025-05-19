@@ -240,10 +240,9 @@ public class WebRtcService : IDisposable
                 }
             };
 
-            // --- Data Channel ---
-            // Only initiator explicitly creates the data channel.
+            // Data Channel: Only the designated initiator explicitly creates the data channel.
             // The other peer will receive it via the ondatachannel event.
-            if (isInitiator)
+            if (isInitiator) // isInitiator from MainViewModel string comparison
             {
                 var dataChannel = await pc.createDataChannel("position").ConfigureAwait(false);
                 if (dataChannel == null)
@@ -252,63 +251,47 @@ public class WebRtcService : IDisposable
                     RemovePeerConnection(peerId);
                     return;
                 }
-                ConfigureDataChannel(peerId, dataChannel);
-                _debugLog.LogWebRtc($"Initiator {peerId} created data channel 'position'.");
+                ConfigureDataChannel(peerId, dataChannel); // Configure it right away for the creator
+                _debugLog.LogWebRtc($"VM Initiator (for peer {peerId}) created data channel 'position'.");
             }
             
             // All peers listen for incoming data channels.
-            // For the initiator, this would be for channels initiated by the remote peer (if any, not typical for this app's design).
-            // For the non-initiator, this is how they receive the channel created by the initiator.
             pc.ondatachannel += (dc) =>
             {
                 _debugLog.LogWebRtc($"Received data channel '{dc.label}' from peer {peerId}. Configuring...");
-                ConfigureDataChannel(peerId, dc);
+                ConfigureDataChannel(peerId, dc); // Configure it when received
             };
 
-            // --- Offer Creation (if initiator) ---
-            if (isInitiator)
+            // Offer/Answer Flow
+            if (isInitiator) // This peer (determined by MainViewModel) will make the offer
             {
                 try
                 {
-                    var offerTask = Task.Run(() => pc.createOffer());
-                    var offer = await offerTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-                    
-                    _debugLog.LogWebRtc($"Created offer for {peerId} with SDP: {offer.sdp}");
-                    
-                    var result = pc.setRemoteDescription(offer);
-                    if (result != SetDescriptionResultEnum.OK)
+                    var offer = await pc.createOffer().ConfigureAwait(false);
+                    _debugLog.LogWebRtc($"Created offer for peer {peerId} with SDP: {offer.sdp}");
+
+                    // Offerer sets its local description with the offer.
+                    var setResult = await pc.setLocalDescription(offer).ConfigureAwait(false);
+                    if (setResult != SetDescriptionResultEnum.OK)
                     {
-                        _debugLog.LogWebRtc($"Failed to set remote description for {peerId}: {result}");
+                        _debugLog.LogWebRtc($"Failed to set local description with offer for peer {peerId}: {setResult}");
                         RemovePeerConnection(peerId);
                         return;
                     }
-                    else
-                    {
-                        // After setting remote description (the offer), the remote track from offerer should be known.
-                        if (pc.AudioRemoteTrack?.Ssrc != 0 && pc.AudioRemoteTrack?.Ssrc != null)
-                        {
-                            state.RemoteAudioSsrc = pc.AudioRemoteTrack.Ssrc; // SSRC of the track being sent by the offerer
-                            _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} with offering peer {peerId}.");
-                        }
-                        else
-                        {
-                            _debugLog.LogWebRtc($"[WARNING] Could not get remote audio SSRC for offering peer {peerId} from AudioRemoteTrack after processing offer (SSRC: {pc.AudioRemoteTrack?.Ssrc}).");
-                        }
-                    }
+                    _debugLog.LogWebRtc($"Set local description with offer for peer {peerId}.");
 
-                    var answerTask = Task.Run(() => pc.createAnswer());
-                    var answer = answerTask.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-                    _debugLog.LogWebRtc($"Created answer for {peerId} with SDP: {answer.sdp}");
-
-                    Task.Run(async () => await pc.setLocalDescription(answer)).WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
-                    _signalingService.SendAnswerAsync(peerId, answer.toJSON()).GetAwaiter().GetResult();
+                    // TODO: Ensure SignalingService has SendOfferAsync and server handles it.
+                    await _signalingService.SendOfferAsync(peerId, offer.toJSON()).ConfigureAwait(false);
+                    _debugLog.LogWebRtc($"Sent offer to peer {peerId}.");
                 }
                 catch (Exception ex)
                 {
-                    _debugLog.LogWebRtc($"Error creating/sending offer for {peerId}: {ex.Message}");
+                    _debugLog.LogWebRtc($"Error in offer creation/sending for peer {peerId}: {ex.Message}");
                     RemovePeerConnection(peerId);
                 }
             }
+            // The OnOfferReceived handler will process offers for the non-VM-initiator.
+            // The OnAnswerReceived handler will process answers for the VM-initiator.
         }
         catch (Exception ex)
         {
@@ -331,8 +314,13 @@ public class WebRtcService : IDisposable
                     {
                         if (data == null) return;
                         string message = Encoding.UTF8.GetString(data);
+                        // TEMP LOG: Received raw message
+                        _debugLog.LogWebRtc($"[TEMP] DC Message From {peerId}: Raw='{message}'");
                         var posData = JsonConvert.DeserializeObject<PositionData>(message);
                         if (posData == null) return;
+
+                        // TEMP LOG: Received deserialized position data
+                        _debugLog.LogWebRtc($"[TEMP] DC Position From {peerId}: MapId={posData.MapId}, X={posData.X}, Y={posData.Y}, CharName='{posData.CharacterName}'");
 
                         var eventData = (peerId, posData.MapId, posData.X, posData.Y, posData.CharacterName);
                         PositionReceived?.Invoke(this, eventData);
@@ -355,15 +343,20 @@ public class WebRtcService : IDisposable
     {
         if (payload.SenderId == null || payload.Offer == null) return;
 
-        _ = Task.Run(() =>
+        _ = Task.Run(async () => // Ensure async Task
         {
             var peerId = payload.SenderId;
             RTCPeerConnection pc;
-            if (!_peerConnections.TryGetValue(peerId, out var state))
+            PeerConnectionState? state; // Declare here
+
+            if (!_peerConnections.TryGetValue(peerId, out state) || state == null)
             {
-                CreatePeerConnection(peerId, isInitiator: false).GetAwaiter().GetResult();
-                if (!_peerConnections.TryGetValue(peerId, out state))
+                // if peer connection doesn't exist, or state is null, create it.
+                // This client is the non-initiator in the MainViewModel sense for this new connection.
+                await CreatePeerConnection(peerId, isInitiator: false).ConfigureAwait(false);
+                if (!_peerConnections.TryGetValue(peerId, out state) || state == null)
                 {
+                    _debugLog.LogWebRtc($"[OnOfferReceived] Failed to create or retrieve peer connection for {peerId} after offer.");
                     return;
                 }
                 pc = state.PeerConnection;
@@ -380,19 +373,18 @@ public class WebRtcService : IDisposable
                 
                 _debugLog.LogWebRtc($"Received offer from {peerId} with SDP: {offerSdp.sdp}");
                 
-                var result = pc.setRemoteDescription(offerSdp);
+                var result = await pc.setRemoteDescription(offerSdp).ConfigureAwait(false); // await here
                 if (result != SetDescriptionResultEnum.OK)
                 {
-                    _debugLog.LogWebRtc($"Failed to set remote description for {peerId}: {result}");
+                    _debugLog.LogWebRtc($"Failed to set remote description from offer for {peerId}: {result}");
                     RemovePeerConnection(peerId);
                     return;
                 }
                 else
                 {
-                    // After setting remote description (the offer), the remote track from offerer should be known.
                     if (pc.AudioRemoteTrack?.Ssrc != 0 && pc.AudioRemoteTrack?.Ssrc != null)
                     {
-                        state.RemoteAudioSsrc = pc.AudioRemoteTrack.Ssrc; // SSRC of the track being sent by the offerer
+                        state.RemoteAudioSsrc = pc.AudioRemoteTrack.Ssrc;
                         _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} with offering peer {peerId}.");
                     }
                     else
@@ -401,12 +393,11 @@ public class WebRtcService : IDisposable
                     }
                 }
 
-                var answerTask = Task.Run(() => pc.createAnswer());
-                var answer = answerTask.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+                var answer = await pc.createAnswer().ConfigureAwait(false); // await here
                 _debugLog.LogWebRtc($"Created answer for {peerId} with SDP: {answer.sdp}");
 
-                Task.Run(async () => await pc.setLocalDescription(answer)).WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
-                _signalingService.SendAnswerAsync(peerId, answer.toJSON()).GetAwaiter().GetResult();
+                await pc.setLocalDescription(answer).ConfigureAwait(false); // await here
+                await _signalingService.SendAnswerAsync(peerId, answer.toJSON()).ConfigureAwait(false); // await here
             }
             catch (Exception ex)
             {
@@ -420,10 +411,10 @@ public class WebRtcService : IDisposable
     {
         if (payload.SenderId == null || payload.Answer == null) return;
 
-        _ = Task.Run(() =>
+        _ = Task.Run(async () => // Ensure async Task
         {
             var peerId = payload.SenderId;
-            if (_peerConnections.TryGetValue(peerId, out var state))
+            if (_peerConnections.TryGetValue(peerId, out var state) && state != null)
             {
                 try
                 {
@@ -432,21 +423,16 @@ public class WebRtcService : IDisposable
                     
                     _debugLog.LogWebRtc($"Received answer from {peerId} with SDP: {answerSdp.sdp}");
                     
-                    var result = state.PeerConnection.setRemoteDescription(answerSdp);
+                    var result = await state.PeerConnection.setRemoteDescription(answerSdp).ConfigureAwait(false); // await here
                     if (result != SetDescriptionResultEnum.OK)
                     { 
-                        _debugLog.LogWebRtc($"Failed to set remote description for {peerId}: {result}");
+                        _debugLog.LogWebRtc($"Failed to set remote description from answer for {peerId}: {result}");
                         RemovePeerConnection(peerId); 
                     }
                     else
                     {
-                        // After offerer sets remote description (the answer), the remote track from answerer is known.
-                        // This SSRC is for audio coming FROM the peer who sent the ANSWER.
                         if (state.PeerConnection.AudioRemoteTrack?.Ssrc != 0 && state.PeerConnection.AudioRemoteTrack?.Ssrc != null)
                         {
-                            // This assumes the 'state' object here is for the connection with the peer who just answered.
-                            // If we want to store the SSRC of the answering peer's audio track that *we* will receive,
-                            // this is the correct place.
                             state.RemoteAudioSsrc = state.PeerConnection.AudioRemoteTrack.Ssrc; 
                             _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} with answering peer {peerId}.");
                         }
@@ -508,6 +494,8 @@ public class WebRtcService : IDisposable
             {
                 var positionData = new PositionData { MapId = mapId, X = x, Y = y, CharacterName = characterName };
                 string message = JsonConvert.SerializeObject(positionData);
+                // TEMP LOG: Sending position update
+                _debugLog.LogWebRtc($"[TEMP] DC Sending Position to {peerId}: {message}");
                 state.DataChannel.send(Encoding.UTF8.GetBytes(message));
                 _debugLog.LogWebRtc($"Sent position update to {peerId}: MapId={mapId}, X={x}, Y={y}");
             }
