@@ -262,15 +262,23 @@ public class WebRtcService : IDisposable
             {
                 try
                 {
-                    var offer = pc.createOffer(); // Synchronous
+                    _debugLog.LogWebRtc($"[INITIATOR LOG] About to call pc.createOffer() for peer {peerId}.");
+                    RTCSessionDescriptionInit offer = await Task.Run(() => pc.createOffer());
+                    _debugLog.LogWebRtc($"[INITIATOR LOG] pc.createOffer() completed for peer {peerId}. SDP: {offer.sdp}");
+
                     _debugLog.LogWebRtc($"Created offer for peer {peerId} with SDP: {offer.sdp}");
 
                     // Offerer sets its local description with the offer.
+                    _debugLog.LogWebRtc($"[INITIATOR LOG] About to call pc.setLocalDescription(offer) for peer {peerId}.");
                     await pc.setLocalDescription(offer); // Async, Task (void)
+                    _debugLog.LogWebRtc($"[INITIATOR LOG] pc.setLocalDescription(offer) completed for peer {peerId}.");
+
                     _debugLog.LogWebRtc($"Set local description with offer for peer {peerId}.");
 
+                    _debugLog.LogWebRtc($"[INITIATOR LOG] About to call _signalingService.SendOfferAsync for peer {peerId}.");
                     await _signalingService.SendOfferAsync(peerId, offer.toJSON()).ConfigureAwait(false);
-
+                    _debugLog.LogWebRtc($"[INITIATOR LOG] _signalingService.SendOfferAsync completed for peer {peerId}.");
+                    
                     _debugLog.LogWebRtc($"Offer sent to {peerId}. Local description is set. Waiting for answer.");
                 }
                 catch (Exception ex)

@@ -72,6 +72,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     // Add this field with the other private fields around line 30
     private readonly DebugLogService _debugLog;
+    private readonly object _peersLock = new object(); // Added for synchronizing peer collection access
 
     // Add a dictionary to track pending peers (not yet in UI)
     private readonly ConcurrentDictionary<string, bool> _pendingPeers = new(); 
@@ -986,8 +987,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     // Handler for the new DataChannelOpened event
     private void HandleDataChannelOpened(object? sender, string peerId)
     {
-        _debugLog.LogMain($"peer {peerId}: data channel opened");
-        Task.Run(() => SendPositionUpdateForPeer(peerId));
+        _debugLog.LogMain($"Peer {peerId}: data channel opened");
+        // We will not add the peer to the ConnectedPeers collection here.
+        // HandlePeerPosition will be responsible for adding the peer when the first position update is received.
+        // This simplifies logic and avoids race conditions for adding.
+        // However, we should send our current position to the peer whose data channel just opened,
+        // so they become aware of us and can send their position back.
+        SendPositionUpdateForPeer(peerId);
     }
     
     // New method to send position update to a specific peer
@@ -1025,77 +1031,131 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void HandlePeerPosition(object? sender, (string PeerId, int MapId, int X, int Y, string CharacterName) positionData)
+    private void RecalculateDistanceAndVolume(PeerViewModel peerVm)
     {
-        try
+        if (peerVm == null) return;
+
+        int myMapId;
+        int myX;
+        int myY;
+
+        if (IsDebugModeEnabled)
         {
-            var peerId = positionData.PeerId;
-            bool isPending = _pendingPeers.TryRemove(peerId, out _);
-            PeerViewModel? peerVm = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
-            
-            if (peerVm == null)
-            {
-                _debugLog.LogMain($"new peer {peerId} ({positionData.CharacterName}): map={positionData.MapId} pos=({positionData.X},{positionData.Y})");
-                peerVm = new PeerViewModel { Id = peerId };
-                App.Current.Dispatcher.Invoke(() => {
-                    ConnectedPeers.Add(peerVm);
-                });
-            }
+            myMapId = _debugMapId;
+            myX = _debugX;
+            myY = _debugY;
+        }
+        else
+        {
+            // It's better to use the already updated CurrentMapId, CurrentX, CurrentY
+            // to avoid re-reading from memory reader in this specific context.
+            myMapId = this.CurrentMapId;
+            myX = this.CurrentX;
+            myY = this.CurrentY;
+        }
 
-            peerVm.MapId = positionData.MapId;
-            peerVm.X = positionData.X;
-            peerVm.Y = positionData.Y;
+        if (myMapId != peerVm.MapId)
+        {
+            _audioService.UpdatePeerDistance(peerVm.Id, float.MaxValue);
+            peerVm.Distance = float.MaxValue;
+            _debugLog.LogMain($"Peer {peerVm.CharacterName} ({peerVm.Id}) is on a different map. Setting distance to MaxValue.");
+        }
+        else
+        {
+            var dx = myX - peerVm.X;
+            var dy = myY - peerVm.Y;
+            var distance = MathF.Sqrt(dx * dx + dy * dy);
 
-            int myMapId;
-            int myX;
-            int myY;
+            _debugLog.LogMain($"Recalculated distance for peer {peerVm.CharacterName} ({peerVm.Id}): {distance:F1} (me:{myX},{myY} them:{peerVm.X},{peerVm.Y})");
+            _audioService.UpdatePeerDistance(peerVm.Id, distance);
+            peerVm.Distance = distance;
+        }
+    }
 
-            if (IsDebugModeEnabled)
-            {
-                myMapId = _debugMapId;
-                myX = _debugX;
-                myY = _debugY;
-            }
-            else
-            {
-                var gameData = _memoryReader.ReadPositionAndName();
-                myMapId = gameData.MapId;
-                myX = gameData.X;
-                myY = gameData.Y;
-            }
+    private void UpdatePeerViewModelProperties(PeerViewModel peerVm, (string PeerId, int MapId, int X, int Y, string CharacterName) positionData)
+    {
+        // Use a sensible default if CharacterName is empty or null, e.g., from PeerViewModel.PENDING_CHARACTER_NAME
+        string newCharName = string.IsNullOrEmpty(positionData.CharacterName) ? PeerViewModel.DefaultCharacterName : positionData.CharacterName;
 
-            bool nameJustAssigned = false;
-            if ((peerVm.CharacterName == PeerViewModel.DefaultCharacterName || peerVm.CharacterName != positionData.CharacterName) && 
-                !string.IsNullOrEmpty(positionData.CharacterName) && positionData.CharacterName != PeerViewModel.DefaultCharacterName)
-            {
-                _debugLog.LogMain($"peer {peerId}: renamed from '{peerVm.CharacterName}' to '{positionData.CharacterName}'");
-                peerVm.CharacterName = positionData.CharacterName;
-                nameJustAssigned = true;
-            }
-
-            if (nameJustAssigned && peerVm.CharacterName != PeerViewModel.DefaultCharacterName)
+        // Use PeerId from positionData as it's the unique identifier from the source
+        if (peerVm.CharacterName != newCharName && newCharName != PeerViewModel.DefaultCharacterName && !string.IsNullOrEmpty(newCharName))
+        {
+            _debugLog.LogMain($"Peer {positionData.PeerId}: updating name from '{peerVm.CharacterName}' to '{newCharName}'");
+            peerVm.CharacterName = newCharName;
+             // When name changes from default to a real name, apply persisted settings
+            if (peerVm.CharacterName != PeerViewModel.DefaultCharacterName) // Check against the actual default name
             {
                 ApplyPersistedSettings(peerVm);
             }
-
-            if (myMapId != positionData.MapId)
-            {
-                _audioService.UpdatePeerDistance(peerId, float.MaxValue);
-                peerVm.Distance = float.MaxValue;
-                return;
-            }
-
-            var dx = myX - positionData.X;
-            var dy = myY - positionData.Y;
-            var distance = MathF.Sqrt(dx * dx + dy * dy);
-
-            _debugLog.LogMain($"peer {positionData.CharacterName}: dist={distance:F1} (me:{myX},{myY} them:{positionData.X},{positionData.Y})");
-            _audioService.UpdatePeerDistance(peerId, distance);
-            peerVm.Distance = distance;
         }
-        catch (Exception ex)
+
+        if (peerVm.MapId != positionData.MapId) peerVm.MapId = positionData.MapId;
+        if (peerVm.X != positionData.X) peerVm.X = positionData.X;
+        if (peerVm.Y != positionData.Y) peerVm.Y = positionData.Y;
+    }
+
+    private async void HandlePeerPosition(object? sender, (string PeerId, int MapId, int X, int Y, string CharacterName) positionData)
+    {
+        // This method can be called from background threads (e.g., via WebRtcService events)
+
+        PeerViewModel? existingPeerVm = null;
+        bool needsToAdd = false;
+        string peerIdentifier = positionData.PeerId; // Use PeerId from the incoming data consistently
+
+        lock (_peersLock) // Lock for reading the collection
         {
-            Debug.WriteLine($"Error handling peer position for {positionData.PeerId}: {ex.Message}");
+            existingPeerVm = ConnectedPeers.FirstOrDefault(p => p.Id == peerIdentifier);
+            if (existingPeerVm == null)
+            {
+                needsToAdd = true;
+            }
+        }
+
+        if (needsToAdd)
+        {
+            _debugLog.LogMain($"Peer {peerIdentifier} (Name from data: {positionData.CharacterName}) not in UI collection. Preparing to create and add.");
+            
+            // Create the new ViewModel outside the Dispatcher, but add it inside.
+            var newPeerVmInstance = new PeerViewModel(); // Use default constructor
+            newPeerVmInstance.Id = peerIdentifier;
+            newPeerVmInstance.CharacterName = string.IsNullOrEmpty(positionData.CharacterName) ? PeerViewModel.DefaultCharacterName : positionData.CharacterName;
+            newPeerVmInstance.MapId = positionData.MapId;
+            newPeerVmInstance.X = positionData.X;
+            newPeerVmInstance.Y = positionData.Y;
+            newPeerVmInstance.Volume = 1.0f; // Default volume as per PeerViewModel field initializer
+
+            await App.Current.Dispatcher.InvokeAsync(() =>
+            {
+                lock (_peersLock) // Lock for the critical check-and-add section on the UI thread
+                {
+                    var peerAlreadyAdded = ConnectedPeers.FirstOrDefault(p => p.Id == newPeerVmInstance.Id);
+                    if (peerAlreadyAdded == null)
+                    {
+                        ConnectedPeers.Add(newPeerVmInstance);
+                        _debugLog.LogMain($"New peer {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}) added to UI collection.");
+                        // Apply persisted settings *after* adding and *after* CharacterName might be set
+                        // The UpdatePeerViewModelProperties below will handle the initial name setting if needed.
+                        // ApplyPersistedSettings(newPeerVmInstance); // This should be called after char name is confirmed
+                        UpdatePeerViewModelProperties(newPeerVmInstance, positionData); // Set initial properties
+                        RecalculateDistanceAndVolume(newPeerVmInstance); 
+                    }
+                    else
+                    {
+                        _debugLog.LogMain($"Peer {peerAlreadyAdded.Id} was concurrently added. Updating its properties instead of adding new.");
+                        UpdatePeerViewModelProperties(peerAlreadyAdded, positionData);
+                        RecalculateDistanceAndVolume(peerAlreadyAdded);
+                    }
+                }
+            });
+        }
+        else if (existingPeerVm != null) // Peer already exists, update its properties
+        {
+            _debugLog.LogMain($"Peer {existingPeerVm.Id} ({existingPeerVm.CharacterName}) exists in UI collection. Dispatching update.");
+            await App.Current.Dispatcher.InvokeAsync(() =>
+            {
+                UpdatePeerViewModelProperties(existingPeerVm, positionData);
+                RecalculateDistanceAndVolume(existingPeerVm);
+            });
         }
     }
 
