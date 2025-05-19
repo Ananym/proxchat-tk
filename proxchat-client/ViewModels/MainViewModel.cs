@@ -46,16 +46,15 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _debugX = 110; // Changed to int
     private int _debugY = 206; // Changed to int
     private int _debugMapId = 0;
-    private bool _useMp3Input = false;
+    private bool _useWavInput = false;
 
     // Fields to track last sent position for conditional updates
     private int? _lastSentMapId;
     private int _lastSentX; // Changed to int
     private int _lastSentY; // Changed to int
     private DateTime _lastSentTime = DateTime.MinValue;
-    private const int PositionTolerance = 0; // Changed to int, 0 for exact match with integers
-    private readonly TimeSpan _forceSendInterval = TimeSpan.FromSeconds(10);
-    private readonly TimeSpan _positionSendInterval = TimeSpan.FromMilliseconds(250); // Changed from 1 second to 250ms for more responsive updates
+    private readonly TimeSpan _forceSendInterval = TimeSpan.FromSeconds(5); // Changed from 10s to 5s
+    private readonly TimeSpan _positionSendInterval = TimeSpan.FromMilliseconds(250); // Keep this for UI updates
     private readonly TimeSpan _uiUpdateInterval = TimeSpan.FromMilliseconds(200); // Interval for UI updates (e.g., 5 times/sec)
 
     // New properties for UI binding
@@ -166,8 +165,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         get => _inputVolumeScale;
         set
         {
-            _inputVolumeScale = value;
-            _audioService.SetInputVolumeScale(value);
+            _inputVolumeScale = Math.Clamp(value, 0.0f, 2.0f);
+            _audioService.SetInputVolumeScale(_inputVolumeScale);
             OnPropertyChanged();
         }
     }
@@ -177,8 +176,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         get => _volumeScale;
         set
         {
-            _volumeScale = value;
-            _audioService.SetOverallVolumeScale(value);
+            _volumeScale = Math.Clamp(value, 0.0f, 2.0f);
+            _audioService.SetOverallVolumeScale(_volumeScale);
             OnPropertyChanged();
         }
     }
@@ -317,15 +316,16 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public bool UseMp3Input
+    public bool UseWavInput
     {
-        get => _useMp3Input;
+        get => _useWavInput;
         set
         {
-            if (_useMp3Input != value)
+            if (_useWavInput != value)
             {
-                _useMp3Input = value;
-                _audioService.UseMp3Input = value;
+                _debugLog.LogMain($"audio input changed: wav={value}");
+                _useWavInput = value;
+                _audioService.UseAudioFileInput = value;
                 OnPropertyChanged();
             }
         }
@@ -380,13 +380,38 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         LoadPeerSettings(); // Load settings on startup
 
         _memoryReader = new GameDataReader();
-        _audioService = new AudioService(config.AudioSettings.MaxDistance, config);
-        _signalingService = new SignalingService(config.WebSocketServer);
-        var debugLog = new DebugLogService(); // Will use command line args
-        _debugLog = debugLog; // Store reference for MainViewModel use
+        
+        // Get log file name from command line args
+        string? logFileName = null;
+        var args = Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == "--log" || args[i] == "-l")
+            {
+                logFileName = args[i + 1];
+                break;
+            }
+        }
+        
+        var debugLog = new DebugLogService(logFileName);
+        _debugLog = debugLog;
+        _audioService = new AudioService(config.AudioSettings.MaxDistance, config, debugLog);
+        _signalingService = new SignalingService(config.WebSocketServer, debugLog);
         _webRtcService = new WebRtcService(_audioService, _signalingService, config.AudioSettings.MaxDistance, debugLog);
         
-        StartCommand = new RelayCommand(Start, () => !_isRunning);
+        // Subscribe to game data read events
+        _memoryReader.GameDataRead += OnGameDataRead;
+
+        StartCommand = new RelayCommand(() => {
+            if (_isRunning)
+            {
+                Stop();
+            }
+            else
+            {
+                Start();
+            }
+        });
         StopCommand = new RelayCommand(Stop, () => _isRunning);
         ToggleMuteCommand = new RelayCommand<string>(TogglePeerMute);
         EditPushToTalkCommand = new RelayCommand(() => { IsEditingPushToTalk = !IsEditingPushToTalk; }, () => IsPushToTalk);
@@ -548,11 +573,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             // Assuming ReadPosition now returns name as well
-            // Tuple now returns (int MapId, string MapName, ...)
-            var (mapId, mapName, x, y, name) = _memoryReader.ReadPositionAndName();
+            // Tuple now returns (bool Success, int MapId, string MapName, ...)
+            var (success, mapId, mapName, x, y, name) = _memoryReader.ReadPositionAndName();
 
-            // Check if the read was successful (mapId is not the default 0, or handle empty string mapName if that's a better indicator)
-            bool currentReadSuccess = mapId != 0; // Assuming mapId 0 indicates failure/not ready
+            // Use the success flag from the game data
+            bool currentReadSuccess = success;
 
             if (currentReadSuccess)
             {
@@ -566,15 +591,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     Debug.WriteLine("GameMemoryReader successfully connected to MMF.");
                 }
             }
-            else if (!currentReadSuccess && _isMemoryReaderInitialized)
+            else if (!currentReadSuccess && _isMemoryReaderInitialized && !IsDebugModeEnabled)
             {
                 // Lost connection after it was previously established
+                // Only update _isMemoryReaderInitialized if not in debug mode
                 _isMemoryReaderInitialized = false;
                 StatusMessage = "Lost connection to game data provider. Waiting...";
                 Debug.WriteLine("GameMemoryReader lost connection to MMF.");
             }
 
             // Check for timeout and auto-disconnect if conditions are met
+            // Only check timeout if not in debug mode and we're running
             if (IsRunning && !IsDebugModeEnabled && _lastSuccessfulReadTime != DateTime.MinValue)
             {
                 var timeSinceLastRead = DateTime.UtcNow - _lastSuccessfulReadTime;
@@ -601,7 +628,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             // Log error or update status if reading fails persistently
             Debug.WriteLine($"Error reading game position for UI: {ex.Message}");
             // Indicate error state in UI
-            _isMemoryReaderInitialized = false; // Assume connection is lost on exception
+            if (!IsDebugModeEnabled)
+            {
+                _isMemoryReaderInitialized = false; // Only update if not in debug mode
+            }
             App.Current.Dispatcher.Invoke(() =>
             {
                 StatusMessage = "Error reading game data.";
@@ -634,6 +664,12 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         
         try
         {
+            // Set debug mode initialization first
+            if (IsDebugModeEnabled)
+            {
+                _isMemoryReaderInitialized = true;
+            }
+
             StatusMessage = "Connecting to signaling server...";
             try
             {
@@ -669,15 +705,27 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             _lastSentMapId = null;
             _lastSentTime = DateTime.MinValue;
             
-            // Reset game data timeout tracking
-            _lastSuccessfulReadTime = DateTime.MinValue;
+            // Only reset game data timeout tracking if not in debug mode
+            if (!IsDebugModeEnabled)
+            {
+                _lastSuccessfulReadTime = DateTime.MinValue;
+            }
 
             _positionSendTimer?.Dispose();
             // Update timer to tick every second FOR SENDING
             _positionSendTimer = new Timer(SendPositionUpdate, null, TimeSpan.Zero, _positionSendInterval); // Use the send interval
 
+            // In debug mode, we don't need to wait for game data initialization
+            if (IsDebugModeEnabled)
+            {
+                StatusMessage = "Running (Debug Mode)";
+            }
+            else
+            {
+                StatusMessage = "Running";
+            }
+
             IsRunning = true;
-            StatusMessage = "Running";
         }
         catch (Exception ex)
         {
@@ -762,58 +810,116 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IsSelfMuted));
     }
 
-    private async void SendPositionUpdate(object? state)
+    private async void OnGameDataRead(object? sender, (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) data)
     {
-        if (!IsDebugModeEnabled && !_isMemoryReaderInitialized && !IsRunning) return; 
+        if (!IsRunning) return;
 
         try
         {
-            int mapId;
-            int x;
-            int y;
-            string name;
-
-            if (IsDebugModeEnabled)
-            {
-                mapId = _debugMapId;
-                x = _debugX;
-                y = _debugY;
-                name = _debugCharacterName;
-            }
-            else
-            {
-                // Read current position and name (mapId is int, mapName is string, x and y are int)
-                var gameData = _memoryReader.ReadPositionAndName(); 
-                mapId = gameData.MapId;
-                x = gameData.X; // Expects int
-                y = gameData.Y; // Expects int
-                name = gameData.CharacterName;
-            }
-
             var now = DateTime.UtcNow;
-            bool mapChanged = mapId != _lastSentMapId;
-            bool positionChangedSignificantly = Math.Abs(x - _lastSentX) > PositionTolerance || Math.Abs(y - _lastSentY) > PositionTolerance;
+            bool mapChanged = data.MapId != _lastSentMapId;
+            bool positionChanged = data.X != _lastSentX || data.Y != _lastSentY;
             bool forceSend = (now - _lastSentTime) >= _forceSendInterval;
 
-            if ((mapChanged || positionChangedSignificantly || forceSend) && _signalingService.IsConnected)
+            if ((mapChanged || positionChanged || forceSend) && _signalingService.IsConnected)
             {
-                await _signalingService.UpdatePosition(mapId, x, y); 
-                _lastSentMapId = mapId;
-                _lastSentX = x;
-                _lastSentY = y;
+                await _signalingService.UpdatePosition(data.MapId, data.X, data.Y);
+                _lastSentMapId = data.MapId;
+                _lastSentX = data.X;
+                _lastSentY = data.Y;
                 _lastSentTime = now;
-            }
-            
-            // Only send position updates to peers in the UI (not pending peers)
-            foreach (var peer in ConnectedPeers)
-            {
-                _webRtcService.SendPosition(peer.Id, mapId, x, y, name);
+
+                foreach (var peer in ConnectedPeers)
+                {
+                    _webRtcService.SendPosition(peer.Id, data.MapId, data.X, data.Y, data.CharacterName);
+                    
+                    if (peer.MapId == data.MapId)
+                    {
+                        var dx = data.X - peer.X;
+                        var dy = data.Y - peer.Y;
+                        var distance = MathF.Sqrt(dx * dx + dy * dy);
+                        _debugLog.LogMain($"peer {peer.CharacterName}: dist={distance:F1} (me:{data.X},{data.Y} them:{peer.X},{peer.Y})");
+                        _audioService.UpdatePeerDistance(peer.Id, distance);
+                        peer.Distance = distance;
+                    }
+                    else
+                    {
+                        _audioService.UpdatePeerDistance(peer.Id, float.MaxValue);
+                        peer.Distance = float.MaxValue;
+                    }
+                }
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error sending position update: {ex.Message}");
-            // Consider handling repeated errors, maybe attempt reconnect or stop
+            Debug.WriteLine($"Error handling game data read: {ex.Message}");
+        }
+    }
+
+    private async void SendPositionUpdate(object? state)
+    {
+        // This is now just a fallback/force update every 5 seconds
+        if (!IsRunning) return;
+
+        try
+        {
+            var now = DateTime.UtcNow;
+            if ((now - _lastSentTime) >= _forceSendInterval && _signalingService.IsConnected)
+            {
+                int mapId;
+                int x;
+                int y;
+                string name;
+
+                if (IsDebugModeEnabled)
+                {
+                    mapId = _debugMapId;
+                    x = _debugX;
+                    y = _debugY;
+                    name = _debugCharacterName;
+                }
+                else
+                {
+                    var gameData = _memoryReader.ReadPositionAndName();
+                    mapId = gameData.MapId;
+                    x = gameData.X;
+                    y = gameData.Y;
+                    name = gameData.CharacterName;
+                }
+
+                await _signalingService.UpdatePosition(mapId, x, y);
+                _lastSentMapId = mapId;
+                _lastSentX = x;
+                _lastSentY = y;
+                _lastSentTime = now;
+
+                // Only send position updates to peers in the UI (not pending peers)
+                foreach (var peer in ConnectedPeers)
+                {
+                    _webRtcService.SendPosition(peer.Id, mapId, x, y, name);
+                    
+                    // Recalculate distance to this peer based on our new position
+                    if (peer.MapId == mapId) // Only calculate if on same map
+                    {
+                        var dx = x - peer.X;
+                        var dy = y - peer.Y;
+                        var distance = MathF.Sqrt(dx * dx + dy * dy);
+                        _debugLog.LogMain($"Recalculated distance to peer {peer.CharacterName}: {distance:F2} units");
+                        _audioService.UpdatePeerDistance(peer.Id, distance);
+                        peer.Distance = distance;
+                    }
+                    else
+                    {
+                        // Different map, set max distance
+                        _audioService.UpdatePeerDistance(peer.Id, float.MaxValue);
+                        peer.Distance = float.MaxValue;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error in force position update: {ex.Message}");
         }
     }
 
@@ -880,8 +986,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     // Handler for the new DataChannelOpened event
     private void HandleDataChannelOpened(object? sender, string peerId)
     {
-        _debugLog.LogMain($"DataChannelOpened for peer {peerId} - Sending immediate position update");
-        // Immediately send our position data
+        _debugLog.LogMain($"peer {peerId}: data channel opened");
         Task.Run(() => SendPositionUpdateForPeer(peerId));
     }
     
@@ -904,7 +1009,6 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             }
             else
             {
-                // Read current position and name
                 var gameData = _memoryReader.ReadPositionAndName(); 
                 mapId = gameData.MapId;
                 x = gameData.X;
@@ -912,7 +1016,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 name = gameData.CharacterName;
             }
 
-            _debugLog.LogMain($"Sending position to peer {peerId}: MapId={mapId}, X={x}, Y={y}, Name={name}");
+            _debugLog.LogMain($"sending pos to {peerId}: map={mapId} pos=({x},{y}) name={name}");
             _webRtcService.SendPosition(peerId, mapId, x, y, name);
         }
         catch (Exception ex)
@@ -926,25 +1030,21 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             var peerId = positionData.PeerId;
-            
-            // Check if this is a pending peer that we need to add to the UI
             bool isPending = _pendingPeers.TryRemove(peerId, out _);
-            
-            // Get existing or create new PeerViewModel
             PeerViewModel? peerVm = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
             
-            // If it's a new peer (pending or unknown)
             if (peerVm == null)
             {
-                // This is the first position data we're receiving, so add to UI
-                _debugLog.LogMain($"First position data received from {peerId} - adding to UI");
+                _debugLog.LogMain($"new peer {peerId} ({positionData.CharacterName}): map={positionData.MapId} pos=({positionData.X},{positionData.Y})");
                 peerVm = new PeerViewModel { Id = peerId };
-                
                 App.Current.Dispatcher.Invoke(() => {
                     ConnectedPeers.Add(peerVm);
                 });
-                _debugLog.LogMain($"Added peer {peerId} to UI after receiving first position data");
             }
+
+            peerVm.MapId = positionData.MapId;
+            peerVm.X = positionData.X;
+            peerVm.Y = positionData.Y;
 
             int myMapId;
             int myX;
@@ -964,44 +1064,32 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 myY = gameData.Y;
             }
 
-            // Update character name if it's new and valid
             bool nameJustAssigned = false;
             if ((peerVm.CharacterName == PeerViewModel.DefaultCharacterName || peerVm.CharacterName != positionData.CharacterName) && 
                 !string.IsNullOrEmpty(positionData.CharacterName) && positionData.CharacterName != PeerViewModel.DefaultCharacterName)
             {
-                _debugLog.LogMain($"Peer {peerId} character name updated from '{peerVm.CharacterName}' to '{positionData.CharacterName}'.");
+                _debugLog.LogMain($"peer {peerId}: renamed from '{peerVm.CharacterName}' to '{positionData.CharacterName}'");
                 peerVm.CharacterName = positionData.CharacterName;
                 nameJustAssigned = true;
             }
 
-            // Apply persisted settings if the name was just assigned or if we haven't applied them yet for this known name
-            // This also handles the case where a peer connected, name was known, but MainVM restarted and needs to re-apply.
             if (nameJustAssigned && peerVm.CharacterName != PeerViewModel.DefaultCharacterName)
             {
                 ApplyPersistedSettings(peerVm);
             }
 
-            // If on different maps, handle audio appropriately and skip distance-based audio updates
             if (myMapId != positionData.MapId)
             {
-                _audioService.UpdatePeerDistance(peerId, float.MaxValue); // Effectively mute or max distance
-                peerVm.Distance = float.MaxValue; 
-                // We might want to set a specific status or visual indicator for peers on different maps.
+                _audioService.UpdatePeerDistance(peerId, float.MaxValue);
+                peerVm.Distance = float.MaxValue;
                 return;
             }
-
-            // Add this debug output right after getting the coordinates in HandlePeerPosition
-            _debugLog.LogMain($"HandlePeerPosition Debug - Peer {peerId}:");
-            _debugLog.LogMain($"  My position: ({myX}, {myY}) Map: {myMapId}");
-            _debugLog.LogMain($"  Peer position: ({positionData.X}, {positionData.Y}) Map: {positionData.MapId}");
-            _debugLog.LogMain($"  Character: {positionData.CharacterName}");
 
             var dx = myX - positionData.X;
             var dy = myY - positionData.Y;
             var distance = MathF.Sqrt(dx * dx + dy * dy);
 
-            _debugLog.LogMain($"  dx: {dx}, dy: {dy}, distance: {distance}");
-
+            _debugLog.LogMain($"peer {positionData.CharacterName}: dist={distance:F1} (me:{myX},{myY} them:{positionData.X},{positionData.Y})");
             _audioService.UpdatePeerDistance(peerId, distance);
             peerVm.Distance = distance;
         }
@@ -1020,6 +1108,47 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
          else if (isConnected && IsRunning)
          {
              StatusMessage = "Running (Reconnected)";
+             // Send position update immediately after connecting
+             _ = Task.Run(async () => {
+                 try {
+                     int mapId;
+                     int x;
+                     int y;
+                     string name;
+
+                     if (IsDebugModeEnabled)
+                     {
+                         mapId = _debugMapId;
+                         x = _debugX;
+                         y = _debugY;
+                         name = _debugCharacterName;
+                     }
+                     else
+                     {
+                         var gameData = _memoryReader.ReadPositionAndName();
+                         mapId = gameData.MapId;
+                         x = gameData.X;
+                         y = gameData.Y;
+                         name = gameData.CharacterName;
+                     }
+
+                     await _signalingService.UpdatePosition(mapId, x, y);
+                     _lastSentMapId = mapId;
+                     _lastSentX = x;
+                     _lastSentY = y;
+                     _lastSentTime = DateTime.UtcNow;
+
+                     // Also send to any connected peers
+                     foreach (var peer in ConnectedPeers)
+                     {
+                         _webRtcService.SendPosition(peer.Id, mapId, x, y, name);
+                     }
+                 }
+                 catch (Exception ex)
+                 {
+                     Debug.WriteLine($"Error sending position update after reconnection: {ex.Message}");
+                 }
+             });
          }
          else if (!isConnected && !IsRunning)
          {
@@ -1047,15 +1176,15 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         _positionSendTimer?.Dispose();
         _uiUpdateTimer?.Dispose();
+        _memoryReader.GameDataRead -= OnGameDataRead; // Unsubscribe from event
         _signalingService.Dispose();
         _webRtcService.Dispose();
         _audioService.Dispose();
-        // _memoryReader.Dispose(); // If GameDataReader implements IDisposable and needs cleanup
+        _memoryReader.Dispose(); // Now safe to dispose since we unsubscribed
         
         // Clear tracking collections
         _pendingPeers.Clear();
         
-        // SavePeerSettings(); // Settings are saved on change, so not strictly needed on dispose unless there's a specific case.
         Trace.TraceInformation("Disposing MainViewModel");
     }
 
@@ -1093,6 +1222,54 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             Debug.WriteLine($"UpdatePeerMuteStateFromViewModel: Character name for {peerId} not yet known. Mute change not persisted yet.");
             _audioService.SetPeerMuteState(peerId, isMuted); // Still apply live mute
+        }
+    }
+
+    private async void ForcePositionUpdate()
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            int mapId;
+            int x;
+            int y;
+            string name;
+
+            if (IsDebugModeEnabled)
+            {
+                mapId = _debugMapId;
+                x = _debugX;
+                y = _debugY;
+                name = _debugCharacterName;
+            }
+            else
+            {
+                var gameData = _memoryReader.ReadPositionAndName();
+                mapId = gameData.MapId;
+                x = gameData.X;
+                y = gameData.Y;
+                name = gameData.CharacterName;
+            }
+
+            // Check if position has changed or if it's been 5 seconds
+            bool positionChanged = mapId != _lastSentMapId || x != _lastSentX || y != _lastSentY;
+            bool timeElapsed = (now - _lastSentTime).TotalSeconds >= 5;
+
+            if (positionChanged || timeElapsed)
+            {
+                await _signalingService.UpdatePosition(mapId, x, y);
+                _lastSentMapId = mapId;
+                _lastSentX = x;
+                _lastSentY = y;
+                _lastSentTime = now;
+
+                // Send position updates to all connected peers
+                _webRtcService.SendPositionToAllPeers(mapId, x, y, name);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error in force position update: {ex.Message}");
         }
     }
 } 

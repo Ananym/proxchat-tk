@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using ProxChatClient.Models;
 using System.IO;
+using NAudio.Utils; // For CircularBuffer
 
 namespace ProxChatClient.Services;
 
@@ -11,11 +12,16 @@ public class AudioService : IDisposable
 {
     private WaveInEvent? _waveIn;
     private WaveStream? _audioFileStream;
-    private Timer? _mp3PlaybackTimer;
+    private Stream? _rawMuLawStream;
+    private Timer? _audioFilePlaybackTimer;
     private string? _selectedInputDeviceName;
     private int _selectedInputDeviceNumber = -1;
     private readonly ConcurrentDictionary<string, PeerPlayback> _peerPlaybackStreams = new();
-    private readonly WaveFormat _playbackFormat = new WaveFormat(48000, 16, 1);
+    // Playback format for incoming audio from peers (what WebRTC will give us, likely PCMU, then decoded)
+    // For now, local playback will still use a higher quality format if possible, or what NAudio prefers.
+    private readonly WaveFormat _playbackFormat = new WaveFormat(48000, 16, 1); // Output format for speakers
+    private readonly WaveFormat _captureFormat = new WaveFormat(48000, 16, 1); // Default microphone capture format
+    
     private float _volumeScale = 1.0f;
     private float _inputVolumeScale = 1.0f;
     private float _minBroadcastThreshold = 0.0f;
@@ -24,12 +30,28 @@ public class AudioService : IDisposable
     private bool _isPushToTalk;
     private bool _isPushToTalkActive;
     private readonly Config _config;
-    private bool _useMp3Input;
-    private const string MP3_FILE_PATH = "test.mp3";
-    private const int MP3_BUFFER_SIZE = 4800; // 100ms of audio at 48kHz
+    private bool _useAudioFileInput;
+    private const string AUDIO_FILE_PATH = "test.wav"; // Should be MuLaw encoded for simplicity with _rawMuLawStream
+
+    // PCMU/MuLaw specific settings for WebRTC transmission
+    internal const int PCMU_SAMPLE_RATE = 8000;
+    internal const int PCMU_CHANNELS = 1;
+    private const int PCMU_BITS_PER_SAMPLE = 8;
+    private const int TARGET_PACKET_DURATION_MS = 20; // Standard WebRTC packet size
+    private const int PCMU_PACKET_SIZE_BYTES = (PCMU_SAMPLE_RATE * TARGET_PACKET_DURATION_MS / 1000) * (PCMU_BITS_PER_SAMPLE / 8) * PCMU_CHANNELS;
+
+    private static readonly Random _random = new Random(); // For probabilistic logging
+    private const double LOG_PROBABILITY = 0.01; // 1% chance to log detailed packet info
+
+    private readonly DebugLogService _debugLog;
+
+    // Buffer for microphone data before resampling and encoding
+    private CircularBuffer? _microphoneCircularBuffer;
+    private WaveFormat _pcm8KhzFormat = new WaveFormat(PCMU_SAMPLE_RATE, 16, PCMU_CHANNELS);
+
 
     public ObservableCollection<string> InputDevices { get; } = new();
-    public event EventHandler<AudioDataEventArgs>? AudioDataAvailable;
+    public event EventHandler<EncodedAudioPacketEventArgs>? EncodedAudioPacketAvailable;
     public event EventHandler<float>? AudioLevelChanged;
     public event EventHandler? RefreshedDevices;
 
@@ -58,19 +80,22 @@ public class AudioService : IDisposable
 
     public bool IsSelfMuted => _isSelfMuted;
 
-    public bool UseMp3Input
+    public bool UseAudioFileInput
     {
-        get => _useMp3Input;
+        get => _useAudioFileInput;
         set
         {
-            if (_useMp3Input != value)
+            if (_useAudioFileInput != value)
             {
-                _useMp3Input = value;
-                if (_waveIn != null)
+                _debugLog.LogAudio($"UseAudioFileInput changing from {_useAudioFileInput} to {value}");
+                _useAudioFileInput = value;
+                if (_waveIn != null || _audioFilePlaybackTimer != null)
                 {
+                    _debugLog.LogAudio("Stopping current capture before switching input type");
                     StopCapture();
-                    StartCapture();
                 }
+                _debugLog.LogAudio("Starting capture with new input type");
+                StartCapture();
             }
         }
     }
@@ -81,14 +106,15 @@ public class AudioService : IDisposable
         set
         {
             _minBroadcastThreshold = Math.Clamp(value, 0.0f, 1.0f);
-            Debug.WriteLine($"MinBroadcastThreshold set to: {_minBroadcastThreshold}");
+            _debugLog.LogAudio($"MinBroadcastThreshold set to: {_minBroadcastThreshold}");
         }
     }
 
-    public AudioService(float maxDistance = 100.0f, Config? config = null)
+    public AudioService(float maxDistance = 100.0f, Config? config = null, DebugLogService? debugLog = null)
     {
         _maxDistance = maxDistance;
         _config = config ?? new Config();
+        _debugLog = debugLog ?? new DebugLogService();
         RefreshInputDevices();
     }
 
@@ -105,7 +131,7 @@ public class AudioService : IDisposable
         }
         catch (Exception ex) 
         {
-             Debug.WriteLine($"Error refreshing input devices: {ex.Message}"); 
+             _debugLog.LogAudio($"Error refreshing input devices: {ex.Message}"); 
         }
 
         // Try to restore the previously selected device from config
@@ -155,15 +181,11 @@ public class AudioService : IDisposable
 
     public void StartCapture()
     {
-        if (_waveIn != null || _mp3PlaybackTimer != null) 
-        {
-            Debug.WriteLine("Audio capture already started.");
-            return;
-        }
+        if (_waveIn != null || _audioFilePlaybackTimer != null) return;
 
-        if (_useMp3Input)
+        if (_useAudioFileInput)
         {
-            StartMp3Capture();
+            StartAudioFileCapture();
         }
         else
         {
@@ -171,27 +193,61 @@ public class AudioService : IDisposable
         }
     }
 
-    private void StartMp3Capture()
+    private void StartAudioFileCapture()
     {
         try
         {
-            if (!File.Exists(MP3_FILE_PATH))
+            string fullPath = Path.GetFullPath(AUDIO_FILE_PATH);
+            
+            if (!File.Exists(AUDIO_FILE_PATH))
             {
-                Debug.WriteLine($"MP3 file not found: {MP3_FILE_PATH}");
-                throw new FileNotFoundException($"MP3 file not found: {MP3_FILE_PATH}");
+                throw new FileNotFoundException($"Audio file not found: {AUDIO_FILE_PATH}");
             }
 
-            _audioFileStream = new WaveFileReader(MP3_FILE_PATH);
-            _mp3PlaybackTimer = new Timer(Mp3PlaybackCallback, null, 0, 100); // 100ms intervals
-            Debug.WriteLine("Started MP3 playback capture");
+            // open file and check header for MuLaw format
+            var reader = new WaveFileReader(AUDIO_FILE_PATH);
+            var waveFormat = reader.WaveFormat;
+
+            if (waveFormat.Encoding == WaveFormatEncoding.MuLaw && waveFormat.SampleRate == PCMU_SAMPLE_RATE && waveFormat.Channels == PCMU_CHANNELS)
+            {
+                // use raw stream for MuLaw if it matches our target PCMU format
+                _debugLog.LogAudio($"Using raw MuLaw stream for {AUDIO_FILE_PATH} as it matches target format.");
+                _rawMuLawStream = File.OpenRead(AUDIO_FILE_PATH);
+                // skip WAV header (usually 44 bytes for PCM, may vary for MuLaw files not strictly PCM wav)
+                // A proper MuLaw .wav file will have a format chunk indicating MuLaw.
+                // If it's a raw MuLaw file without a header, position should be 0.
+                // For .wav files, NAudio's WaveFileReader.Position handles the data chunk start.
+                // Let's assume WaveFileReader correctly positions us at the start of data if it's a valid WAV.
+                // If we bypass WaveFileReader for MuLaw, we might need to handle headers manually or use raw .ulaw files.
+                // For now, if WaveFileReader says it's MuLaw, we'll use its stream.
+                _audioFileStream = reader; // Use the reader to benefit from its parsing.
+                _rawMuLawStream = null; // Don't use the separate raw stream for now.
+                                        // We'll read from _audioFileStream and it should give us MuLaw bytes.
+            }
+            else if (waveFormat.Encoding == WaveFormatEncoding.Pcm || waveFormat.Encoding == WaveFormatEncoding.IeeeFloat)
+            {
+                // If it's PCM or Float, we'll need to convert it.
+                _debugLog.LogAudio($"Audio file {AUDIO_FILE_PATH} is PCM/Float ({waveFormat}). Will convert to PCMU.");
+                _audioFileStream = reader; // We'll read PCM and convert
+                _rawMuLawStream = null;
+            }
+            else
+            {
+                reader.Dispose();
+                throw new InvalidDataException($"Audio file {AUDIO_FILE_PATH} has unsupported format: {waveFormat.Encoding}. Only MuLaw or PCM are supported for file input.");
+            }
+
+            _audioFilePlaybackTimer = new Timer(AudioFilePlaybackCallback, null, 0, TARGET_PACKET_DURATION_MS);
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error starting MP3 capture: {ex.Message}");
+            _debugLog.LogAudio($"Error starting audio file capture: {ex.Message}");
             _audioFileStream?.Dispose();
             _audioFileStream = null;
-            _mp3PlaybackTimer?.Dispose();
-            _mp3PlaybackTimer = null;
+            _rawMuLawStream?.Dispose();
+            _rawMuLawStream = null;
+            _audioFilePlaybackTimer?.Dispose();
+            _audioFilePlaybackTimer = null;
             throw;
         }
     }
@@ -200,7 +256,6 @@ public class AudioService : IDisposable
     {
         if (_selectedInputDeviceNumber == -1)
         {
-            Debug.WriteLine("Cannot start capture: No valid input device selected.");
             throw new InvalidOperationException("No valid audio input device selected.");
         }
 
@@ -209,19 +264,23 @@ public class AudioService : IDisposable
             _waveIn = new WaveInEvent
             {
                 DeviceNumber = _selectedInputDeviceNumber,
-                WaveFormat = _playbackFormat,
-                BufferMilliseconds = 50
+                WaveFormat = _captureFormat, // Capture at 48kHz, 16-bit
+                BufferMilliseconds = TARGET_PACKET_DURATION_MS * 2 // Buffer slightly more to ensure enough data for processing
             };
+            
+            // Initialize circular buffer for microphone input (e.g., for 1 second of 48kHz, 16-bit mono audio)
+            _microphoneCircularBuffer = new CircularBuffer(_captureFormat.SampleRate * _captureFormat.Channels * (_captureFormat.BitsPerSample / 8) * 1);
+
 
             _waveIn.DataAvailable += OnWaveInDataAvailable;
-            _waveIn.RecordingStopped += (s, e) => Debug.WriteLine("Audio capture stopped.");
+            _waveIn.RecordingStopped += (s, e) => { _debugLog.LogAudio("Microphone recording stopped."); };
 
             _waveIn.StartRecording();
-            Debug.WriteLine($"Started audio capture on device {_selectedInputDeviceNumber}: {_selectedInputDeviceName}");
+            _debugLog.LogAudio($"Microphone capture started with format: {_captureFormat}, target packet duration: {TARGET_PACKET_DURATION_MS}ms");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error starting audio capture: {ex.Message}");
+            _debugLog.LogAudio($"Error starting audio capture: {ex.Message}");
             _waveIn?.Dispose();
             _waveIn = null;
             throw;
@@ -233,122 +292,220 @@ public class AudioService : IDisposable
         if (_isSelfMuted || (_isPushToTalk && !_isPushToTalkActive))
         {
             // Send silence when muted or push-to-talk is not active
-            var silenceBuffer = new byte[e.BytesRecorded];
-            AudioDataAvailable?.Invoke(this, new AudioDataEventArgs(silenceBuffer, e.BytesRecorded));
+            var silenceBuffer = new byte[PCMU_PACKET_SIZE_BYTES];
+            Array.Fill(silenceBuffer, (byte)0xFF); // MuLaw silence
+            EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, silenceBuffer.Length));
             return;
         }
 
-        // Calculate audio level for visualization and threshold check
-        float maxSample = 0;
-        for (int i = 0; i < e.BytesRecorded; i += 2)
+        if (e.BytesRecorded == 0 || _microphoneCircularBuffer == null)
         {
-            short sample = BitConverter.ToInt16(e.Buffer, i);
-            float normalizedSample = Math.Abs(sample) / 32768f;
-            maxSample = Math.Max(maxSample, normalizedSample);
-        }
-        AudioLevelChanged?.Invoke(this, maxSample);
-
-        // If audio level is below threshold, send silence
-        if (maxSample < _minBroadcastThreshold)
-        {
-            var silenceBuffer = new byte[e.BytesRecorded];
-            AudioDataAvailable?.Invoke(this, new AudioDataEventArgs(silenceBuffer, e.BytesRecorded));
             return;
         }
+        _microphoneCircularBuffer.Write(e.Buffer, 0, e.BytesRecorded);
 
-        // Apply input volume scaling
-        if (_inputVolumeScale != 1.0f)
+        // Calculate required 48kHz PCM bytes for one 20ms 8kHz PCMU packet
+        // One 20ms 8kHz PCMU packet = 160 samples.
+        // To get 160 samples at 8kHz, we need 160 samples from the 8kHz resampled stream.
+        // The resampler will take 48kHz data and output 8kHz. Ratio is 48/8 = 6.
+        // So, we need 160 * 6 = 960 samples of 48kHz data.
+        // Bytes for 960 samples of 48kHz, 16-bit mono = 960 * 2 bytes = 1920 bytes.
+        int requiredInputBytes = (_captureFormat.SampleRate / PCMU_SAMPLE_RATE) * PCMU_PACKET_SIZE_BYTES * (_captureFormat.BitsPerSample / 8) / (PCMU_BITS_PER_SAMPLE / 8) ;
+
+
+        while (_microphoneCircularBuffer.Count >= requiredInputBytes)
         {
-            // Convert bytes to samples (16-bit audio = 2 bytes per sample)
-            int sampleCount = e.BytesRecorded / 2;
-            short[] samples = new short[sampleCount];
-            Buffer.BlockCopy(e.Buffer, 0, samples, 0, e.BytesRecorded);
+            var pcm48kHzBuffer = new byte[requiredInputBytes];
+            _microphoneCircularBuffer.Read(pcm48kHzBuffer, 0, requiredInputBytes);
 
-            // Apply volume scaling to each sample
-            for (int i = 0; i < sampleCount; i++)
+            // Apply input volume scaling (on 48kHz PCM before resampling and encoding)
+            if (_inputVolumeScale != 1.0f)
             {
-                samples[i] = (short)(samples[i] * _inputVolumeScale);
+                int sampleCount = pcm48kHzBuffer.Length / 2;
+                short[] samples = new short[sampleCount];
+                Buffer.BlockCopy(pcm48kHzBuffer, 0, samples, 0, pcm48kHzBuffer.Length);
+                for (int i = 0; i < sampleCount; i++)
+                {
+                    samples[i] = (short)Math.Clamp(samples[i] * _inputVolumeScale, short.MinValue, short.MaxValue);
+                }
+                Buffer.BlockCopy(samples, 0, pcm48kHzBuffer, 0, pcm48kHzBuffer.Length);
+            }
+            
+            // Calculate audio level for visualization from 48kHz data
+            float maxSample = 0;
+            for (int i = 0; i < pcm48kHzBuffer.Length; i += 2)
+            {
+                short sample = BitConverter.ToInt16(pcm48kHzBuffer, i);
+                float normalizedSample = Math.Abs(sample) / 32768f;
+                maxSample = Math.Max(maxSample, normalizedSample);
+            }
+            AudioLevelChanged?.Invoke(this, maxSample);
+
+            // If audio level is below threshold, send silence
+            if (maxSample < _minBroadcastThreshold)
+            {
+                var silencePacket = new byte[PCMU_PACKET_SIZE_BYTES];
+                Array.Fill(silencePacket, (byte)0xFF); // MuLaw silence
+                EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, silencePacket.Length));
+                continue; // Process next chunk in buffer if any
             }
 
-            // Convert back to bytes
-            byte[] scaledBuffer = new byte[e.BytesRecorded];
-            Buffer.BlockCopy(samples, 0, scaledBuffer, 0, e.BytesRecorded);
-            AudioDataAvailable?.Invoke(this, new AudioDataEventArgs(scaledBuffer, e.BytesRecorded));
-        }
-        else
-        {
-            // No scaling needed, pass through original buffer
-            AudioDataAvailable?.Invoke(this, new AudioDataEventArgs(e.Buffer, e.BytesRecorded));
+            try
+            {
+                // Resample and encode
+                using var rawSourceStream = new RawSourceWaveStream(pcm48kHzBuffer, 0, pcm48kHzBuffer.Length, _captureFormat);
+                using var pcm8kHzStream = new WaveFormatConversionStream(_pcm8KhzFormat, rawSourceStream);
+                
+                // Encode PCM 8kHz 16-bit to MuLaw 8kHz 8-bit
+                // WaveFormatConversionStream can convert to MuLaw directly
+                var muLawFormat = WaveFormat.CreateMuLawFormat(PCMU_SAMPLE_RATE, PCMU_CHANNELS);
+                using var muLawStream = new WaveFormatConversionStream(muLawFormat, pcm8kHzStream);
+
+                byte[] pcmuPacket = new byte[PCMU_PACKET_SIZE_BYTES];
+                int bytesRead = muLawStream.Read(pcmuPacket, 0, pcmuPacket.Length);
+
+                if (bytesRead == PCMU_PACKET_SIZE_BYTES)
+                {
+                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(pcmuPacket, bytesRead));
+                    if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
+                    {
+                        _debugLog.LogAudio($"(Sampled Log) Mic: Sent {bytesRead} PCMU bytes after resample/encode.");
+                    }
+                }
+                else if (bytesRead > 0)
+                {
+                    // Should ideally be PCMU_PACKET_SIZE_BYTES. If not, pad with silence or handle.
+                     _debugLog.LogAudio($"[WARNING] Mic Resample/Encode: Produced {bytesRead} bytes, expected {PCMU_PACKET_SIZE_BYTES}. Padding with silence.");
+                    var tempBuffer = new byte[PCMU_PACKET_SIZE_BYTES];
+                    Array.Fill(tempBuffer, (byte)0xFF); // MuLaw silence
+                    Buffer.BlockCopy(pcmuPacket, 0, tempBuffer, 0, bytesRead);
+                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(tempBuffer, tempBuffer.Length));
+                }
+                 // else: not enough data produced, which shouldn't happen if requiredInputBytes is calculated correctly.
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogAudio($"Error during microphone audio resampling/encoding: {ex.Message}");
+            }
         }
     }
 
-    private void Mp3PlaybackCallback(object? state)
+    private void AudioFilePlaybackCallback(object? state)
     {
-        if (_isSelfMuted || (_isPushToTalk && !_isPushToTalkActive) || _audioFileStream == null)
+        if (_isSelfMuted || (_isPushToTalk && !_isPushToTalkActive) || (_audioFileStream == null && _rawMuLawStream == null))
         {
             // Send silence when muted or push-to-talk is not active
-            var silenceBuffer = new byte[MP3_BUFFER_SIZE];
-            AudioDataAvailable?.Invoke(this, new AudioDataEventArgs(silenceBuffer, MP3_BUFFER_SIZE));
+            var silenceBuffer = new byte[PCMU_PACKET_SIZE_BYTES];
+            Array.Fill(silenceBuffer, (byte)0xFF); // MuLaw silence
+            EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, silenceBuffer.Length));
             return;
         }
 
         try
         {
-            byte[] buffer = new byte[MP3_BUFFER_SIZE];
-            int bytesRead = _audioFileStream.Read(buffer, 0, buffer.Length);
-
-            if (bytesRead == 0)
+            // Favoring _audioFileStream which might be MuLaw or PCM from WaveFileReader
+            if (_audioFileStream != null)
             {
-                // End of file, restart
-                _audioFileStream.Position = 0;
-                bytesRead = _audioFileStream.Read(buffer, 0, buffer.Length);
-            }
+                byte[] bufferToEncodeOrSend = new byte[0];
+                int bytesToReadFromSource;
 
-            if (bytesRead > 0)
-            {
-                // Calculate audio level for visualization and threshold check
-                float maxSample = 0;
-                for (int i = 0; i < bytesRead; i += 2)
+                if (_audioFileStream.WaveFormat.Encoding == WaveFormatEncoding.MuLaw && 
+                    _audioFileStream.WaveFormat.SampleRate == PCMU_SAMPLE_RATE &&
+                    _audioFileStream.WaveFormat.Channels == PCMU_CHANNELS)
                 {
-                    short sample = BitConverter.ToInt16(buffer, i);
-                    float normalizedSample = Math.Abs(sample) / 32768f;
-                    maxSample = Math.Max(maxSample, normalizedSample);
-                }
-                AudioLevelChanged?.Invoke(this, maxSample);
+                    // Already in target MuLaw format
+                    bytesToReadFromSource = PCMU_PACKET_SIZE_BYTES;
+                    bufferToEncodeOrSend = new byte[bytesToReadFromSource];
+                    int bytesRead = _audioFileStream.Read(bufferToEncodeOrSend, 0, bytesToReadFromSource);
 
-                // If audio level is below threshold, send silence
-                if (maxSample < _minBroadcastThreshold)
-                {
-                    var silenceBuffer = new byte[bytesRead];
-                    AudioDataAvailable?.Invoke(this, new AudioDataEventArgs(silenceBuffer, bytesRead));
-                    return;
-                }
-
-                // Apply input volume scaling
-                if (_inputVolumeScale != 1.0f)
-                {
-                    int sampleCount = bytesRead / 2;
-                    short[] samples = new short[sampleCount];
-                    Buffer.BlockCopy(buffer, 0, samples, 0, bytesRead);
-
-                    for (int i = 0; i < sampleCount; i++)
+                    if (bytesRead == 0) // End of file
                     {
-                        samples[i] = (short)(samples[i] * _inputVolumeScale);
+                        _audioFileStream.Position = 0; // Restart
+                        bytesRead = _audioFileStream.Read(bufferToEncodeOrSend, 0, bytesToReadFromSource);
                     }
-
-                    byte[] scaledBuffer = new byte[bytesRead];
-                    Buffer.BlockCopy(samples, 0, scaledBuffer, 0, bytesRead);
-                    AudioDataAvailable?.Invoke(this, new AudioDataEventArgs(scaledBuffer, bytesRead));
+                    if (bytesRead < bytesToReadFromSource && bytesRead > 0) // Partial read at EOF
+                    {
+                        var temp = new byte[bytesToReadFromSource];
+                        Array.Fill(temp, (byte)0xFF); // MuLaw silence
+                        Buffer.BlockCopy(bufferToEncodeOrSend, 0, temp, 0, bytesRead);
+                        bufferToEncodeOrSend = temp;
+                    }
+                    else if (bytesRead == 0) // Still zero after trying to restart (e.g. empty file)
+                    {
+                         Array.Fill(bufferToEncodeOrSend, (byte)0xFF); // Send silence
+                    }
+                    // bufferToEncodeOrSend is now a full PCMU packet (or silence)
                 }
-                else
+                else // PCM or other format needing conversion
                 {
-                    AudioDataAvailable?.Invoke(this, new AudioDataEventArgs(buffer, bytesRead));
+                    // Calculate how much source PCM data we need to read to make one PCMU_PACKET_SIZE_BYTES packet
+                    // Example: if source is 48kHz 16bit, and target is 8kHz 8bit MuLaw (160 bytes)
+                    // We need 160 samples of 8kHz. Resample ratio 48/8 = 6.
+                    // So, 160 * 6 = 960 samples of 48kHz. Bytes = 960 * 2 (16bit) = 1920 bytes from 48kHz source.
+                    int sourceBytesPerSample = _audioFileStream.WaveFormat.BitsPerSample / 8;
+                    
+                    // This calculation is a bit simplified, ResampleRatio accounts for sample rate and channel differences.
+                    // A more robust way is to read a fixed small amount of source, convert, and buffer the PCMU.
+                    // For now, let's assume we read enough to make one packet.
+                    // This needs a proper buffering and conversion pipeline like the microphone.
+                    // For this iteration, if not MuLaw, it's complex. Let's log a TODO.
+                     _debugLog.LogAudio($"[TODO] AudioFilePlaybackCallback: PCM/Other file format to PCMU conversion not fully implemented with robust buffering. File format: {_audioFileStream.WaveFormat}");
+                    
+                    // Fallback: send silence if file is not already in target MuLaw format for simplicity in this step
+                    bufferToEncodeOrSend = new byte[PCMU_PACKET_SIZE_BYTES];
+                    Array.Fill(bufferToEncodeOrSend, (byte)0xFF); // MuLaw silence
+                }
+
+                // For MuLaw, skip level calculation for now, or make it simpler
+                AudioLevelChanged?.Invoke(this, 1.0f); // Max level for visualization of file audio
+                EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(bufferToEncodeOrSend, bufferToEncodeOrSend.Length));
+                if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
+                {
+                    _debugLog.LogAudio($"(Sampled Log) File: Sent {bufferToEncodeOrSend.Length} bytes of audio data from file source (format: {_audioFileStream.WaveFormat.Encoding}).");
+                }
+            }
+            // This rawMuLawStream path is now less likely due to StartAudioFileCapture changes.
+            else if (_rawMuLawStream != null) 
+            {
+                // read raw MuLaw bytes
+                byte[] buffer = new byte[PCMU_PACKET_SIZE_BYTES];
+                int bytesRead = _rawMuLawStream.Read(buffer, 0, buffer.Length);
+                
+                if (bytesRead == 0)
+                {
+                    // end of file, restart
+                    _rawMuLawStream.Position = 0; // Assuming raw file, no header
+                    bytesRead = _rawMuLawStream.Read(buffer, 0, buffer.Length);
+                }
+
+                if (bytesRead < PCMU_PACKET_SIZE_BYTES && bytesRead > 0) //EOF, partial read
+                {
+                    var tempBuffer = new byte[PCMU_PACKET_SIZE_BYTES];
+                    Array.Fill(tempBuffer, (byte)0xFF); // MuLaw silence
+                    Buffer.BlockCopy(buffer, 0, tempBuffer, 0, bytesRead);
+                    buffer = tempBuffer;
+                    bytesRead = buffer.Length;
+                }
+                else if (bytesRead == 0) // Still zero after restart
+                {
+                     Array.Fill(buffer, (byte)0xFF); // Send silence
+                     bytesRead = buffer.Length;
+                }
+                
+                if (bytesRead > 0)
+                {
+                    AudioLevelChanged?.Invoke(this, 1.0f); // Max for visualization
+                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(buffer, bytesRead));
+                    if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
+                    {
+                        _debugLog.LogAudio($"(Sampled Log) File (raw): Sent {bytesRead} bytes of MuLaw audio data from raw file.");
+                    }
                 }
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error in MP3 playback: {ex.Message}");
+            _debugLog.LogAudio($"Error in audio playback: {ex.Message}");
         }
     }
 
@@ -356,24 +513,27 @@ public class AudioService : IDisposable
     {
         if (_waveIn != null)
         {
-            Debug.WriteLine("Stopping microphone capture...");
             _waveIn.StopRecording();
             _waveIn.DataAvailable -= OnWaveInDataAvailable;
             _waveIn.Dispose();
             _waveIn = null;
         }
 
-        if (_mp3PlaybackTimer != null)
+        if (_audioFilePlaybackTimer != null)
         {
-            Debug.WriteLine("Stopping MP3 playback...");
-            _mp3PlaybackTimer.Dispose();
-            _mp3PlaybackTimer = null;
+            _audioFilePlaybackTimer.Dispose();
+            _audioFilePlaybackTimer = null;
         }
 
         if (_audioFileStream != null)
         {
             _audioFileStream.Dispose();
             _audioFileStream = null;
+        }
+        if (_rawMuLawStream != null)
+        {
+            _rawMuLawStream.Dispose();
+            _rawMuLawStream = null;
         }
     }
 
@@ -384,13 +544,40 @@ public class AudioService : IDisposable
             // Don't create a playback stream if this is from an unknown peer
             // This can happen if audio data arrives before position data
             // The peer must first send its position to be considered connected
-            Debug.WriteLine($"Received audio from unknown peer {peerId}. Ignoring until position data is received.");
+            _debugLog.LogAudio($"[WARNING] PlayAudio called for unknown peer {peerId}. Audio data ignored.");
             return;
         }
 
-        if (!playback.IsMuted && playback.Buffer != null)
+        if (playback == null || playback.WaveOut == null || playback.Buffer == null) 
+        { 
+            _debugLog.LogAudio($"[WARNING] PlayAudio: Peer {peerId} has null playback components. Audio data ignored.");
+            return; 
+        }
+
+        if (!playback.IsMuted)
         {
-             playback.Buffer.AddSamples(data, 0, length);
+            try
+            {
+                // Incoming data is PCMU (MuLaw) 8kHz, 8-bit, 1 channel.
+                // The playback.Buffer is (now) configured for 8kHz, 16-bit PCM, 1 channel.
+                // We need to decode MuLaw to PCM.
+                using var ms = new MemoryStream(data, 0, length);
+                using var muLawReader = new MuLawWaveStream(ms); // Helper stream to read MuLaw
+                using var pcmStream = new WaveFormatConversionStream(_pcm8KhzFormat, muLawReader);
+                
+                byte[] pcmBuffer = new byte[length * 2]; // PCM 16-bit will be twice the size of MuLaw 8-bit
+                int bytesDecoded = pcmStream.Read(pcmBuffer, 0, pcmBuffer.Length);
+
+                if (bytesDecoded > 0)
+                {
+                    playback.Buffer.AddSamples(pcmBuffer, 0, bytesDecoded);
+                    _debugLog.LogAudio($"Played {bytesDecoded} decoded PCM bytes from peer {peerId} (original MuLaw: {length} bytes).");
+                }
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogAudio($"Error decoding/playing audio for peer {peerId}: {ex.Message}");
+            }
         }
     }
 
@@ -398,12 +585,13 @@ public class AudioService : IDisposable
     {
         try
         {
-             Debug.WriteLine($"Creating playback stream for peer {peerId}");
             var waveOut = new WaveOutEvent();
-            var buffer = new BufferedWaveProvider(_playbackFormat)
+            // The BufferedWaveProvider should be configured for the format we will ADD to it,
+            // which is 8kHz, 16-bit PCM (after decoding from MuLaw).
+            var buffer = new BufferedWaveProvider(_pcm8KhzFormat) // Use _pcm8KhzFormat
             {
                 DiscardOnBufferOverflow = true,
-                BufferDuration = TimeSpan.FromMilliseconds(200)
+                BufferDuration = TimeSpan.FromMilliseconds(200) // Increased buffer duration slightly
             };
             waveOut.Init(buffer);
             waveOut.Play();
@@ -411,18 +599,19 @@ public class AudioService : IDisposable
             var playback = new PeerPlayback { WaveOut = waveOut, Buffer = buffer, PeerId = peerId };
             if (_peerPlaybackStreams.TryAdd(peerId, playback))
             {
+                 _debugLog.LogAudio($"Created audio playback for peer {peerId} with format {_pcm8KhzFormat}.");
                  return playback;
             }
             else
             {
-                 Debug.WriteLine($"Concurrency issue: Failed to add playback stream for {peerId}");
-                 waveOut.Dispose();
+                 _debugLog.LogAudio($"[CRITICAL] Failed to add peer playback to dictionary for {peerId} after creation.");
+                 waveOut.Dispose(); // Clean up resources if add fails
                  return null;
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error creating WaveOutEvent for peer {peerId}: {ex.Message}");
+            _debugLog.LogAudio($"Error creating audio playback for peer {peerId}: {ex.Message}");
             return null;
         }
     }
@@ -431,7 +620,6 @@ public class AudioService : IDisposable
     {
         if (_peerPlaybackStreams.TryRemove(peerId, out var playback))
         {
-            Debug.WriteLine($"Removing playback stream for peer {peerId}");
             playback.WaveOut?.Stop();
             playback.WaveOut?.Dispose();
         }
@@ -454,10 +642,6 @@ public class AudioService : IDisposable
         {
             distanceFactor = Math.Clamp(1.0f - (distance.Value / _maxDistance), 0.0f, 1.0f);
         }
-        else
-        {
-             Debug.WriteLine("ApplyVolumeSettings called without distance - volume might not reflect proximity.");
-        }
 
         float finalVolume = playback.IsMuted 
                             ? 0.0f 
@@ -471,7 +655,7 @@ public class AudioService : IDisposable
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error applying volume settings for peer {playback.PeerId}: {ex.Message}");
+            _debugLog.LogAudio($"Error applying volume settings for peer {playback.PeerId}: {ex.Message}");
         }
     }
 
@@ -482,13 +666,8 @@ public class AudioService : IDisposable
             if (playback.IsMuted != isMuted) // Only act if state is different
             {
                 playback.IsMuted = isMuted;
-                Debug.WriteLine($"Peer {peerId} Mute State directly set to: {playback.IsMuted}");
                 ApplyVolumeSettings(playback);
             }
-        }
-        else
-        {
-            Debug.WriteLine($"SetPeerMuteState: Could not find playback for peer {peerId}");
         }
     }
 
@@ -497,7 +676,6 @@ public class AudioService : IDisposable
         if (_peerPlaybackStreams.TryGetValue(peerId, out var playback))
         {
             playback.IsMuted = !playback.IsMuted;
-            Debug.WriteLine($"Peer {peerId} Muted: {playback.IsMuted}");
             ApplyVolumeSettings(playback);
         }
     }
@@ -513,7 +691,7 @@ public class AudioService : IDisposable
 
     public void SetOverallVolumeScale(float scale)
     {
-        _volumeScale = Math.Clamp(scale, 0.0f, 1.0f);
+        _volumeScale = Math.Clamp(scale, 0.0f, 2.0f);
         foreach (var playback in _peerPlaybackStreams.Values)
         {
             ApplyVolumeSettings(playback);
@@ -523,7 +701,6 @@ public class AudioService : IDisposable
     public void SetSelfMuted(bool muted)
     {
         _isSelfMuted = muted;
-        Debug.WriteLine($"Self Muted: {_isSelfMuted}");
     }
 
     public void ToggleSelfMute()
@@ -535,7 +712,6 @@ public class AudioService : IDisposable
     {
         _isPushToTalk = enabled;
         if (!enabled) _isPushToTalkActive = false; 
-        Debug.WriteLine($"Push To Talk Enabled: {_isPushToTalk}");
     }
 
     public void SetPushToTalkActive(bool isActive)
@@ -552,23 +728,19 @@ public class AudioService : IDisposable
 
     public void SetInputVolumeScale(float scale)
     {
-        _inputVolumeScale = Math.Clamp(scale, 0.0f, 1.0f);
-        Debug.WriteLine($"Input Volume Scale set to: {_inputVolumeScale}");
+        _inputVolumeScale = Math.Clamp(scale, 0.0f, 2.0f);
     }
 
-    // Create a new public method to explicitly create the audio stream once position data is received
     public void CreatePeerAudioStream(string peerId)
     {
         if (!_peerPlaybackStreams.ContainsKey(peerId))
         {
-            Debug.WriteLine($"Creating audio stream for peer {peerId} after position data received");
             CreatePeerPlayback(peerId);
         }
     }
 
     public void Dispose()
     {
-        Debug.WriteLine("Disposing AudioService...");
         StopCapture();
 
         foreach (var peerId in _peerPlaybackStreams.Keys.ToList())
@@ -576,6 +748,7 @@ public class AudioService : IDisposable
             RemovePeerAudioSource(peerId);
         }
         _peerPlaybackStreams.Clear();
+        _microphoneCircularBuffer = null; // Release circular buffer
         GC.SuppressFinalize(this);
     }
 }
@@ -589,15 +762,43 @@ internal class PeerPlayback
     public float UiVolumeSetting { get; set; } = 1.0f;
 }
 
-public class AudioDataEventArgs : EventArgs
+public class EncodedAudioPacketEventArgs : EventArgs
 {
     public byte[] Buffer { get; }
-    public int BytesRecorded { get; }
+    public int Samples { get; } // For PCMU, Samples == BytesRecorded (which is also packet size in bytes)
 
-    public AudioDataEventArgs(byte[] buffer, int bytesRecorded)
+    public EncodedAudioPacketEventArgs(byte[] buffer, int samplesOrBytes)
     {
-        Buffer = new byte[bytesRecorded];
-        System.Buffer.BlockCopy(buffer, 0, this.Buffer, 0, bytesRecorded);
-        BytesRecorded = bytesRecorded;
+        this.Buffer = new byte[samplesOrBytes]; 
+        System.Buffer.BlockCopy(buffer, 0, this.Buffer, 0, samplesOrBytes);
+        Samples = samplesOrBytes;
+    }
+}
+
+// Helper class to read MuLaw from a stream for decoding
+internal class MuLawWaveStream : WaveStream
+{
+    private readonly Stream _sourceStream;
+    private readonly WaveFormat _waveFormat;
+
+    public MuLawWaveStream(Stream sourceStream)
+    {
+        _sourceStream = sourceStream;
+        _waveFormat = WaveFormat.CreateMuLawFormat(AudioService.PCMU_SAMPLE_RATE, AudioService.PCMU_CHANNELS);
+    }
+
+    public override WaveFormat WaveFormat => _waveFormat;
+
+    public override long Length => _sourceStream.Length;
+
+    public override long Position
+    {
+        get => _sourceStream.Position;
+        set => _sourceStream.Position = value;
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        return _sourceStream.Read(buffer, offset, count);
     }
 }

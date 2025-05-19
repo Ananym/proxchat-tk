@@ -45,6 +45,9 @@ public class GameDataReader : IDisposable // Renamed class
     private MemoryMappedViewAccessor? _accessor;
     private bool _disposed = false; // To detect redundant calls
 
+    // Add event for new game data
+    public event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName)>? GameDataRead;
+
     public GameDataReader() // Renamed constructor
     {
         // Constructor is intentionally kept light. Opening MMF is deferred.
@@ -94,7 +97,7 @@ public class GameDataReader : IDisposable // Renamed class
 
 
     // Main method used by ViewModel to read the current game state.
-    public (int MapId, string MapName, int X, int Y, string CharacterName) ReadPositionAndName()
+    public (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) ReadPositionAndName()
     {
          // Default values returned on failure or if MMF not ready
         int mapId = 0; // Internal representation is int
@@ -102,11 +105,12 @@ public class GameDataReader : IDisposable // Renamed class
         int x = 0;
         int y = 0;
         string characterName = "Player"; // Default name
+        bool success = false;
 
         if (!EnsureMmfOpen() || _accessor == null)
         {
             // MMF couldn't be opened or accessor is null, return defaults
-            return (mapId, mapName, x, y, characterName); // Return int mapId
+            return (success, mapId, mapName, x, y, characterName); // Return int mapId
         }
 
         try
@@ -135,7 +139,7 @@ public class GameDataReader : IDisposable // Renamed class
                 // This might happen if the provider hasn't written data yet
                 // Or if the data is genuinely empty. Avoid spamming logs if frequent.
                 // Debug.WriteLine("MMF contains no readable data or is empty.");
-                return (mapId, mapName, x, y, characterName); // Return defaults with int mapId
+                return (success, mapId, mapName, x, y, characterName); // Return defaults with int mapId
             }
 
             // Deserialize the JSON string using System.Text.Json
@@ -148,11 +152,15 @@ public class GameDataReader : IDisposable // Renamed class
             if (gameData != null && gameData.Success && gameData.Data != null)
             {
                 // Successfully parsed and success flag is true
+                success = true;
                 mapId = gameData.Data.MapId; // Now an int
                 mapName = gameData.Data.MapName ?? string.Empty; // Added mapName reading
                 x = gameData.Data.X;
                 y = gameData.Data.Y;
                 characterName = gameData.Data.CharacterName ?? "Player"; // Use default if null
+
+                // Raise event with new data
+                GameDataRead?.Invoke(this, (success, mapId, mapName, x, y, characterName));
 
                 // Optional: Verbose logging for successful reads
                 // Debug.WriteLine($"Read data: MapId={mapId}, MapName='{mapName}', X={x}, Y={y}, Name='{characterName}'");
@@ -186,7 +194,7 @@ public class GameDataReader : IDisposable // Renamed class
         }
 
         // Return the read values, using int mapId
-        return (mapId, mapName, x, y, characterName); 
+        return (success, mapId, mapName, x, y, characterName); 
     }
 
     // Explicitly close and dispose MMF resources

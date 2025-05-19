@@ -19,11 +19,6 @@
     <PackageReference Include="Websocket.Client" Version="5.1.1" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Reference Include="Memory.dll">
-      <HintPath>Memory.dll</HintPath>
-    </Reference>
-  </ItemGroup>
 
   <ItemGroup>
     <None Update="config.json">

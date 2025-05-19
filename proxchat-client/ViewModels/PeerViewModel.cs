@@ -12,6 +12,9 @@ namespace ProxChatClient.ViewModels
         private bool _isMuted;
         private float _distance;
         private float _volume = 1.0f; // Default volume to 1.0f
+        private int _mapId;
+        private int _x;
+        private int _y;
 
         public string Id
         {
@@ -74,6 +77,24 @@ namespace ProxChatClient.ViewModels
                     }
                 }
             }
+        }
+
+        public int MapId
+        {
+            get => _mapId;
+            set { _mapId = value; OnPropertyChanged(); }
+        }
+
+        public int X
+        {
+            get => _x;
+            set { _x = value; OnPropertyChanged(); }
+        }
+
+        public int Y
+        {
+            get => _y;
+            set { _y = value; OnPropertyChanged(); }
         }
 
         public string DistanceDisplay => $"{Distance:F1}";

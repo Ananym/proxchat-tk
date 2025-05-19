@@ -52,17 +52,32 @@ public class DebugLogService : IDisposable
         var categoryPrefix = !string.IsNullOrEmpty(category) ? $"[{category}] " : "";
         var logMessage = $"[{timestamp}] [T{threadId}] {categoryPrefix}{message}";
         
+        // Always write to debug output
         System.Diagnostics.Debug.WriteLine(logMessage);
         
         lock (_logLock)
         {
             try
             {
-                _logWriter?.WriteLine(logMessage);
+                if (_logWriter == null)
+                {
+                    // Try to reinitialize the writer if it's null
+                    _logWriter = new StreamWriter(_logFilePath, append: true) { AutoFlush = true };
+                }
+                
+                _logWriter.WriteLine(logMessage);
+                _logWriter.Flush(); // Force immediate write
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error writing to log: {ex.Message}");
+                // Log the error to debug output
+                System.Diagnostics.Debug.WriteLine($"Error writing to log file: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Log file path: {_logFilePath}");
+                System.Diagnostics.Debug.WriteLine($"Failed to write message: {logMessage}");
+                
+                // Try to reinitialize the writer on next attempt
+                try { _logWriter?.Dispose(); } catch { }
+                _logWriter = null;
             }
         }
     }

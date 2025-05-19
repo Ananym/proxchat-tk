@@ -1,3 +1,6 @@
+// this file describes the communication with the signalling server used to orchestrate connection initation.
+// it does not describe the communication with the peers themselves.
+
 using Newtonsoft.Json;
 using ProxChatClient.Models;
 using System.Reactive.Linq;
@@ -18,6 +21,7 @@ public class SignalingService : IDisposable
     private readonly string _clientId;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _receiveCts;
+    private readonly DebugLogService _debugLog;
 
     public event EventHandler<List<string>>? NearbyClientsReceived;
     public event EventHandler<OfferPayload>? OfferReceived;
@@ -30,26 +34,27 @@ public class SignalingService : IDisposable
 
     public string ClientId => _clientId;
 
-    public SignalingService(WebSocketServerConfig config)
+    public SignalingService(WebSocketServerConfig config, DebugLogService debugLog)
     {
         _serverUri = new Uri($"ws://{config.Host}:{config.Port}");
         _clientId = Guid.NewGuid().ToString();
+        _debugLog = debugLog;
     }
 
     public async Task Connect()
     {
         if (_webSocket != null)
         {
-            Debug.WriteLine("WebSocket already connected.");
+            _debugLog.LogSignaling("WebSocket already connected.");
             return;
         }
 
         try
         {
-            Debug.WriteLine($"Attempting to connect to signaling server at {_serverUri}");
+            _debugLog.LogSignaling($"Attempting to connect to signaling server at {_serverUri}");
             _webSocket = new ClientWebSocket();
             await _webSocket.ConnectAsync(_serverUri, CancellationToken.None);
-            Debug.WriteLine("Connected to signaling server.");
+            _debugLog.LogSignaling("Connected to signaling server.");
             ConnectionStatusChanged?.Invoke(this, true);
 
             // Start receiving messages
@@ -58,14 +63,14 @@ public class SignalingService : IDisposable
         }
         catch (WebSocketException ex)
         {
-            Debug.WriteLine($"WebSocket connection failed: {ex.Message}");
+            _debugLog.LogSignaling($"WebSocket connection failed: {ex.Message}");
             await HandleDisconnect();
             SignalingErrorReceived?.Invoke(this, $"Failed to connect to signaling server: {ex.Message}");
             throw new SignalingConnectionException("Failed to connect to signaling server", ex);
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Unexpected error during connection: {ex.Message}");
+            _debugLog.LogSignaling($"Unexpected error during connection: {ex.Message}");
             await HandleDisconnect();
             SignalingErrorReceived?.Invoke(this, $"Unexpected error during connection: {ex.Message}");
             throw new SignalingConnectionException("Unexpected error during connection", ex);
@@ -82,28 +87,28 @@ public class SignalingService : IDisposable
                 var result = await _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    Debug.WriteLine("Received close message from server.");
+                    _debugLog.LogSignaling("Received close message from server.");
                     await HandleDisconnect();
                     break;
                 }
 
                 var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                Debug.WriteLine($"Received message: {message}");
+                _debugLog.LogSignaling($"Received message: {message}");
                 HandleMessage(message);
             }
         }
         catch (OperationCanceledException)
         {
-            Debug.WriteLine("Message receive operation was canceled.");
+            _debugLog.LogSignaling("Message receive operation was canceled.");
         }
         catch (WebSocketException ex)
         {
-            Debug.WriteLine($"WebSocket error during message receive: {ex.Message}");
+            _debugLog.LogSignaling($"WebSocket error during message receive: {ex.Message}");
             await HandleDisconnect();
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Unexpected error during message receive: {ex.Message}");
+            _debugLog.LogSignaling($"Unexpected error during message receive: {ex.Message}");
             await HandleDisconnect();
         }
     }
@@ -125,7 +130,7 @@ public class SignalingService : IDisposable
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error during WebSocket close: {ex.Message}");
+                _debugLog.LogSignaling($"Error during WebSocket close: {ex.Message}");
             }
             finally
             {
@@ -152,45 +157,61 @@ public class SignalingService : IDisposable
             {
                 case ServerMessageType.NearbyPeers:
                     var nearbyPeersData = JsonConvert.DeserializeObject<NearbyPeersData>(messageText);
-                    if (nearbyPeersData?.Peers != null) NearbyClientsReceived?.Invoke(this, nearbyPeersData.Peers);
+                    if (nearbyPeersData?.Peers != null) 
+                    {
+                        _debugLog.LogSignaling($"Received nearby peers: {string.Join(", ", nearbyPeersData.Peers)}");
+                        NearbyClientsReceived?.Invoke(this, nearbyPeersData.Peers);
+                    }
                     break;
 
                 case ServerMessageType.ReceiveOffer:
                     var offerData = JsonConvert.DeserializeObject<ReceiveOfferData>(messageText);
-                    if (offerData?.Data != null) OfferReceived?.Invoke(this, offerData.Data);
+                    if (offerData?.Data != null) 
+                    {
+                        _debugLog.LogSignaling($"Received offer from {offerData.Data.SenderId}");
+                        OfferReceived?.Invoke(this, offerData.Data);
+                    }
                     break;
 
                 case ServerMessageType.ReceiveAnswer:
                     var answerData = JsonConvert.DeserializeObject<ReceiveAnswerData>(messageText);
-                    if (answerData?.Data != null) AnswerReceived?.Invoke(this, answerData.Data);
+                    if (answerData?.Data != null) 
+                    {
+                        _debugLog.LogSignaling($"Received answer from {answerData.Data.SenderId}");
+                        AnswerReceived?.Invoke(this, answerData.Data);
+                    }
                     break;
 
                 case ServerMessageType.ReceiveIceCandidate:
                     var candidateData = JsonConvert.DeserializeObject<ReceiveIceCandidateData>(messageText);
-                    if (candidateData?.Data != null) IceCandidateReceived?.Invoke(this, candidateData.Data);
+                    if (candidateData?.Data != null) 
+                    {
+                        _debugLog.LogSignaling($"Received ICE candidate from {candidateData.Data.SenderId}");
+                        IceCandidateReceived?.Invoke(this, candidateData.Data);
+                    }
                     break;
 
                 case ServerMessageType.Error:
                     var errorData = JsonConvert.DeserializeObject<ErrorData>(messageText);
                     if (errorData?.Message != null) 
                     {
-                        Debug.WriteLine($"Signaling Error Received from Server: {errorData.Message}");
+                        _debugLog.LogSignaling($"Signaling Error Received from Server: {errorData.Message}");
                         SignalingErrorReceived?.Invoke(this, errorData.Message);
                     }
                     break;
 
                 default:
-                    Debug.WriteLine($"Received unknown message type: {baseMessage.Type}");
+                    _debugLog.LogSignaling($"Received unknown message type: {baseMessage.Type}");
                     break;
             }
         }
         catch (JsonException ex)
         {
-            Debug.WriteLine($"Failed to parse incoming signaling message: {ex.Message}, Raw: {messageText}");
+            _debugLog.LogSignaling($"Failed to parse incoming signaling message: {ex.Message}, Raw: {messageText}");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error handling incoming signaling message: {ex.Message}");
+            _debugLog.LogSignaling($"Error handling incoming signaling message: {ex.Message}");
         }
     }
 
@@ -211,18 +232,21 @@ public class SignalingService : IDisposable
 
     public async Task SendOfferAsync(string targetId, string offerSdp)
     {
+        _debugLog.LogSignaling($"Sending offer to {targetId}");
         var message = ClientMessage.CreateSendOffer(targetId, offerSdp);
         await SendMessageAsync(message);
     }
 
     public async Task SendAnswerAsync(string targetId, string answerSdp)
     {
+        _debugLog.LogSignaling($"Sending answer to {targetId}");
         var message = ClientMessage.CreateSendAnswer(targetId, answerSdp);
         await SendMessageAsync(message);
     }
 
     public async Task SendIceCandidateAsync(string targetId, string candidateJson)
     {
+        _debugLog.LogSignaling($"Sending ICE candidate to {targetId}");
         var message = ClientMessage.CreateSendIceCandidate(targetId, candidateJson);
         await SendMessageAsync(message);
     }
@@ -231,7 +255,7 @@ public class SignalingService : IDisposable
     {
         if (!IsConnected) 
         {
-            Debug.WriteLine($"Attempted to send signaling message while disconnected. Type: {message.Type}");
+            _debugLog.LogSignaling($"Attempted to send signaling message while disconnected. Type: {message.Type}");
             return;
         }
 
@@ -240,17 +264,17 @@ public class SignalingService : IDisposable
             var jsonMessage = JsonConvert.SerializeObject(message);
             var bytes = Encoding.UTF8.GetBytes(jsonMessage);
             await _webSocket!.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            _debugLog.LogSignaling($"Sent message of type {message.Type}");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Failed to send signaling message (Type: {message.Type}): {ex.Message}");
+            _debugLog.LogSignaling($"Failed to send signaling message (Type: {message.Type}): {ex.Message}");
             await HandleDisconnect();
         }
     }
 
     public void Dispose()
     {
-        Debug.WriteLine("Disposing SignalingService...");
-        _ = Disconnect();
+        _ = HandleDisconnect();
     }
 } 

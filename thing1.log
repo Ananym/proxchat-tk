@@ -1,0 +1,257 @@
+[20:22:20.298] [T1] === Debug Log Started [19/05/2025 20:22:20] ===
+[20:22:20.371] [T1] [WEBRTC] Created WindowsAudioEndPoint with MuLaw encoder
+[20:22:20.376] [T1] [WEBRTC] Created audio track with format: PCMU, status: SendRecv
+[20:22:20.400] [T1] [WEBRTC] Started audio endpoint
+[20:22:34.424] [T1] [SIGNALING] Attempting to connect to signaling server at ws://127.0.0.1:8080/
+[20:22:34.466] [T1] [SIGNALING] Connected to signaling server.
+[20:22:34.471] [T1] [AUDIO] Microphone capture started with format: 16 bit PCM: 48000Hz 1 channels, target packet duration: 20ms
+[20:22:34.497] [T12] [SIGNALING] Sent message of type UpdatePosition
+[20:22:34.500] [T12] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:34.507] [T12] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:35.601] [T1] [WEBRTC] Created new peer connection for 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:35.603] [T1] [WEBRTC] Added audio track to peer connection 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:35.606] [T12] [SIGNALING] Received message: {"type":"ReceiveIceCandidate","data":{"sender_id":"4165ddf0-b573-4cb6-ac35-fbce0a2da508","candidate":"{\"candidate\":\"candidate:1983 1 udp 659136 192.168.0.44 64548 typ host generation 0\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0,\"usernameFragment\":\"ZZHS\"}"}}
+[20:22:35.610] [T12] [SIGNALING] Received ICE candidate from 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:35.616] [T12] [SIGNALING] Received message: {"type":"ReceiveIceCandidate","data":{"sender_id":"4165ddf0-b573-4cb6-ac35-fbce0a2da508","candidate":"{\"candidate\":\"candidate:5008 1 udp 659084 82.2.22.132 64548 typ srflx raddr 0.0.0.0 rport 0 generation 0\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0,\"usernameFragment\":\"ZZHS\"}"}}
+[20:22:35.616] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.616] [T12] [SIGNALING] Received ICE candidate from 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:35.617] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.618] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.618] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.619] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.620] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.658] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.658] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.698] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.698] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.738] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.738] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.778] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.778] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.818] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.818] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.828] [T15] [WEBRTC] Sending ICE candidate to 4165ddf0-b573-4cb6-ac35-fbce0a2da508: {"candidate":"candidate:1983 1 udp 659136 192.168.0.44 64552 typ host generation 0","sdpMid":"0","sdpMLineIndex":0,"usernameFragment":"OQXF"}
+[20:22:35.829] [T15] [SIGNALING] Sending ICE candidate to 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:35.832] [T15] [SIGNALING] Sent message of type SendIceCandidate
+[20:22:35.838] [T6] [WEBRTC] Created offer for 4165ddf0-b573-4cb6-ac35-fbce0a2da508 with SDP: v=0
+o=- 74103 0 IN IP4 127.0.0.1
+s=sipsorcery
+t=0 0
+a=group:BUNDLE 1 2
+m=audio 9 UDP/TLS/RTP/SAVP 0 101
+c=IN IP4 0.0.0.0
+a=ice-ufrag:OQXF
+a=ice-pwd:HNEWDPOLTCZBOYCWPMIJOEAM
+a=fingerprint:sha-256 A5:44:97:DA:67:21:EC:3F:27:C7:C7:C5:18:BB:DE:67:D3:4A:37:8F:93:7D:ED:A5:CC:60:E0:E4:30:59:01:72
+a=setup:actpass
+a=candidate:1983 1 udp 659136 192.168.0.44 64552 typ host generation 0
+a=ice-options:ice2,trickle
+a=mid:1
+a=rtpmap:0 PCMU/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtcp-mux
+a=rtcp:9 IN IP4 0.0.0.0
+a=sendrecv
+a=ssrc:2080750105 cname:10550353-66e2-44c8-b6bf-e2837958f7a3
+m=application 9 UDP/DTLS/SCTP webrtc-datachannel
+c=IN IP4 0.0.0.0
+a=ice-ufrag:OQXF
+a=ice-pwd:HNEWDPOLTCZBOYCWPMIJOEAM
+a=fingerprint:sha-256 A5:44:97:DA:67:21:EC:3F:27:C7:C7:C5:18:BB:DE:67:D3:4A:37:8F:93:7D:ED:A5:CC:60:E0:E4:30:59:01:72
+a=setup:actpass
+a=ice-options:ice2,trickle
+a=mid:2
+a=sctp-port:5000
+a=max-message-size:262144
+
+[20:22:35.858] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:35.858] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.858] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.860] [T6] [WEBRTC] [WARNING] Could not get remote audio SSRC for offering peer 4165ddf0-b573-4cb6-ac35-fbce0a2da508 from AudioRemoteTrack after processing offer (SSRC: 0).
+[20:22:35.861] [T6] [WEBRTC] Created answer for 4165ddf0-b573-4cb6-ac35-fbce0a2da508 with SDP: v=0
+o=- 74103 0 IN IP4 127.0.0.1
+s=sipsorcery
+t=0 0
+a=group:BUNDLE 1 2
+m=audio 9 UDP/TLS/RTP/SAVP 0 101
+c=IN IP4 0.0.0.0
+a=ice-ufrag:OQXF
+a=ice-pwd:HNEWDPOLTCZBOYCWPMIJOEAM
+a=fingerprint:sha-256 A5:44:97:DA:67:21:EC:3F:27:C7:C7:C5:18:BB:DE:67:D3:4A:37:8F:93:7D:ED:A5:CC:60:E0:E4:30:59:01:72
+a=setup:active
+a=candidate:1983 1 udp 659136 192.168.0.44 64552 typ host generation 0
+a=ice-options:ice2,trickle
+a=mid:1
+a=rtpmap:0 PCMU/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-16
+a=rtcp-mux
+a=rtcp:9 IN IP4 0.0.0.0
+a=sendrecv
+a=ssrc:2080750105 cname:10550353-66e2-44c8-b6bf-e2837958f7a3
+m=application 9 UDP/DTLS/SCTP webrtc-datachannel
+c=IN IP4 0.0.0.0
+a=ice-ufrag:OQXF
+a=ice-pwd:HNEWDPOLTCZBOYCWPMIJOEAM
+a=fingerprint:sha-256 A5:44:97:DA:67:21:EC:3F:27:C7:C7:C5:18:BB:DE:67:D3:4A:37:8F:93:7D:ED:A5:CC:60:E0:E4:30:59:01:72
+a=setup:active
+a=ice-options:ice2,trickle
+a=mid:2
+a=sctp-port:5000
+a=max-message-size:262144
+
+[20:22:35.862] [T6] [SIGNALING] Sending answer to 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:35.863] [T6] [SIGNALING] Sent message of type SendAnswer
+[20:22:35.896] [T6] [SIGNALING] Received message: {"type":"ReceiveIceCandidate","data":{"sender_id":"4165ddf0-b573-4cb6-ac35-fbce0a2da508","candidate":"{\"candidate\":\"candidate:5008 1 udp 659084 82.2.22.132 64548 typ srflx raddr 0.0.0.0 rport 0 generation 0\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0,\"usernameFragment\":\"ZZHS\"}"}}
+[20:22:35.896] [T6] [SIGNALING] Received ICE candidate from 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:35.900] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.900] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.927] [T15] [WEBRTC] Peer connection state changed for 4165ddf0-b573-4cb6-ac35-fbce0a2da508: connecting
+[20:22:35.938] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.938] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.978] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:35.978] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:36.018] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:36.018] [T10] [WEBRTC] Peer connection not connected for 4165ddf0-b573-4cb6-ac35-fbce0a2da508, skipping audio send
+[20:22:36.038] [T6] [WEBRTC] Peer connection state changed for 4165ddf0-b573-4cb6-ac35-fbce0a2da508: closed
+[20:22:36.039] [T6] [WEBRTC] Peer connection state changed for 4165ddf0-b573-4cb6-ac35-fbce0a2da508: failed
+[20:22:36.338] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:38.059] [T13] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:38.059] [T13] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:38.059] [T13] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:38.059] [T13] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:38.978] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:39.618] [T11] [SIGNALING] Sent message of type UpdatePosition
+[20:22:39.619] [T6] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:39.619] [T6] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:40.338] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:40.778] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:42.738] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:42.778] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:43.060] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:43.060] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:43.060] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:43.060] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:44.871] [T12] [SIGNALING] Sent message of type UpdatePosition
+[20:22:44.872] [T12] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:44.873] [T12] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:45.418] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:46.338] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:47.039] [T13] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:47.039] [T13] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:47.178] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:47.609] [T11] [SIGNALING] Received message: {"type":"ReceiveIceCandidate","data":{"sender_id":"4165ddf0-b573-4cb6-ac35-fbce0a2da508","candidate":"{\"candidate\":\"candidate:1983 1 udp 659136 192.168.0.44 51838 typ host generation 0\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0,\"usernameFragment\":\"DWSF\"}"}}
+[20:22:47.609] [T11] [SIGNALING] Received ICE candidate from 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:47.692] [T13] [SIGNALING] Received message: {"type":"ReceiveIceCandidate","data":{"sender_id":"4165ddf0-b573-4cb6-ac35-fbce0a2da508","candidate":"{\"candidate\":\"candidate:5008 1 udp 659084 82.2.22.132 51838 typ srflx raddr 0.0.0.0 rport 0 generation 0\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0,\"usernameFragment\":\"DWSF\"}"}}
+[20:22:47.692] [T13] [SIGNALING] Received ICE candidate from 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:48.018] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:48.046] [T13] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:48.046] [T13] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:49.051] [T12] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:49.051] [T12] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:50.039] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:50.039] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:50.116] [T11] [SIGNALING] Sent message of type UpdatePosition
+[20:22:50.117] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:50.117] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:50.458] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:51.044] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:51.044] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:51.418] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:52.301] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:53.198] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:53.318] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:53.828] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:54.628] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:55.122] [T15] [SIGNALING] Sent message of type UpdatePosition
+[20:22:55.123] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:55.123] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:55.188] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:56.049] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:56.049] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:56.049] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:56.049] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:56.049] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:22:56.049] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:22:56.628] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:56.988] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:57.068] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:57.548] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:58.189] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:58.228] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:22:58.348] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:22:59.991] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:00.108] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:00.310] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:00.370] [T13] [SIGNALING] Sent message of type UpdatePosition
+[20:23:00.371] [T13] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:00.371] [T13] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:01.249] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:01.249] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:02.108] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:02.668] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:02.788] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:03.042] [T12] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:03.043] [T12] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:03.388] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:03.827] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:04.048] [T13] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:04.048] [T13] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:04.988] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:05.608] [T12] [SIGNALING] Sent message of type UpdatePosition
+[20:23:05.609] [T12] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:05.609] [T12] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:05.988] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:06.268] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:06.348] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:07.045] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:07.045] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:07.829] [T15] [SIGNALING] Received message: {"type":"ReceiveIceCandidate","data":{"sender_id":"4165ddf0-b573-4cb6-ac35-fbce0a2da508","candidate":"{\"candidate\":\"candidate:1983 1 udp 659136 192.168.0.44 65244 typ host generation 0\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0,\"usernameFragment\":\"TNHW\"}"}}
+[20:23:07.829] [T15] [SIGNALING] Received ICE candidate from 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:07.899] [T12] [SIGNALING] Received message: {"type":"ReceiveIceCandidate","data":{"sender_id":"4165ddf0-b573-4cb6-ac35-fbce0a2da508","candidate":"{\"candidate\":\"candidate:5008 1 udp 659084 82.2.22.132 65244 typ srflx raddr 0.0.0.0 rport 0 generation 0\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0,\"usernameFragment\":\"TNHW\"}"}}
+[20:23:07.899] [T12] [SIGNALING] Received ICE candidate from 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:08.628] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:09.107] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:09.828] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:10.052] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:10.052] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:10.588] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:10.608] [T12] [SIGNALING] Sent message of type UpdatePosition
+[20:23:10.609] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:10.609] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:10.707] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:10.827] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:11.046] [T12] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:11.046] [T12] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:12.051] [T12] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:12.051] [T12] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:12.868] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:13.041] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:13.041] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:13.308] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:14.047] [T11] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:14.047] [T11] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:15.069] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:15.609] [T12] [SIGNALING] Sent message of type UpdatePosition
+[20:23:15.610] [T12] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:15.610] [T12] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:16.512] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:18.867] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:19.056] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:19.056] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:19.056] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:19.056] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:19.108] [T10] [WEBRTC] (Sampled Log) OnEncodedAudioPacketReadyToSend: samples=160, hasAudio=True. Attempting to send to all peers.
+[20:23:20.615] [T11] [SIGNALING] Sent message of type UpdatePosition
+[20:23:20.616] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:20.616] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:21.627] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:24.249] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:24.249] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:25.247] [T10] [AUDIO] (Sampled Log) Mic: Sent 160 PCMU bytes after resample/encode.
+[20:23:25.621] [T11] [SIGNALING] Sent message of type UpdatePosition
+[20:23:25.623] [T15] [SIGNALING] Received message: {"type":"NearbyPeers","data":["4165ddf0-b573-4cb6-ac35-fbce0a2da508"]}
+[20:23:25.623] [T15] [SIGNALING] Received nearby peers: 4165ddf0-b573-4cb6-ac35-fbce0a2da508
+[20:23:26.161] [T12] [SIGNALING] Message receive operation was canceled.
+[20:23:26.162] [T1] [AUDIO] Microphone recording stopped.

@@ -57,14 +57,14 @@
         <StackPanel Grid.Row="1" Margin="0,0,0,10">
             <Label Content="Microphone Input Volume:"/>
             <Slider Value="{Binding InputVolumeScale}"
-                    Minimum="0" Maximum="1"
+                    Minimum="0" Maximum="2"
                     TickFrequency="0.1"
                     IsSnapToTickEnabled="True"
                     ToolTip="Controls the volume of your microphone input when transmitting"/>
             
             <Label Content="Overall Output Volume:" Margin="0,10,0,0"/>
             <Slider Value="{Binding VolumeScale}"
-                    Minimum="0" Maximum="1"
+                    Minimum="0" Maximum="2"
                     TickFrequency="0.1"
                     IsSnapToTickEnabled="True"
                     ToolTip="Controls the overall volume of all received audio"/>
@@ -106,19 +106,20 @@
                     Padding="5">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="120"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <CheckBox Content="Push to Talk" 
                               IsChecked="{Binding IsPushToTalk}"
                               VerticalAlignment="Center"
+                              MinWidth="100"
                               Grid.Column="0"/>
                     <controls:KeyBindingEditor x:Name="PushToTalkKeyEditor"
                                             Key="{Binding PushToTalkKey, Mode=TwoWay}"
                                             KeyChanged="PushToTalkKeyEditor_KeyChanged"
                                             IsEnabled="{Binding IsPushToTalk}"
                                             HorizontalAlignment="Stretch"
-                                            MinWidth="60"
+                                            MinWidth="100"
                                             Margin="10,0,0,0"
                                             Grid.Column="1"/>
                 </Grid>
@@ -131,34 +132,44 @@
                     Padding="5">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="120"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <CheckBox Content="Mute Self" 
                               IsChecked="{Binding IsSelfMuted, Mode=OneWay}"
                               Command="{Binding ToggleSelfMuteCommand}"
                               VerticalAlignment="Center"
+                              MinWidth="100"
                               Grid.Column="0"/>
                     <controls:KeyBindingEditor x:Name="MuteSelfKeyEditor"
                                             Key="{Binding MuteSelfKey, Mode=TwoWay}"
                                             KeyChanged="MuteSelfKeyEditor_KeyChanged"
                                             HorizontalAlignment="Stretch"
-                                            MinWidth="60"
+                                            MinWidth="100"
                                             Margin="10,0,0,0"
                                             Grid.Column="1"/>
                 </Grid>
             </Border>
         </StackPanel>
 
-        <!-- Start/Stop Button (Row 2) -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,10">
-            <Button Content="Start" 
-                    Command="{Binding StartCommand}"
-                    Width="80" Margin="0,0,5,0"/>
-            <Button Content="Stop" 
-                    Command="{Binding StopCommand}"
-                    Width="80"/>
-        </StackPanel>
+        <!-- Start/Stop Toggle Button (Row 2) -->
+        <Button Grid.Row="2" 
+                Command="{Binding StartCommand}"
+                Margin="0,0,0,10"
+                Height="40"
+                FontSize="16"
+                FontWeight="Bold">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Content" Value="Start"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                            <Setter Property="Content" Value="Stop"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
 
             <!-- Game Position (Row 3) -->
             <GroupBox Grid.Row="3" Header="Current Position" Margin="0,5,0,0">
@@ -211,8 +222,8 @@
 
                         <Label Grid.Row="4" Grid.Column="0" Content="Audio Input:" VerticalAlignment="Center"/>
                         <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="5,2">
-                            <CheckBox Content="Use MP3 File" IsChecked="{Binding UseMp3Input}" VerticalAlignment="Center"/>
-                            <TextBlock Text="(test.mp3)" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                            <CheckBox Content="Use WAV File" IsChecked="{Binding UseWavInput}" VerticalAlignment="Center"/>
+                            <TextBlock Text="(test.wav)" VerticalAlignment="Center" Margin="5,0,0,0"/>
                         </StackPanel>
                 </Grid>
             </StackPanel>

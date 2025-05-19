@@ -5,8 +5,6 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 using ProxChatClient.Models.Signaling;
 using ProxChatClient.Services;
@@ -14,20 +12,22 @@ using SIPSorcery.Media;
 using SIPSorcery.Net;
 using SIPSorceryMedia.Abstractions;
 using SIPSorceryMedia.Windows;
-using System.Diagnostics; // Keep for Debug.WriteLine
 using System.IO; // For file logging
 
 namespace ProxChatClient.Services;
 
 public class WebRtcService : IDisposable
 {
-    private readonly ILogger<WebRtcService> _logger;
     private readonly ConcurrentDictionary<string, PeerConnectionState> _peerConnections = new();
     private readonly SignalingService _signalingService;
     private readonly AudioService _audioService;
     private readonly float _maxDistance;
     private readonly DebugLogService _debugLog;
     private bool _isInitialized;
+    private uint _rtpTimestamp = 0; // Add timestamp tracking
+
+    private static readonly Random _random = new Random(); // For probabilistic logging
+    private const double LOG_PROBABILITY = 0.01; // 1% chance to log detailed packet info
 
     private static readonly RTCIceServer _stunServer = new RTCIceServer { urls = "stun:stun.l.google.com:19302" };
     private WindowsAudioEndPoint? _audioEndPoint;
@@ -44,57 +44,83 @@ public class WebRtcService : IDisposable
         public string CharacterName { get; set; } = "";
     }
 
-    public WebRtcService(AudioService audioService, SignalingService signalingService, float maxDistance, DebugLogService debugLog, ILoggerFactory? loggerFactory = null)
+    public WebRtcService(AudioService audioService, SignalingService signalingService, float maxDistance, DebugLogService debugLog)
     {
-        _logger = loggerFactory?.CreateLogger<WebRtcService>() ?? NullLogger<WebRtcService>.Instance;
         _audioService = audioService;
         _signalingService = signalingService;
         _maxDistance = maxDistance;
         _debugLog = debugLog;
         _isInitialized = false;
+
+        // Initialize audio system first
+        InitializeAudioSystem();
+
+        // Subscribe to audio data events
+        _audioService.EncodedAudioPacketAvailable += OnEncodedAudioPacketReadyToSend;
+
+        // Initialize immediately
+        EnsureInitialized();
     }
 
     private void EnsureInitialized()
     {
-        if (!_isInitialized)
-        {
-            _debugLog.LogWebRtc("WebRtcService initialization started");
-            
-            InitializeAudioSystem();
+        if (_isInitialized) return;
 
+        try
+        {
+            // Subscribe to signaling events
             _signalingService.OfferReceived += OnOfferReceived;
             _signalingService.AnswerReceived += OnAnswerReceived;
             _signalingService.IceCandidateReceived += OnIceCandidateReceived;
 
             _isInitialized = true;
-            _debugLog.LogWebRtc("WebRtcService initialization completed");
-            _logger.LogInformation("WebRtcService initialized.");
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogWebRtc($"Error during WebRTC initialization: {ex}");
+            throw;
         }
     }
 
     private void InitializeAudioSystem()
     {
-        _debugLog.LogWebRtc("InitializeAudioSystem started");
         try
         {
-            // Use the AudioEncoder constructor without parameters
-            _audioEndPoint = new WindowsAudioEndPoint(new AudioEncoder()); 
-            _debugLog.LogWebRtc("WindowsAudioEndPoint created");
+            if (_audioEndPoint != null)
+            {
+                _audioEndPoint.CloseAudio();
+                _audioEndPoint = null;
+            }
+
+            // Create audio endpoint with MuLaw encoder
+            _audioEndPoint = new WindowsAudioEndPoint(new AudioEncoder());
+            _debugLog.LogWebRtc("Created WindowsAudioEndPoint with MuLaw encoder");
             
-            // Define the audio format explicitly
-            var audioFormat = new AudioFormat(AudioCodecsEnum.PCMU, 0); // Using PCMU format ID 0
+            // Create media track with MuLaw format (PCMU)
+            var audioFormat = new AudioFormat(AudioCodecsEnum.PCMU, 0);
             _audioTrack = new MediaStreamTrack(audioFormat, MediaStreamStatusEnum.SendRecv);
-            _debugLog.LogWebRtc("MediaStreamTrack created");
+            _debugLog.LogWebRtc($"Created audio track with format: {audioFormat.Codec}, status: {MediaStreamStatusEnum.SendRecv}");
 
-            _audioEndPoint.StartAudio(); 
-            _debugLog.LogWebRtc("Audio started successfully");
-
-            _logger.LogInformation("Windows Audio Endpoint initialized.");
+            // Start audio
+            _audioEndPoint.StartAudio();
+            _debugLog.LogWebRtc("Started audio endpoint");
         }
         catch (Exception ex)
         {
-            _debugLog.LogWebRtc($"InitializeAudioSystem failed: {ex.Message}");
-            _logger.LogError(ex, "Failed to initialize Windows Audio Endpoint.");
+            _debugLog.LogWebRtc($"Error initializing audio system: {ex.Message}");
+            
+            // Clean up any partially initialized resources
+            if (_audioEndPoint != null)
+            {
+                try
+                {
+                    _audioEndPoint.CloseAudio();
+                }
+                catch { }
+                _audioEndPoint = null;
+            }
+            _audioTrack = null;
+            
             throw;
         }
     }
@@ -102,484 +128,375 @@ public class WebRtcService : IDisposable
     public async Task CreatePeerConnection(string peerId, bool isInitiator)
     {
         EnsureInitialized();
-        _debugLog.LogWebRtc($"CreatePeerConnection START - PeerId: {peerId}, Initiator: {isInitiator}");
         
-        if (_peerConnections.ContainsKey(peerId)) 
+        if (_peerConnections.ContainsKey(peerId)) return;
+        if (_audioTrack == null)
         {
-            _debugLog.LogWebRtc($"CreatePeerConnection EARLY EXIT - peer {peerId} already exists");
+            _debugLog.LogWebRtc($"Cannot create peer connection for {peerId}: audio track is null");
             return;
         }
-        
-        if (_audioTrack == null) 
-        { 
-            _debugLog.LogWebRtc("CreatePeerConnection EARLY EXIT - audio track not initialized");
-            _logger.LogWarning("Cannot create peer connection, audio track not initialized.");
-            return; 
-        }
 
-        _logger.LogInformation("Creating peer connection to {PeerId}. Initiator: {IsInitiator}", peerId, isInitiator);
-
-        _debugLog.LogWebRtc($"Creating RTCPeerConnection for {peerId}");
         var pc = new RTCPeerConnection(new RTCConfiguration { iceServers = new List<RTCIceServer> { _stunServer } });
-        _debugLog.LogWebRtc($"RTCPeerConnection created for {peerId}");
+        _debugLog.LogWebRtc($"Created new peer connection for {peerId}");
 
         var state = new PeerConnectionState { PeerConnection = pc };
         if (!_peerConnections.TryAdd(peerId, state))
         {
-            _debugLog.LogWebRtc($"Failed to add {peerId} to peer connections dictionary");
-            _logger.LogWarning("Failed to add peer connection {PeerId} to dictionary.", peerId);
             pc.Close("Failed to add to dictionary");
             return;
         }
-        _debugLog.LogWebRtc($"Added {peerId} to peer connections dictionary");
 
-        // --- Media Tracks ---
-        _debugLog.LogWebRtc($"Adding audio track for {peerId}");
-        pc.addTrack(_audioTrack);
-        _debugLog.LogWebRtc($"Audio track added for {peerId}");
-
-        // Hook up the RTP packet received event to the audio end point
-        pc.OnRtpPacketReceived += (ep, mediaType, rtpPacket) => 
+        try
         {
-            if (mediaType == SDPMediaTypesEnum.audio)
+            // --- Media Tracks ---
+            pc.addTrack(_audioTrack);
+            _debugLog.LogWebRtc($"Added audio track to peer connection {peerId}");
+
+            // Hook up the RTP packet received event to the audio end point
+            pc.OnRtpPacketReceived += (ep, mediaType, rtpPacket) => 
             {
-                _audioEndPoint?.GotAudioRtp(ep, 
-                    rtpPacket.Header.SyncSource, 
-                    rtpPacket.Header.SequenceNumber, 
-                    rtpPacket.Header.Timestamp,
-                    rtpPacket.Header.PayloadType,
-                    rtpPacket.Header.MarkerBit == 1,
-                    rtpPacket.Payload); 
-            }
-        };
-        _debugLog.LogWebRtc($"RTP packet handler set for {peerId}");
-
-        // --- Data Channel ---
-        _debugLog.LogWebRtc($"Creating data channel for {peerId}");
-        var dataChannel = await pc.createDataChannel("position").ConfigureAwait(false); 
-        _debugLog.LogWebRtc($"Data channel creation completed for {peerId}, result: {(dataChannel != null ? "SUCCESS" : "FAILED")}");
-        
-        if (dataChannel == null)
-        {
-            _debugLog.LogWebRtc($"Data channel creation FAILED for {peerId} - removing peer connection");
-            _logger.LogError("Failed to create data channel for {PeerId}", peerId);
-             RemovePeerConnection(peerId);
-             return;
-        }
-        
-        _debugLog.LogWebRtc($"Configuring data channel for {peerId}");
-        ConfigureDataChannel(peerId, dataChannel);
-        _debugLog.LogWebRtc($"Data channel configured for {peerId}");
-        
-        pc.ondatachannel += (dc) =>
-        {
-            _debugLog.LogWebRtc($"Data channel RECEIVED from {peerId}: {dc.label}");
-            _logger.LogInformation("Data channel received from {PeerId}: {Label}", peerId, dc.label);
-            ConfigureDataChannel(peerId, dc);
-        };
-
-        // --- ICE Candidates ---
-        _debugLog.LogWebRtc($"Setting up ICE candidate handler for {peerId}");
-        pc.onicecandidate += (candidate) =>
-        {
-            if (candidate != null)
-            {
-                _debugLog.LogWebRtc($"ICE candidate generated for {peerId}: {candidate.candidate}");
-                // Fire and forget to avoid blocking
-                _ = Task.Run(async () =>
+                if (mediaType == SDPMediaTypesEnum.audio)
                 {
-                    try
+                    try 
                     {
-                        var candidateJson = candidate.toJSON(); // Use SIPSorcery method
-                        _debugLog.LogWebRtc($"Sending ICE candidate for {peerId}");
-                        await _signalingService.SendIceCandidateAsync(peerId, candidateJson).ConfigureAwait(false);
-                        _debugLog.LogWebRtc($"ICE candidate sent successfully for {peerId}");
-                        _logger.LogTrace("Sent ICE candidate to {PeerId}: {Candidate}", peerId, candidate.candidate);
+                        uint ssrc = rtpPacket.Header.SyncSource;
+                        string? foundPeerId = null;
+
+                        // Find peerId by SSRC
+                        foreach (var entry in _peerConnections)
+                        {
+                            if (entry.Value.RemoteAudioSsrc == ssrc)
+                            {
+                                foundPeerId = entry.Key;
+                                break;
+                            }
+                        }
+
+                        if (foundPeerId != null)
+                        {
+                            bool hasAudio = false;
+                            if (rtpPacket.Payload.Length > 0)
+                            {
+                                hasAudio = rtpPacket.Payload.Any(b => b != 0xFF);
+                            }
+
+                            if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
+                            {
+                                _debugLog.LogWebRtc($"(Sampled Log) RTP for SSRC {ssrc} (Peer {foundPeerId}): seq={rtpPacket.Header.SequenceNumber}, pt={rtpPacket.Header.PayloadType}, size={rtpPacket.Payload.Length}, hasAudio={hasAudio}");
+                            }
+
+                            // Call AudioService to play the audio
+                            _audioService.PlayAudio(foundPeerId, rtpPacket.Payload, rtpPacket.Payload.Length);
+                        }
+                        else
+                        {
+                            if (_random.NextDouble() < LOG_PROBABILITY) // Log if SSRC is unknown only occasionally
+                            {
+                                _debugLog.LogWebRtc($"[WARNING] Received audio RTP packet with SSRC {ssrc} but no associated peer found.");
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _debugLog.LogWebRtc($"Error sending ICE candidate for {peerId}: {ex.Message}");
-                        _logger.LogError(ex, "Error sending ICE candidate to {PeerId}", peerId);
+                        // The original peerId in this log was from the closure of CreatePeerConnection, which isn't correct for this context.
+                        // Logging general error now.
+                        _debugLog.LogWebRtc($"Error processing received audio RTP packet: {ex.Message}");
                     }
-                });
-            }
-        };
+                }
+            };
 
-        // --- Connection State ---
-        _debugLog.LogWebRtc($"Setting up connection state handler for {peerId}");
-        pc.onconnectionstatechange += (connState) =>
-        {
-            _debugLog.LogWebRtc($"Connection state changed for {peerId}: {connState}");
-            _logger.LogInformation("Peer connection state for {PeerId} changed to {State}", peerId, connState);
-            if (connState == RTCPeerConnectionState.failed || 
-                connState == RTCPeerConnectionState.disconnected || 
-                connState == RTCPeerConnectionState.closed)
+            // --- Connection State ---
+            pc.onconnectionstatechange += (connState) =>
             {
-                _debugLog.LogWebRtc($"Connection failed/disconnected/closed for {peerId} - removing");
-                _logger.LogWarning("Peer {PeerId} disconnected/failed/closed ({State}). Removing.", peerId, connState);
-                RemovePeerConnection(peerId);
-            }
-        };
-
-        // --- Offer Creation (if initiator) ---
-        if (isInitiator)
-        {
-            _debugLog.LogWebRtc($"Creating offer for {peerId} (is initiator)");
-            try
-            {
-                _debugLog.LogWebRtc($"About to call pc.createOffer() for {peerId}");
-                
-                // Run createOffer with a timeout to prevent hanging
-                var offerTask = Task.Run(() => 
+                _debugLog.LogWebRtc($"Peer connection state changed for {peerId}: {connState}");
+                if (connState == RTCPeerConnectionState.connected)
                 {
-                    _debugLog.LogWebRtc($"Inside Task.Run for createOffer for {peerId}");
-                    var offer = pc.createOffer();
-                    _debugLog.LogWebRtc($"createOffer completed for {peerId}");
-                    return offer;
-                });
-                
-                var offer = offerTask.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-                
-                _debugLog.LogWebRtc($"Offer created for {peerId}, setting local description");
-                Task.Run(async () => await pc.setLocalDescription(offer)).WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
-                _debugLog.LogWebRtc($"Local description set for {peerId}, sending offer");
-                _signalingService.SendOfferAsync(peerId, offer.toJSON()).GetAwaiter().GetResult();
-                _debugLog.LogWebRtc($"Offer sent successfully for {peerId}");
-                _logger.LogInformation("Sent offer to {PeerId}", peerId);
-            }
-            catch (TimeoutException ex)
+                    _debugLog.LogWebRtc($"WebRTC connection established with {peerId}");
+                }
+                else if (connState == RTCPeerConnectionState.failed || connState == RTCPeerConnectionState.closed)
+                {
+                    RemovePeerConnection(peerId);
+                }
+            };
+
+            // --- ICE Candidates ---
+            pc.onicecandidate += (candidate) =>
             {
-                _debugLog.LogWebRtc($"TIMEOUT creating offer for {peerId}: {ex.Message}");
-                _logger.LogError("Timeout creating offer for {PeerId}", peerId);
-                RemovePeerConnection(peerId);
-            }
-            catch (Exception ex)
+                if (candidate != null)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var candidateJson = candidate.toJSON();
+                            _debugLog.LogWebRtc($"Sending ICE candidate to {peerId}: {candidateJson}");
+                            await _signalingService.SendIceCandidateAsync(peerId, candidateJson).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _debugLog.LogWebRtc($"Error sending ICE candidate for {peerId}: {ex.Message}");
+                        }
+                    });
+                }
+            };
+
+            // --- Data Channel ---
+            // Only initiator explicitly creates the data channel.
+            // The other peer will receive it via the ondatachannel event.
+            if (isInitiator)
             {
-                _debugLog.LogWebRtc($"Error creating/sending offer for {peerId}: {ex.Message}");
-                _logger.LogError(ex, "Error creating/sending offer to {PeerId}", peerId);
-                RemovePeerConnection(peerId);
+                var dataChannel = await pc.createDataChannel("position").ConfigureAwait(false);
+                if (dataChannel == null)
+                {
+                    _debugLog.LogWebRtc($"Failed to create data channel for {peerId} as initiator");
+                    RemovePeerConnection(peerId);
+                    return;
+                }
+                ConfigureDataChannel(peerId, dataChannel);
+                _debugLog.LogWebRtc($"Initiator {peerId} created data channel 'position'.");
+            }
+            
+            // All peers listen for incoming data channels.
+            // For the initiator, this would be for channels initiated by the remote peer (if any, not typical for this app's design).
+            // For the non-initiator, this is how they receive the channel created by the initiator.
+            pc.ondatachannel += (dc) =>
+            {
+                _debugLog.LogWebRtc($"Received data channel '{dc.label}' from peer {peerId}. Configuring...");
+                ConfigureDataChannel(peerId, dc);
+            };
+
+            // --- Offer Creation (if initiator) ---
+            if (isInitiator)
+            {
+                try
+                {
+                    var offerTask = Task.Run(() => pc.createOffer());
+                    var offer = await offerTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                    
+                    _debugLog.LogWebRtc($"Created offer for {peerId} with SDP: {offer.sdp}");
+                    
+                    var result = pc.setRemoteDescription(offer);
+                    if (result != SetDescriptionResultEnum.OK)
+                    {
+                        _debugLog.LogWebRtc($"Failed to set remote description for {peerId}: {result}");
+                        RemovePeerConnection(peerId);
+                        return;
+                    }
+                    else
+                    {
+                        // After setting remote description (the offer), the remote track from offerer should be known.
+                        if (pc.AudioRemoteTrack?.Ssrc != 0 && pc.AudioRemoteTrack?.Ssrc != null)
+                        {
+                            state.RemoteAudioSsrc = pc.AudioRemoteTrack.Ssrc; // SSRC of the track being sent by the offerer
+                            _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} with offering peer {peerId}.");
+                        }
+                        else
+                        {
+                            _debugLog.LogWebRtc($"[WARNING] Could not get remote audio SSRC for offering peer {peerId} from AudioRemoteTrack after processing offer (SSRC: {pc.AudioRemoteTrack?.Ssrc}).");
+                        }
+                    }
+
+                    var answerTask = Task.Run(() => pc.createAnswer());
+                    var answer = answerTask.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+                    _debugLog.LogWebRtc($"Created answer for {peerId} with SDP: {answer.sdp}");
+
+                    Task.Run(async () => await pc.setLocalDescription(answer)).WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+                    _signalingService.SendAnswerAsync(peerId, answer.toJSON()).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    _debugLog.LogWebRtc($"Error creating/sending offer for {peerId}: {ex.Message}");
+                    RemovePeerConnection(peerId);
+                }
             }
         }
-        
-        _debugLog.LogWebRtc($"CreatePeerConnection COMPLETED - PeerId: {peerId}");
+        catch (Exception ex)
+        {
+            _debugLog.LogWebRtc($"Error in CreatePeerConnection for {peerId}: {ex.Message}");
+            RemovePeerConnection(peerId);
+        }
     }
 
     private void ConfigureDataChannel(string peerId, RTCDataChannel dc)
     {
-        _debugLog.LogWebRtc($"ConfigureDataChannel START for {peerId}");
-        
-        // Need to get the state object correctly
         if (peerId != null && _peerConnections.TryGetValue(peerId, out var state))
         {
             state.DataChannel = dc; 
-            _debugLog.LogWebRtc($"Data channel assigned to state for {peerId}");
             
             dc.onmessage += (channel, type, data) =>
             {
-                _debugLog.LogWebRtc($"Data channel message received from {peerId}, length: {data?.Length}");
-                // Handle message processing in background task to avoid blocking
                 _ = Task.Run(() =>
                 {
                     try
                     {
-                        if (data == null)
-                        {
-                            _debugLog.LogWebRtc($"Received null data from {peerId}");
-                            return;
-                        }
+                        if (data == null) return;
                         string message = Encoding.UTF8.GetString(data);
-                        _debugLog.LogWebRtc($"Parsed data channel message from {peerId}: {message}");
-
-                        // Deserialize to a concrete class
                         var posData = JsonConvert.DeserializeObject<PositionData>(message);
-                        if (posData == null)
-                        {
-                            _debugLog.LogWebRtc($"Failed to parse position data from {peerId}");
-                            return;
-                        }
+                        if (posData == null) return;
 
-                        // Debug the values before invoking
-                        _debugLog.LogWebRtc($"Before invoke - PeerId: {peerId}, MapId: {posData.MapId}, X: {posData.X}, Y: {posData.Y}, Name: {posData.CharacterName}");
-
-                        // Create tuple for the event
                         var eventData = (peerId, posData.MapId, posData.X, posData.Y, posData.CharacterName);
-                        _debugLog.LogWebRtc($"Event tuple - PeerId: {eventData.Item1}, MapId: {eventData.Item2}, X: {eventData.Item3}, Y: {eventData.Item4}, Name: {eventData.Item5}");
-
                         PositionReceived?.Invoke(this, eventData);
-                        _debugLog.LogWebRtc($"Position data processed for {peerId}");
+                        _debugLog.LogWebRtc($"Received position update from {peerId}: MapId={posData.MapId}, X={posData.X}, Y={posData.Y}");
                     }
                     catch (Exception ex)
                     {
                         _debugLog.LogWebRtc($"Error parsing position data from {peerId}: {ex.Message}");
-                        _logger.LogWarning(ex, "Failed to parse position data from {PeerId}", peerId);
                     }
                 });
             };
             
             dc.onopen += () => {
-                _debugLog.LogWebRtc($"Data channel OPENED for {peerId}");
-                _logger.LogInformation("Data channel to {PeerId} opened.", peerId);
-                
-                // IMPROVEMENT: Immediately send our position data once data channel opens
-                _ = Task.Run(() => {
-                    try {
-                        // Raise an event to notify that this connection needs a position update
-                        // We'll define a new event for this
-                        DataChannelOpened?.Invoke(this, peerId);
-                        _debugLog.LogWebRtc($"DataChannelOpened event fired for {peerId}");
-                    }
-                    catch (Exception ex) {
-                        _debugLog.LogWebRtc($"Error in data channel onopen handler for {peerId}: {ex.Message}");
-                    }
-                });
+                DataChannelOpened?.Invoke(this, peerId);
             };
-            
-            dc.onclose += () => {
-                _debugLog.LogWebRtc($"Data channel CLOSED for {peerId}");
-                _logger.LogInformation("Data channel to {PeerId} closed.", peerId);
-            };
-        }
-        else
-        {
-            _debugLog.LogWebRtc($"ConfigureDataChannel FAILED - could not find state for {peerId}");
         }
     }
 
     private void OnOfferReceived(object? sender, OfferPayload payload)
     {
-        _debugLog.LogWebRtc($"OnOfferReceived START - SenderId: {payload.SenderId}");
-        
-        // Fire and forget to avoid blocking signaling service
+        if (payload.SenderId == null || payload.Offer == null) return;
+
         _ = Task.Run(() =>
         {
             var peerId = payload.SenderId;
-            if (peerId == null || payload.Offer == null)
-            {
-                _debugLog.LogWebRtc("OnOfferReceived EARLY EXIT - null sender ID or offer");
-                _logger.LogWarning("Received offer with null sender ID or null offer payload.");
-                return;
-            }
-
-            _debugLog.LogWebRtc($"Processing offer from {peerId}");
-            _logger.LogInformation("Received offer from {PeerId}", peerId);
-
             RTCPeerConnection pc;
             if (!_peerConnections.TryGetValue(peerId, out var state))
             {
-                _debugLog.LogWebRtc($"No existing connection for {peerId}, creating new one as non-initiator");
-                // Connection doesn't exist, create it as non-initiator
                 CreatePeerConnection(peerId, isInitiator: false).GetAwaiter().GetResult();
-                _debugLog.LogWebRtc($"CreatePeerConnection completed for {peerId}");
-                
                 if (!_peerConnections.TryGetValue(peerId, out state))
                 {
-                    _debugLog.LogWebRtc($"CRITICAL ERROR: Failed to create peer connection for {peerId}");
-                    _logger.LogError("Failed to create peer connection for offer from {PeerId}. Aborting.", peerId);
                     return;
                 }
                 pc = state.PeerConnection;
-                _debugLog.LogWebRtc($"Retrieved peer connection for {peerId} after creation");
             }
             else
             {
-                _debugLog.LogWebRtc($"Using existing connection for {peerId}");
                 pc = state.PeerConnection;
             }
 
             try
             {
-                _debugLog.LogWebRtc($"Deserializing offer SDP for {peerId}");
-                // Use JsonConvert.DeserializeObject to parse SDP string
                 var offerSdp = JsonConvert.DeserializeObject<RTCSessionDescriptionInit>(payload.Offer); 
-                if (offerSdp == null) 
-                {
-                    _debugLog.LogWebRtc($"Failed to deserialize offer SDP for {peerId}");
-                    _logger.LogWarning("Failed to deserialize offer SDP from {PeerId}", peerId);
-                    return;
-                }
+                if (offerSdp == null) return;
                 
-                _debugLog.LogWebRtc($"Setting remote description (offer) for {peerId}");
+                _debugLog.LogWebRtc($"Received offer from {peerId} with SDP: {offerSdp.sdp}");
+                
                 var result = pc.setRemoteDescription(offerSdp);
-                _debugLog.LogWebRtc($"setRemoteDescription result for {peerId}: {result}");
-                
                 if (result != SetDescriptionResultEnum.OK)
                 {
-                    _debugLog.LogWebRtc($"setRemoteDescription FAILED for {peerId}: {result}");
-                    _logger.LogError("Failed to set remote description (offer) for {PeerId}. Result: {Result}", peerId, result);
+                    _debugLog.LogWebRtc($"Failed to set remote description for {peerId}: {result}");
                     RemovePeerConnection(peerId);
                     return;
                 }
-
-                _debugLog.LogWebRtc($"Creating answer for {peerId}");
-                var answerTask = Task.Run(() => 
+                else
                 {
-                    _debugLog.LogWebRtc($"Inside Task.Run for createAnswer for {peerId}");
-                    var answer = pc.createAnswer();
-                    _debugLog.LogWebRtc($"createAnswer completed for {peerId}");
-                    return answer;
-                });
+                    // After setting remote description (the offer), the remote track from offerer should be known.
+                    if (pc.AudioRemoteTrack?.Ssrc != 0 && pc.AudioRemoteTrack?.Ssrc != null)
+                    {
+                        state.RemoteAudioSsrc = pc.AudioRemoteTrack.Ssrc; // SSRC of the track being sent by the offerer
+                        _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} with offering peer {peerId}.");
+                    }
+                    else
+                    {
+                        _debugLog.LogWebRtc($"[WARNING] Could not get remote audio SSRC for offering peer {peerId} from AudioRemoteTrack after processing offer (SSRC: {pc.AudioRemoteTrack?.Ssrc}).");
+                    }
+                }
 
+                var answerTask = Task.Run(() => pc.createAnswer());
                 var answer = answerTask.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+                _debugLog.LogWebRtc($"Created answer for {peerId} with SDP: {answer.sdp}");
 
-                _debugLog.LogWebRtc($"Answer created for {peerId}, setting local description");
                 Task.Run(async () => await pc.setLocalDescription(answer)).WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
-                _debugLog.LogWebRtc($"Local description (answer) set for {peerId}, sending to signaling");
-
                 _signalingService.SendAnswerAsync(peerId, answer.toJSON()).GetAwaiter().GetResult();
-                _debugLog.LogWebRtc($"Answer sent successfully for {peerId}");
-                _logger.LogInformation("Sent answer to {PeerId}", peerId);
             }
             catch (Exception ex)
             {
-                _debugLog.LogWebRtc($"ERROR in OnOfferReceived for {peerId}: {ex.Message}");
-                _debugLog.LogWebRtc($"Stack trace: {ex.StackTrace}");
-                _logger.LogError(ex, "Error handling offer/creating answer for {PeerId}", peerId);
+                _debugLog.LogWebRtc($"Error processing offer from {peerId}: {ex.Message}");
                 RemovePeerConnection(peerId);
             }
         });
-        
-        _debugLog.LogWebRtc($"OnOfferReceived END (task started) - SenderId: {payload.SenderId}");
     }
 
     private void OnAnswerReceived(object? sender, AnswerPayload payload)
     {
-        _debugLog.LogWebRtc($"OnAnswerReceived START - SenderId: {payload.SenderId}");
-        
-        // Fire and forget to avoid blocking signaling service
+        if (payload.SenderId == null || payload.Answer == null) return;
+
         _ = Task.Run(() =>
         {
             var peerId = payload.SenderId;
-            if (peerId == null || payload.Answer == null)
-            {
-                _debugLog.LogWebRtc("OnAnswerReceived EARLY EXIT - null sender ID or answer");
-                _logger.LogWarning("Received answer with null sender ID or null answer payload.");
-                return;
-            }
-
-            _debugLog.LogWebRtc($"Processing answer from {peerId}");
-            _logger.LogInformation("Received answer from {PeerId}", peerId);
-
             if (_peerConnections.TryGetValue(peerId, out var state))
             {
                 try
                 {
-                    _debugLog.LogWebRtc($"Deserializing answer SDP for {peerId}");
-                    // Use JsonConvert.DeserializeObject to parse SDP string
                     var answerSdp = JsonConvert.DeserializeObject<RTCSessionDescriptionInit>(payload.Answer); 
-                    if (answerSdp == null)
-                    {
-                        _debugLog.LogWebRtc($"Failed to deserialize answer SDP for {peerId}");
-                        _logger.LogWarning("Failed to deserialize answer SDP from {PeerId}", peerId);
-                        return;
-                    }
+                    if (answerSdp == null) return;
                     
-                    _debugLog.LogWebRtc($"Setting remote description (answer) for {peerId}");
+                    _debugLog.LogWebRtc($"Received answer from {peerId} with SDP: {answerSdp.sdp}");
+                    
                     var result = state.PeerConnection.setRemoteDescription(answerSdp);
-                    _debugLog.LogWebRtc($"setRemoteDescription (answer) result for {peerId}: {result}");
-                    
                     if (result != SetDescriptionResultEnum.OK)
                     { 
-                        _debugLog.LogWebRtc($"setRemoteDescription (answer) FAILED for {peerId}: {result}");
-                        _logger.LogError("Failed to set remote description (answer) for {PeerId}. Result: {Result}", peerId, result);
+                        _debugLog.LogWebRtc($"Failed to set remote description for {peerId}: {result}");
                         RemovePeerConnection(peerId); 
                     }
                     else
                     {
-                        _debugLog.LogWebRtc($"Successfully set remote description (answer) for {peerId}");
-                        _logger.LogInformation("Successfully set remote description (answer) for {PeerId}", peerId);
+                        // After offerer sets remote description (the answer), the remote track from answerer is known.
+                        // This SSRC is for audio coming FROM the peer who sent the ANSWER.
+                        if (state.PeerConnection.AudioRemoteTrack?.Ssrc != 0 && state.PeerConnection.AudioRemoteTrack?.Ssrc != null)
+                        {
+                            // This assumes the 'state' object here is for the connection with the peer who just answered.
+                            // If we want to store the SSRC of the answering peer's audio track that *we* will receive,
+                            // this is the correct place.
+                            state.RemoteAudioSsrc = state.PeerConnection.AudioRemoteTrack.Ssrc; 
+                            _debugLog.LogWebRtc($"Associated remote audio SSRC {state.RemoteAudioSsrc} with answering peer {peerId}.");
+                        }
+                        else
+                        {
+                             _debugLog.LogWebRtc($"[WARNING] Could not get remote audio SSRC for answering peer {peerId} from AudioRemoteTrack after processing answer (SSRC: {state.PeerConnection.AudioRemoteTrack?.Ssrc}).");
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _debugLog.LogWebRtc($"ERROR in OnAnswerReceived for {peerId}: {ex.Message}");
-                    _logger.LogError(ex, "Error setting remote description (answer) for {PeerId}", peerId);
+                    _debugLog.LogWebRtc($"Error processing answer from {peerId}: {ex.Message}");
                     RemovePeerConnection(peerId);
                 }
             }
-            else
-            {
-                _debugLog.LogWebRtc($"OnAnswerReceived - unknown peer: {peerId}");
-                _logger.LogWarning("Received answer for unknown peer: {PeerId}", peerId);
-            }
         });
-        
-        _debugLog.LogWebRtc($"OnAnswerReceived END (task started) - SenderId: {payload.SenderId}");
     }
 
     private void OnIceCandidateReceived(object? sender, IceCandidatePayload payload)
     {
-        _debugLog.LogWebRtc($"OnIceCandidateReceived START - SenderId: {payload.SenderId}");
-        
-        // Fire and forget to avoid blocking signaling service
-        _ = Task.Run(() =>
+        if (payload.SenderId == null || payload.Candidate == null) return;
+
+        var peerId = payload.SenderId;
+        if (!_peerConnections.TryGetValue(peerId, out var state)) return;
+
+        try
         {
-            var peerId = payload.SenderId;
-            if (peerId == null || payload.Candidate == null)
-            {
-                _debugLog.LogWebRtc("OnIceCandidateReceived EARLY EXIT - null sender ID or candidate");
-                _logger.LogWarning("Received ICE candidate with null sender ID or null candidate payload.");
-                return;
-            }
+            var candidate = JsonConvert.DeserializeObject<RTCIceCandidateInit>(payload.Candidate);
+            if (candidate == null) return;
 
-            _debugLog.LogWebRtc($"Processing ICE candidate from {peerId}");
-
-            if (_peerConnections.TryGetValue(peerId, out var state))
-            {
-                try
-                {
-                    _debugLog.LogWebRtc($"Deserializing ICE candidate for {peerId}");
-                    // Use JsonConvert.DeserializeObject to parse ICE candidate string
-                    var candidateInit = JsonConvert.DeserializeObject<RTCIceCandidateInit>(payload.Candidate); 
-                    if (candidateInit == null)
-                    {
-                        _debugLog.LogWebRtc($"Failed to deserialize ICE candidate for {peerId}");
-                        _logger.LogWarning("Failed to deserialize ICE candidate from {PeerId}", peerId);
-                        return;
-                    }
-                    
-                    _debugLog.LogWebRtc($"Adding ICE candidate for {peerId}: {candidateInit.candidate}");
-                    state.PeerConnection.addIceCandidate(candidateInit);
-                    _debugLog.LogWebRtc($"ICE candidate added successfully for {peerId}");
-                    _logger.LogTrace("Added ICE candidate from {PeerId}", peerId);
-                }
-                catch (Exception ex)
-                {
-                    _debugLog.LogWebRtc($"Error adding ICE candidate for {peerId}: {ex.Message}");
-                    _logger.LogError(ex, "Error adding ICE candidate from {PeerId}", peerId);
-                }
-            }
-            else
-            {
-                _debugLog.LogWebRtc($"OnIceCandidateReceived - unknown peer: {peerId}");
-                _logger.LogWarning("Received ICE candidate for unknown peer: {PeerId}", peerId);
-            }
-        });
-        
-        _debugLog.LogWebRtc($"OnIceCandidateReceived END (task started) - SenderId: {payload.SenderId}");
+            state.PeerConnection.addIceCandidate(candidate);
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogWebRtc($"Error processing ICE candidate from {peerId}: {ex.Message}");
+        }
     }
 
     public void RemovePeerConnection(string peerId)
     {
-        _debugLog.LogWebRtc($"RemovePeerConnection START for {peerId}");
-        
         if (_peerConnections.TryRemove(peerId, out var state))
         {
-            _debugLog.LogWebRtc($"Removing peer connection for {peerId}");
-            _logger.LogInformation("Removing peer connection for {PeerId}", peerId);
             try
             {
                 state.PeerConnection.Close("Removed by application logic");
-                _debugLog.LogWebRtc($"Peer connection closed successfully for {peerId}");
             }
             catch (Exception ex)
             {
                 _debugLog.LogWebRtc($"Error closing peer connection for {peerId}: {ex.Message}");
-                _logger.LogError(ex, "Error closing peer connection for {PeerId}", peerId);
             }
-        }
-        else
-        {
-            _debugLog.LogWebRtc($"RemovePeerConnection - peer {peerId} not found in dictionary");
         }
     }
 
@@ -589,51 +506,130 @@ public class WebRtcService : IDisposable
         {
             try
             {
-                var positionData = new { MapId = mapId, X = x, Y = y, CharacterName = characterName };
+                var positionData = new PositionData { MapId = mapId, X = x, Y = y, CharacterName = characterName };
                 string message = JsonConvert.SerializeObject(positionData);
                 state.DataChannel.send(Encoding.UTF8.GetBytes(message));
-                _logger.LogTrace("Sent position data to {PeerId}", peerId);
+                _debugLog.LogWebRtc($"Sent position update to {peerId}: MapId={mapId}, X={x}, Y={y}");
             }
             catch (Exception ex)
             {
                 _debugLog.LogWebRtc($"Error sending position to {peerId}: {ex.Message}");
-                _logger.LogWarning(ex, "Error sending position data to {PeerId}", peerId);
             }
+        }
+    }
+
+    // Send position update to all connected peers
+    public void SendPositionToAllPeers(int mapId, int x, int y, string characterName)
+    {
+        _debugLog.LogWebRtc($"Sending position update to all peers: MapId={mapId}, X={x}, Y={y}, Name={characterName}");
+        foreach (var peerId in _peerConnections.Keys)
+        {
+            SendPosition(peerId, mapId, x, y, characterName);
         }
     }
 
     public void UpdatePeerVolume(string peerId, float distance)
     {
-         _logger.LogWarning("UpdatePeerVolume is not fully implemented for SIPSorceryMedia yet.");
+         _debugLog.LogWebRtc($"UpdatePeerVolume is not fully implemented for SIPSorceryMedia yet.");
     }
 
     public void CloseAllConnections()
     {
-        _debugLog.LogWebRtc("CloseAllConnections START");
-        _logger.LogInformation("Closing all peer connections.");
         var peerIds = _peerConnections.Keys.ToList();
         foreach (var peerId in peerIds)
         {
             RemovePeerConnection(peerId);
         }
         _peerConnections.Clear();
-        _debugLog.LogWebRtc("CloseAllConnections COMPLETED");
+    }
+
+    private void OnEncodedAudioPacketReadyToSend(object? sender, EncodedAudioPacketEventArgs e)
+    {
+        // if (_audioEndPoint == null) return; // _audioEndPoint is not directly used for sending via track
+
+        try
+        {
+            byte[] audioData = e.Buffer;
+            int samplesInPacket = e.Samples; // Changed from BytesRecorded to Samples
+            
+            // Check if audio data contains non-silence
+            bool hasAudio = false;
+            if (audioData.Length > 0)
+            {
+                // For MuLaw (PCMU), 0xFF is silence, so check if any byte is different
+                hasAudio = audioData.Any(b => b != 0xFF);
+            }
+
+            // _debugLog.LogWebRtc($"OnEncodedAudioPacketReadyToSend: samples={samplesInPacket}, hasAudio={hasAudio}. Attempting to send via MediaStreamTrack.");
+            if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging for the general send event
+            {
+                _debugLog.LogWebRtc($"(Sampled Log) OnEncodedAudioPacketReadyToSend: samples={samplesInPacket}, hasAudio={hasAudio}. Attempting to send to all peers.");
+            }
+
+            foreach (var peerId in _peerConnections.Keys)
+            {
+                if (_peerConnections.TryGetValue(peerId, out var state))
+                {
+                    try
+                    {
+                        // Check if we have a valid peer connection and audio track
+                        if (state.PeerConnection.connectionState != RTCPeerConnectionState.connected)
+                        {
+                            _debugLog.LogWebRtc($"Peer connection not connected for {peerId}, skipping audio send");
+                            continue;
+                        }
+                        if (_audioTrack == null)
+                        {
+                            _debugLog.LogWebRtc($"Audio track is null for peer {peerId}, skipping audio send");
+                            continue;
+                        }
+
+                        // Send the audio data using the MediaStreamTrack.
+                        // Assumes audioData from AudioService is PCMU encoded.
+                        // _rtpTimestamp is the starting timestamp for this packet.
+                        // The duration is implicit by the timestamp increments and the packet content (samplesInPacket).
+                        // _audioTrack.SendAudioFrame(_rtpTimestamp, audioData); // Changed from SendEncodedAudio(ts, duration, data)
+
+                        // Corrected: Use the PeerConnection to send audio. 
+                        // The duration (samplesInPacket) is how much the RTP timestamp will be incremented by the sender for this packet.
+                        state.PeerConnection.SendAudio((uint)samplesInPacket, audioData);
+
+                        if (hasAudio)
+                        {
+                            if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging for sent packets
+                            {
+                                _debugLog.LogWebRtc($"(Sampled Log) Sent audio packet via PeerConnection.SendAudio to {peerId}: duration={samplesInPacket}, size={audioData.Length}, local_ts_approx={_rtpTimestamp}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _debugLog.LogWebRtc($"Error sending audio data to {peerId} via track: {ex.Message}");
+                    }
+                }
+            }
+
+            // Increment RTP timestamp by the number of samples in the packet.
+            // For PCMU (8000Hz), samplesInPacket represents the sample count for this packet.
+            _rtpTimestamp += (uint)samplesInPacket; 
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogWebRtc($"Error in OnEncodedAudioPacketReadyToSend: {ex.Message}");
+        }
     }
 
     public void Dispose()
     {
-        _debugLog.LogWebRtc("WebRtcService.Dispose START");
-        _logger.LogInformation("Disposing WebRtcService.");
         CloseAllConnections();
 
         _signalingService.OfferReceived -= OnOfferReceived;
         _signalingService.AnswerReceived -= OnAnswerReceived;
         _signalingService.IceCandidateReceived -= OnIceCandidateReceived;
+        _audioService.EncodedAudioPacketAvailable -= OnEncodedAudioPacketReadyToSend;
         
-        // Correct method: CloseAudio
         _audioEndPoint?.CloseAudio(); 
 
-        _logger.LogInformation("WebRtcService disposed.");
         GC.SuppressFinalize(this);
     }
 }
@@ -643,5 +639,6 @@ internal class PeerConnectionState
 {
     public RTCPeerConnection PeerConnection { get; set; } = null!;
     public RTCDataChannel? DataChannel { get; set; }
+    public uint RemoteAudioSsrc { get; set; } // To map received RTP packets to a peer
     // Add other relevant state if needed, e.g., audio stream references if managed separately
 } 
