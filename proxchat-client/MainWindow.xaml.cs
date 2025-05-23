@@ -13,7 +13,7 @@ namespace ProxChatClient;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private readonly MainViewModel _viewModel;
+    private MainViewModel? _viewModel;
 
     public MainWindow()
     {
@@ -24,10 +24,9 @@ public partial class MainWindow : Window
         _viewModel = new MainViewModel(config);
         DataContext = _viewModel;
 
-        // Attach handlers using WPF standard events
+        // Attach handlers using WPF standard events (keep for UI editing)
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         PreviewKeyUp += MainWindow_PreviewKeyUp;
-        // Add LostFocus to cancel editing PTT key
         LostKeyboardFocus += MainWindow_LostKeyboardFocus;
     }
 
@@ -63,7 +62,7 @@ public partial class MainWindow : Window
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Handle editing PTT Key
-        if (_viewModel.IsEditingPushToTalk)
+        if (_viewModel?.IsEditingPushToTalk == true)
         {
              // Ignore modifier keys
              if (e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl || 
@@ -81,84 +80,50 @@ public partial class MainWindow : Window
             _viewModel.PushToTalkKey = e.Key; 
             _viewModel.IsEditingPushToTalk = false; // Stop editing mode
             e.Handled = true;
-            // Optional: Give focus back to main window or specific element
             Focus(); 
             return;
         }
-
-        // Handle PTT activation
-        // Check if PTT is enabled and the pressed key matches the assigned PTT key
-        if (_viewModel.IsPushToTalk && e.Key == _viewModel.PushToTalkKey)
+        
+        // Handle editing Mute Self Key
+        if (_viewModel?.IsEditingMuteSelf == true)
         {
-            // Prevent repeated calls if key is held down
-            if (!e.IsRepeat)
-            {
-                _viewModel.SetPushToTalkActive(true);
-            }
-            e.Handled = true; // Prevent further processing of this key event
-        }
-        else if (e.Key == _viewModel.MuteSelfKey)
-        {
-            _viewModel.ToggleSelfMute();
+             // Ignore modifier keys
+             if (e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl || 
+                 e.Key == Key.LeftShift || e.Key == Key.RightShift || 
+                 e.Key == Key.LeftAlt || e.Key == Key.RightAlt || 
+                 e.Key == Key.LWin || e.Key == Key.RWin ||
+                 e.Key == Key.System || e.Key == Key.Capital || 
+                 e.Key == Key.NumLock || e.Key == Key.Scroll ||
+                 e.Key == Key.Snapshot || e.Key == Key.Apps)
+             {
+                 return;
+             }
+            
+            // Assign the key
+            _viewModel.MuteSelfKey = e.Key; 
+            _viewModel.IsEditingMuteSelf = false; // Stop editing mode
+            e.Handled = true;
+            Focus(); 
+            return;
         }
     }
 
     private void MainWindow_PreviewKeyUp(object sender, KeyEventArgs e)
     {
-        // Handle PTT deactivation
-        // Check if PTT is enabled and the released key matches the assigned PTT key
-        if (_viewModel.IsPushToTalk && e.Key == _viewModel.PushToTalkKey)
-        {
-            _viewModel.SetPushToTalkActive(false);
-            e.Handled = true; // Prevent further processing of this key event
-        }
+        // No longer needed for global hotkeys - handled by GlobalHotkeyService
     }
     
     private void MainWindow_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         // If the window loses focus while editing, cancel editing
-        if (_viewModel.IsEditingPushToTalk)
+        if (_viewModel?.IsEditingPushToTalk == true)
         {
             _viewModel.IsEditingPushToTalk = false;
         }
         
-        // Also ensure PTT is deactivated if focus is lost while key was held
-        // (This might be redundant if PreviewKeyUp is reliable, but safer)
-        if (_viewModel.IsPushToTalk) // Check if PTT enabled
+        if (_viewModel?.IsEditingMuteSelf == true)
         {
-            // Check if the PTT key is currently down (using Keyboard.IsKeyDown)
-            if(Keyboard.IsKeyDown(_viewModel.PushToTalkKey))
-            {
-                 _viewModel.SetPushToTalkActive(false); 
-            }
-        }
-    }
-
-    protected override void OnKeyDown(KeyEventArgs e)
-    {
-        base.OnKeyDown(e);
-        if (DataContext is MainViewModel viewModel)
-        {
-            if (viewModel.IsPushToTalk && e.Key == viewModel.PushToTalkKey)
-            {
-                viewModel.SetPushToTalkActive(true);
-            }
-            else if (e.Key == viewModel.MuteSelfKey)
-            {
-                viewModel.ToggleSelfMute();
-            }
-        }
-    }
-
-    protected override void OnKeyUp(KeyEventArgs e)
-    {
-        base.OnKeyUp(e);
-        if (DataContext is MainViewModel viewModel)
-        {
-            if (viewModel.IsPushToTalk && e.Key == viewModel.PushToTalkKey)
-            {
-                viewModel.SetPushToTalkActive(false);
-            }
+            _viewModel.IsEditingMuteSelf = false;
         }
     }
 }

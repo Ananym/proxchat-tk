@@ -24,14 +24,15 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly SignalingService _signalingService;
     private readonly WebRtcService _webRtcService;
     private readonly AudioService _audioService;
+    private readonly GlobalHotkeyService _globalHotkeyService;
     private readonly Config _config;
     private string _statusMessage = "Initializing..."; // Start with initializing status
     private bool _isRunning;
     private float _audioLevel;
     private bool _isPushToTalk;
-    private Key _pushToTalkKey = Key.V;
+    private Key _pushToTalkKey = Key.F12; // Changed to F12 - common gaming hotkey
     private bool _isEditingPushToTalk;
-    private Key _muteSelfKey = Key.M; // Add default key
+    private Key _muteSelfKey = Key.F11; // Changed to F11 - next to F12, easy to remember
     private bool _isEditingMuteSelf; // Add editing state
     private float _volumeScale = 1.0f;
     private float _inputVolumeScale = 1.0f;
@@ -192,6 +193,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 _isPushToTalk = value;
                 _audioService.SetPushToTalk(value); 
+                UpdateGlobalHotkeys(); // Update global hotkey service
                 OnPropertyChanged();
                 if (!value) IsEditingPushToTalk = false; 
                 ((RelayCommand)EditPushToTalkCommand).RaiseCanExecuteChanged();
@@ -207,6 +209,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (_pushToTalkKey != value)
             {
                 _pushToTalkKey = value;
+                UpdateGlobalHotkeys(); // Update global hotkey service
                 OnPropertyChanged();
             }
         }
@@ -354,6 +357,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (_muteSelfKey != value)
             {
                 _muteSelfKey = value;
+                UpdateGlobalHotkeys(); // Update global hotkey service
                 OnPropertyChanged();
             }
         }
@@ -399,6 +403,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _audioService = new AudioService(config.AudioSettings.MaxDistance, config, debugLog);
         _signalingService = new SignalingService(config.WebSocketServer, debugLog);
         _webRtcService = new WebRtcService(_audioService, _signalingService, config.AudioSettings.MaxDistance, debugLog);
+        _globalHotkeyService = new GlobalHotkeyService(debugLog);
         
         // Subscribe to game data read events
         _memoryReader.GameDataRead += OnGameDataRead;
@@ -440,6 +445,16 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                                 ? currentSelection 
                                 : _audioService.InputDevices.FirstOrDefault();
         };
+
+        // Subscribe to global hotkey events
+        _globalHotkeyService.PushToTalkStateChanged += HandlePushToTalkStateChanged;
+        _globalHotkeyService.MuteToggleRequested += HandleMuteToggleRequested;
+        
+        // Initialize hotkey settings
+        UpdateGlobalHotkeys();
+        
+        // Start global hotkeys
+        _globalHotkeyService.StartHook();
 
         RefreshDevicesCommand.Execute(null);
 
@@ -1252,6 +1267,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _webRtcService.Dispose();
         _audioService.PeerTransmissionChanged -= HandlePeerTransmissionChanged; // Unsubscribe from transmission events
         _audioService.Dispose();
+        _globalHotkeyService?.Dispose(); // Dispose global hotkey service
         _memoryReader.Dispose(); // Now safe to dispose since we unsubscribed
         
         // Clear tracking collections
@@ -1359,5 +1375,20 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _debugLog.LogMain($"Peer {peerVm.CharacterName} ({peerId}) transmission status: {isTransmitting}");
             }
         });
+    }
+
+    private void HandlePushToTalkStateChanged(object? sender, bool isActive)
+    {
+        _audioService.SetPushToTalkActive(isActive);
+    }
+
+    private void HandleMuteToggleRequested(object? sender, EventArgs e)
+    {
+        ToggleSelfMute();
+    }
+
+    private void UpdateGlobalHotkeys()
+    {
+        _globalHotkeyService.UpdateHotkeys(_pushToTalkKey, _muteSelfKey, _isPushToTalk);
     }
 } 

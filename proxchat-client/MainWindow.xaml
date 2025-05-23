@@ -113,7 +113,8 @@
                               IsChecked="{Binding IsPushToTalk}"
                               VerticalAlignment="Center"
                               MinWidth="100"
-                              Grid.Column="0"/>
+                              Grid.Column="0"
+                              ToolTip="Enable push-to-talk mode - only transmit while key is held"/>
                     <controls:KeyBindingEditor x:Name="PushToTalkKeyEditor"
                                             Key="{Binding PushToTalkKey, Mode=TwoWay}"
                                             KeyChanged="PushToTalkKeyEditor_KeyChanged"
@@ -121,7 +122,8 @@
                                             HorizontalAlignment="Stretch"
                                             MinWidth="100"
                                             Margin="10,0,0,0"
-                                            Grid.Column="1"/>
+                                            Grid.Column="1"
+                                            ToolTip="Global hotkey for push-to-talk (works system-wide, default: F12)"/>
                 </Grid>
             </Border>
 
@@ -140,14 +142,16 @@
                               Command="{Binding ToggleSelfMuteCommand}"
                               VerticalAlignment="Center"
                               MinWidth="100"
-                              Grid.Column="0"/>
+                              Grid.Column="0"
+                              ToolTip="Toggle microphone mute on/off"/>
                     <controls:KeyBindingEditor x:Name="MuteSelfKeyEditor"
                                             Key="{Binding MuteSelfKey, Mode=TwoWay}"
                                             KeyChanged="MuteSelfKeyEditor_KeyChanged"
                                             HorizontalAlignment="Stretch"
                                             MinWidth="100"
                                             Margin="10,0,0,0"
-                                            Grid.Column="1"/>
+                                            Grid.Column="1"
+                                            ToolTip="Global hotkey to toggle mute (works system-wide, default: F11)"/>
                 </Grid>
             </Border>
         </StackPanel>
