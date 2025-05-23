@@ -17,6 +17,10 @@ public class AudioService : IDisposable
     private string? _selectedInputDeviceName;
     private int _selectedInputDeviceNumber = -1;
     private readonly ConcurrentDictionary<string, PeerPlayback> _peerPlaybackStreams = new();
+    // Track last received audio time for each peer to implement transmission indicators
+    private readonly ConcurrentDictionary<string, DateTime> _lastAudioReceived = new();
+    private readonly TimeSpan _transmissionTimeout = TimeSpan.FromMilliseconds(500); // Consider peer not transmitting after 500ms of silence
+    private Timer? _transmissionCheckTimer;
     // Playback format for incoming audio from peers (what WebRTC will give us, likely PCMU, then decoded)
     // For now, local playback will still use a higher quality format if possible, or what NAudio prefers.
     private readonly WaveFormat _playbackFormat = new WaveFormat(48000, 16, 1); // Output format for speakers
@@ -54,6 +58,7 @@ public class AudioService : IDisposable
     public event EventHandler<EncodedAudioPacketEventArgs>? EncodedAudioPacketAvailable;
     public event EventHandler<float>? AudioLevelChanged;
     public event EventHandler? RefreshedDevices;
+    public event EventHandler<(string PeerId, bool IsTransmitting)>? PeerTransmissionChanged;
 
     public string? SelectedInputDevice
     {
@@ -116,6 +121,9 @@ public class AudioService : IDisposable
         _config = config ?? new Config();
         _debugLog = debugLog ?? new DebugLogService();
         RefreshInputDevices();
+        
+        // Start timer to check for transmission timeouts
+        _transmissionCheckTimer = new Timer(CheckTransmissionTimeouts, null, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100));
     }
 
     public void RefreshInputDevices()
@@ -552,11 +560,32 @@ public class AudioService : IDisposable
             _debugLog.LogAudio($"PlayAudio: Successfully created PeerPlayback for {peerId} on-the-fly.");
         }
 
-
         if (playback == null || playback.WaveOut == null || playback.Buffer == null) 
         { 
             _debugLog.LogAudio($"[WARNING] PlayAudio: Peer {peerId} has null playback components (WaveOut or Buffer is null even after potential creation). Audio data ignored.");
             return; 
+        }
+
+        // Check if this is actual audio data (not silence)
+        bool hasAudio = false;
+        if (data.Length > 0)
+        {
+            // For MuLaw (PCMU), 0xFF is silence, so check if any byte is different
+            hasAudio = data.Any(b => b != 0xFF);
+        }
+
+        // Track transmission status
+        if (hasAudio)
+        {
+            var now = DateTime.UtcNow;
+            bool wasTransmitting = _lastAudioReceived.ContainsKey(peerId);
+            _lastAudioReceived[peerId] = now;
+            
+            // If peer wasn't transmitting before, notify of transmission start
+            if (!wasTransmitting)
+            {
+                PeerTransmissionChanged?.Invoke(this, (peerId, true));
+            }
         }
 
         if (!playback.IsMuted)
@@ -628,6 +657,12 @@ public class AudioService : IDisposable
             playback.WaveOut?.Stop();
             playback.WaveOut?.Dispose();
         }
+        
+        // Clean up transmission tracking
+        _lastAudioReceived.TryRemove(peerId, out _);
+        
+        // Notify that peer stopped transmitting
+        PeerTransmissionChanged?.Invoke(this, (peerId, false));
     }
 
     public void UpdatePeerDistance(string peerId, float distance)
@@ -657,6 +692,12 @@ public class AudioService : IDisposable
         try
         {
             playback.WaveOut.Volume = finalVolume;
+            
+            // Debug logging for volume scaling
+            if (distance.HasValue)
+            {
+                _debugLog.LogAudio($"Volume for peer {playback.PeerId}: distance={distance.Value:F1}, distanceFactor={distanceFactor:F2}, uiVolume={playback.UiVolumeSetting:F2}, finalVolume={finalVolume:F2}");
+            }
         }
         catch (Exception ex)
         {
@@ -754,7 +795,33 @@ public class AudioService : IDisposable
         }
         _peerPlaybackStreams.Clear();
         _microphoneCircularBuffer = null; // Release circular buffer
+        _transmissionCheckTimer?.Dispose(); // Dispose transmission timer
         GC.SuppressFinalize(this);
+    }
+
+    private void CheckTransmissionTimeouts(object? state)
+    {
+        var now = DateTime.UtcNow;
+        var peersToUpdate = new List<string>();
+        
+        // Check for peers that have stopped transmitting
+        foreach (var kvp in _lastAudioReceived.ToList())
+        {
+            var peerId = kvp.Key;
+            var lastReceived = kvp.Value;
+            
+            if ((now - lastReceived) > _transmissionTimeout)
+            {
+                peersToUpdate.Add(peerId);
+                _lastAudioReceived.TryRemove(peerId, out _); // Remove from tracking
+            }
+        }
+        
+        // Notify of transmission status changes
+        foreach (var peerId in peersToUpdate)
+        {
+            PeerTransmissionChanged?.Invoke(this, (peerId, false));
+        }
     }
 }
 

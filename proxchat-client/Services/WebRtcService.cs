@@ -338,11 +338,6 @@ public class WebRtcService : IDisposable
                 DataChannelOpened?.Invoke(this, peerId);
             };
             
-            // Also set up state change handler for better debugging
-            dc.onstatechange += () => {
-                _debugLog.LogWebRtc($"[WEBRTC_DC_TIMING] Data channel state changed for peer {peerId}, DC {dc.label}. New state: {dc.readyState}");
-            };
-            
             // If data channel is already open, fire the event immediately
             if (dc.readyState == RTCDataChannelState.open)
             {

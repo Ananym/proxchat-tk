@@ -15,6 +15,7 @@ namespace ProxChatClient.ViewModels
         private int _mapId;
         private int _x;
         private int _y;
+        private bool _isTransmitting = false; // Track if peer is actively transmitting audio
 
         public string Id
         {
@@ -95,6 +96,19 @@ namespace ProxChatClient.ViewModels
         {
             get => _y;
             set { _y = value; OnPropertyChanged(); }
+        }
+
+        public bool IsTransmitting
+        {
+            get => _isTransmitting;
+            set 
+            { 
+                if (_isTransmitting != value)
+                {
+                    _isTransmitting = value; 
+                    OnPropertyChanged(); 
+                }
+            }
         }
 
         public string DistanceDisplay => $"{Distance:F1}";

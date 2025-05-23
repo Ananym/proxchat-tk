@@ -432,6 +432,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _webRtcService.PositionReceived += HandlePeerPosition;
         _webRtcService.DataChannelOpened += HandleDataChannelOpened;
         _audioService.AudioLevelChanged += (_, level) => AudioLevel = level;
+        _audioService.PeerTransmissionChanged += HandlePeerTransmissionChanged;
         _audioService.RefreshedDevices += (s, e) => { 
             OnPropertyChanged(nameof(InputDevices));
             var currentSelection = SelectedInputDevice;
@@ -1249,6 +1250,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _memoryReader.GameDataRead -= OnGameDataRead; // Unsubscribe from event
         _signalingService.Dispose();
         _webRtcService.Dispose();
+        _audioService.PeerTransmissionChanged -= HandlePeerTransmissionChanged; // Unsubscribe from transmission events
         _audioService.Dispose();
         _memoryReader.Dispose(); // Now safe to dispose since we unsubscribed
         
@@ -1341,5 +1343,21 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             Debug.WriteLine($"Error in force position update: {ex.Message}");
         }
+    }
+
+    private void HandlePeerTransmissionChanged(object? sender, (string PeerId, bool IsTransmitting) transmissionData)
+    {
+        var (peerId, isTransmitting) = transmissionData;
+        
+        // Find the peer in the UI and update their transmission status
+        App.Current.Dispatcher.Invoke(() =>
+        {
+            var peerVm = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
+            if (peerVm != null)
+            {
+                peerVm.IsTransmitting = isTransmitting;
+                _debugLog.LogMain($"Peer {peerVm.CharacterName} ({peerId}) transmission status: {isTransmitting}");
+            }
+        });
     }
 } 

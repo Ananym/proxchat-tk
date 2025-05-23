@@ -10,7 +10,13 @@
   },
   "ProximityRange": 100.0,
   "AudioSettings": {
-    "MaxDistance": 100.0,
-    "VolumeScale": 1.0
+    "MaxDistance": 15.0,
+    "VolumeScale": 1.0,
+    "SelectedInputDevice": null
+  },
+  "DebugSettings": {
+    "EnableConsoleLogging": true,
+    "EnableFileLogging": true,
+    "LogLevel": "Debug"
   }
 }
