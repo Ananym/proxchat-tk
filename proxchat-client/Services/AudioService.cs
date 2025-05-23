@@ -303,6 +303,7 @@ public class AudioService : IDisposable
             var silenceBuffer = new byte[PCMU_PACKET_SIZE_BYTES];
             Array.Fill(silenceBuffer, (byte)0xFF); // MuLaw silence
             EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, silenceBuffer.Length));
+            AudioLevelChanged?.Invoke(this, 0.0f); // Show 0 level when not transmitting due to mute/PTT
             return;
         }
 
@@ -347,9 +348,11 @@ public class AudioService : IDisposable
                 float normalizedSample = Math.Abs(sample) / 32768f;
                 maxSample = Math.Max(maxSample, normalizedSample);
             }
+
+            // Always show the actual detected audio level (color will indicate if broadcasting)
             AudioLevelChanged?.Invoke(this, maxSample);
 
-            // If audio level is below threshold, send silence
+            // If audio level is below threshold, send silence but still show the level
             if (maxSample < _minBroadcastThreshold)
             {
                 var silencePacket = new byte[PCMU_PACKET_SIZE_BYTES];
@@ -406,114 +409,142 @@ public class AudioService : IDisposable
             var silenceBuffer = new byte[PCMU_PACKET_SIZE_BYTES];
             Array.Fill(silenceBuffer, (byte)0xFF); // MuLaw silence
             EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, silenceBuffer.Length));
+            AudioLevelChanged?.Invoke(this, 0.0f); // Show 0 level when not transmitting due to mute/PTT
             return;
         }
 
         try
         {
+            byte[] finalAudioData = new byte[PCMU_PACKET_SIZE_BYTES];
+            float calculatedLevel = 0.0f;
+            bool hasValidAudio = false;
+
             // Favoring _audioFileStream which might be MuLaw or PCM from WaveFileReader
             if (_audioFileStream != null)
             {
-                byte[] bufferToEncodeOrSend = new byte[0];
-                int bytesToReadFromSource;
-
                 if (_audioFileStream.WaveFormat.Encoding == WaveFormatEncoding.MuLaw && 
                     _audioFileStream.WaveFormat.SampleRate == PCMU_SAMPLE_RATE &&
                     _audioFileStream.WaveFormat.Channels == PCMU_CHANNELS)
                 {
-                    // Already in target MuLaw format
-                    bytesToReadFromSource = PCMU_PACKET_SIZE_BYTES;
-                    bufferToEncodeOrSend = new byte[bytesToReadFromSource];
-                    int bytesRead = _audioFileStream.Read(bufferToEncodeOrSend, 0, bytesToReadFromSource);
+                    // Already in target MuLaw format - read directly
+                    int bytesRead = _audioFileStream.Read(finalAudioData, 0, PCMU_PACKET_SIZE_BYTES);
 
                     if (bytesRead == 0) // End of file
                     {
                         _audioFileStream.Position = 0; // Restart
-                        bytesRead = _audioFileStream.Read(bufferToEncodeOrSend, 0, bytesToReadFromSource);
+                        bytesRead = _audioFileStream.Read(finalAudioData, 0, PCMU_PACKET_SIZE_BYTES);
                     }
-                    if (bytesRead < bytesToReadFromSource && bytesRead > 0) // Partial read at EOF
-                    {
-                        var temp = new byte[bytesToReadFromSource];
-                        Array.Fill(temp, (byte)0xFF); // MuLaw silence
-                        Buffer.BlockCopy(bufferToEncodeOrSend, 0, temp, 0, bytesRead);
-                        bufferToEncodeOrSend = temp;
-                    }
-                    else if (bytesRead == 0) // Still zero after trying to restart (e.g. empty file)
-                    {
-                         Array.Fill(bufferToEncodeOrSend, (byte)0xFF); // Send silence
-                    }
-                    // bufferToEncodeOrSend is now a full PCMU packet (or silence)
-                }
-                else // PCM or other format needing conversion
-                {
-                    // Calculate how much source PCM data we need to read to make one PCMU_PACKET_SIZE_BYTES packet
-                    // Example: if source is 48kHz 16bit, and target is 8kHz 8bit MuLaw (160 bytes)
-                    // We need 160 samples of 8kHz. Resample ratio 48/8 = 6.
-                    // So, 160 * 6 = 960 samples of 48kHz. Bytes = 960 * 2 (16bit) = 1920 bytes from 48kHz source.
-                    int sourceBytesPerSample = _audioFileStream.WaveFormat.BitsPerSample / 8;
                     
-                    // This calculation is a bit simplified, ResampleRatio accounts for sample rate and channel differences.
-                    // A more robust way is to read a fixed small amount of source, convert, and buffer the PCMU.
-                    // For now, let's assume we read enough to make one packet.
-                    // This needs a proper buffering and conversion pipeline like the microphone.
-                    // For this iteration, if not MuLaw, it's complex. Let's log a TODO.
-                     _debugLog.LogAudio($"[TODO] AudioFilePlaybackCallback: PCM/Other file format to PCMU conversion not fully implemented with robust buffering. File format: {_audioFileStream.WaveFormat}");
-                    
-                    // Fallback: send silence if file is not already in target MuLaw format for simplicity in this step
-                    bufferToEncodeOrSend = new byte[PCMU_PACKET_SIZE_BYTES];
-                    Array.Fill(bufferToEncodeOrSend, (byte)0xFF); // MuLaw silence
-                }
+                    if (bytesRead > 0)
+                    {
+                        if (bytesRead < PCMU_PACKET_SIZE_BYTES)
+                        {
+                            // Pad with silence
+                            Array.Fill(finalAudioData, (byte)0xFF, bytesRead, PCMU_PACKET_SIZE_BYTES - bytesRead);
+                        }
 
-                // For MuLaw, skip level calculation for now, or make it simpler
-                AudioLevelChanged?.Invoke(this, 1.0f); // Max level for visualization of file audio
-                EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(bufferToEncodeOrSend, bufferToEncodeOrSend.Length));
-                if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
+                        // Calculate level from MuLaw data by converting to PCM for analysis
+                        calculatedLevel = CalculateLevelFromMuLaw(finalAudioData, bytesRead);
+                        hasValidAudio = true;
+                    }
+                    else
+                    {
+                        // Empty file - fill with silence
+                        Array.Fill(finalAudioData, (byte)0xFF);
+                    }
+                }
+                else if (_audioFileStream.WaveFormat.Encoding == WaveFormatEncoding.Pcm)
                 {
-                    _debugLog.LogAudio($"(Sampled Log) File: Sent {bufferToEncodeOrSend.Length} bytes of audio data from file source (format: {_audioFileStream.WaveFormat.Encoding}).");
+                    // PCM format - need to convert to MuLaw
+                    // Calculate how much source data we need for one packet
+                    var sourceFormat = _audioFileStream.WaveFormat;
+                    int sourceBytesNeeded = (PCMU_PACKET_SIZE_BYTES * sourceFormat.SampleRate / PCMU_SAMPLE_RATE) * 
+                                          (sourceFormat.BitsPerSample / 8) * sourceFormat.Channels;
+                    
+                    byte[] sourcePcmData = new byte[sourceBytesNeeded];
+                    int bytesRead = _audioFileStream.Read(sourcePcmData, 0, sourceBytesNeeded);
+                    
+                    if (bytesRead == 0) // End of file
+                    {
+                        _audioFileStream.Position = 0; // Restart
+                        bytesRead = _audioFileStream.Read(sourcePcmData, 0, sourceBytesNeeded);
+                    }
+                    
+                    if (bytesRead > 0)
+                    {
+                        // Convert PCM to MuLaw and calculate level
+                        (finalAudioData, calculatedLevel) = ConvertPcmToMuLawAndCalculateLevel(sourcePcmData, bytesRead, sourceFormat);
+                        hasValidAudio = true;
+                    }
+                    else
+                    {
+                        // Empty file - fill with silence  
+                        Array.Fill(finalAudioData, (byte)0xFF);
+                    }
+                }
+                else
+                {
+                    // Unsupported format - send silence
+                    _debugLog.LogAudio($"[WARNING] Unsupported audio file format: {_audioFileStream.WaveFormat.Encoding}. Sending silence.");
+                    Array.Fill(finalAudioData, (byte)0xFF);
                 }
             }
-            // This rawMuLawStream path is now less likely due to StartAudioFileCapture changes.
-            else if (_rawMuLawStream != null) 
+            else if (_rawMuLawStream != null)
             {
-                // read raw MuLaw bytes
-                byte[] buffer = new byte[PCMU_PACKET_SIZE_BYTES];
-                int bytesRead = _rawMuLawStream.Read(buffer, 0, buffer.Length);
+                // Raw MuLaw stream
+                int bytesRead = _rawMuLawStream.Read(finalAudioData, 0, PCMU_PACKET_SIZE_BYTES);
                 
                 if (bytesRead == 0)
                 {
-                    // end of file, restart
-                    _rawMuLawStream.Position = 0; // Assuming raw file, no header
-                    bytesRead = _rawMuLawStream.Read(buffer, 0, buffer.Length);
+                    // End of file, restart
+                    _rawMuLawStream.Position = 0;
+                    bytesRead = _rawMuLawStream.Read(finalAudioData, 0, PCMU_PACKET_SIZE_BYTES);
                 }
 
-                if (bytesRead < PCMU_PACKET_SIZE_BYTES && bytesRead > 0) //EOF, partial read
-                {
-                    var tempBuffer = new byte[PCMU_PACKET_SIZE_BYTES];
-                    Array.Fill(tempBuffer, (byte)0xFF); // MuLaw silence
-                    Buffer.BlockCopy(buffer, 0, tempBuffer, 0, bytesRead);
-                    buffer = tempBuffer;
-                    bytesRead = buffer.Length;
-                }
-                else if (bytesRead == 0) // Still zero after restart
-                {
-                     Array.Fill(buffer, (byte)0xFF); // Send silence
-                     bytesRead = buffer.Length;
-                }
-                
                 if (bytesRead > 0)
                 {
-                    AudioLevelChanged?.Invoke(this, 1.0f); // Max for visualization
-                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(buffer, bytesRead));
-                    if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
+                    if (bytesRead < PCMU_PACKET_SIZE_BYTES)
                     {
-                        _debugLog.LogAudio($"(Sampled Log) File (raw): Sent {bytesRead} bytes of MuLaw audio data from raw file.");
+                        // Pad with silence
+                        Array.Fill(finalAudioData, (byte)0xFF, bytesRead, PCMU_PACKET_SIZE_BYTES - bytesRead);
                     }
+                    
+                    calculatedLevel = CalculateLevelFromMuLaw(finalAudioData, bytesRead);
+                    hasValidAudio = true;
                 }
+                else
+                {
+                    // Empty file - fill with silence
+                    Array.Fill(finalAudioData, (byte)0xFF);
+                }
+            }
+
+            // Always show the actual detected audio level (color will indicate if broadcasting)
+            AudioLevelChanged?.Invoke(this, hasValidAudio ? calculatedLevel : 0.0f);
+
+            // Apply broadcast threshold - if level is below threshold, send silence but still show the level
+            if (hasValidAudio && calculatedLevel < _minBroadcastThreshold)
+            {
+                Array.Fill(finalAudioData, (byte)0xFF); // Send silence
+            }
+
+            // Send the audio data (either real audio if above threshold, or silence if below)
+            EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(finalAudioData, finalAudioData.Length));
+            
+            if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
+            {
+                bool isBroadcasting = hasValidAudio && calculatedLevel >= _minBroadcastThreshold;
+                _debugLog.LogAudio($"(Sampled Log) File: Sent {finalAudioData.Length} bytes, level: {calculatedLevel:F3}, broadcasting: {isBroadcasting}");
             }
         }
         catch (Exception ex)
         {
-            _debugLog.LogAudio($"Error in audio playback: {ex.Message}");
+            _debugLog.LogAudio($"Error in audio file playback: {ex.Message}");
+            // Send silence on error
+            var silenceBuffer = new byte[PCMU_PACKET_SIZE_BYTES];
+            Array.Fill(silenceBuffer, (byte)0xFF);
+            EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, silenceBuffer.Length));
+            AudioLevelChanged?.Invoke(this, 0.0f);
         }
     }
 
@@ -867,6 +898,95 @@ public class AudioService : IDisposable
         {
             PeerTransmissionChanged?.Invoke(this, (peerId, false));
         }
+    }
+
+    // helper methods for audio level calculation
+    private float CalculateLevelFromMuLaw(byte[] muLawData, int validBytes)
+    {
+        try
+        {
+            // convert MuLaw to PCM for level analysis
+            using var ms = new MemoryStream(muLawData, 0, validBytes);
+            using var muLawReader = new MuLawWaveStream(ms);
+            using var pcmStream = new WaveFormatConversionStream(_pcm8KhzFormat, muLawReader);
+            
+            byte[] pcmBuffer = new byte[validBytes * 2]; // PCM 16-bit will be roughly twice the size
+            int bytesDecoded = pcmStream.Read(pcmBuffer, 0, pcmBuffer.Length);
+            
+            if (bytesDecoded > 0)
+            {
+                return CalculateLevelFromPcm(pcmBuffer, bytesDecoded);
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error calculating level from MuLaw: {ex.Message}");
+        }
+        
+        return 0.0f;
+    }
+
+    private float CalculateLevelFromPcm(byte[] pcmData, int validBytes)
+    {
+        float maxSample = 0;
+        
+        // analyze 16-bit PCM samples
+        for (int i = 0; i < validBytes - 1; i += 2)
+        {
+            short sample = BitConverter.ToInt16(pcmData, i);
+            float normalizedSample = Math.Abs(sample) / 32768f;
+            maxSample = Math.Max(maxSample, normalizedSample);
+        }
+        
+        return maxSample;
+    }
+
+    private (byte[] muLawData, float level) ConvertPcmToMuLawAndCalculateLevel(byte[] sourcePcmData, int validBytes, WaveFormat sourceFormat)
+    {
+        try
+        {
+            // first calculate level from source PCM
+            float sourceLevel = CalculateLevelFromPcm(sourcePcmData, validBytes);
+            
+            // convert source PCM to target format (8kHz, 16-bit, mono) then to MuLaw
+            using var rawSourceStream = new RawSourceWaveStream(sourcePcmData, 0, validBytes, sourceFormat);
+            using var pcm8kHzStream = new WaveFormatConversionStream(_pcm8KhzFormat, rawSourceStream);
+            
+            // read converted PCM data
+            byte[] pcm8kHzBuffer = new byte[PCMU_PACKET_SIZE_BYTES * 2]; // enough space for 16-bit PCM
+            int pcmBytesRead = pcm8kHzStream.Read(pcm8kHzBuffer, 0, pcm8kHzBuffer.Length);
+            
+            if (pcmBytesRead > 0)
+            {
+                // convert to MuLaw
+                var muLawFormat = WaveFormat.CreateMuLawFormat(PCMU_SAMPLE_RATE, PCMU_CHANNELS);
+                using var rawPcmStream = new RawSourceWaveStream(pcm8kHzBuffer, 0, pcmBytesRead, _pcm8KhzFormat);
+                using var muLawStream = new WaveFormatConversionStream(muLawFormat, rawPcmStream);
+                
+                byte[] muLawData = new byte[PCMU_PACKET_SIZE_BYTES];
+                int muLawBytesRead = muLawStream.Read(muLawData, 0, muLawData.Length);
+                
+                if (muLawBytesRead > 0)
+                {
+                    // pad with silence if needed
+                    if (muLawBytesRead < PCMU_PACKET_SIZE_BYTES)
+                    {
+                        Array.Fill(muLawData, (byte)0xFF, muLawBytesRead, PCMU_PACKET_SIZE_BYTES - muLawBytesRead);
+                    }
+                    
+                    return (muLawData, sourceLevel);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error converting PCM to MuLaw: {ex.Message}");
+        }
+        
+        // fallback: return silence
+        var silenceData = new byte[PCMU_PACKET_SIZE_BYTES];
+        Array.Fill(silenceData, (byte)0xFF);
+        return (silenceData, 0.0f);
     }
 }
 
