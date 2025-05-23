@@ -19,7 +19,7 @@ public class AudioService : IDisposable
     private readonly ConcurrentDictionary<string, PeerPlayback> _peerPlaybackStreams = new();
     // Track last received audio time for each peer to implement transmission indicators
     private readonly ConcurrentDictionary<string, DateTime> _lastAudioReceived = new();
-    private readonly TimeSpan _transmissionTimeout = TimeSpan.FromMilliseconds(500); // Consider peer not transmitting after 500ms of silence
+    private readonly TimeSpan _transmissionTimeout = TimeSpan.FromMilliseconds(300); // Consider peer not transmitting after 300ms of silence
     private Timer? _transmissionCheckTimer;
     // Playback format for incoming audio from peers (what WebRTC will give us, likely PCMU, then decoded)
     // For now, local playback will still use a higher quality format if possible, or what NAudio prefers.
@@ -570,8 +570,53 @@ public class AudioService : IDisposable
         bool hasAudio = false;
         if (data.Length > 0)
         {
-            // For MuLaw (PCMU), 0xFF is silence, so check if any byte is different
-            hasAudio = data.Any(b => b != 0xFF);
+            // First check: MuLaw silence detection (0xFF is silence)
+            bool hasMuLawAudio = data.Any(b => b != 0xFF);
+            
+            if (hasMuLawAudio)
+            {
+                // Second check: Analyze decoded PCM audio levels to detect actual meaningful audio
+                try
+                {
+                    using var ms = new MemoryStream(data, 0, length);
+                    using var muLawReader = new MuLawWaveStream(ms);
+                    using var pcmStream = new WaveFormatConversionStream(_pcm8KhzFormat, muLawReader);
+                    
+                    byte[] pcmBuffer = new byte[length * 2]; // PCM 16-bit will be twice the size of MuLaw 8-bit
+                    int bytesDecoded = pcmStream.Read(pcmBuffer, 0, pcmBuffer.Length);
+                    
+                    if (bytesDecoded > 0)
+                    {
+                        // Analyze PCM audio levels - convert bytes to 16-bit samples and check amplitude
+                        float maxAmplitude = 0;
+                        for (int i = 0; i < bytesDecoded; i += 2)
+                        {
+                            if (i + 1 < bytesDecoded)
+                            {
+                                short sample = BitConverter.ToInt16(pcmBuffer, i);
+                                float amplitude = Math.Abs(sample) / 32768f; // Normalize to 0-1
+                                maxAmplitude = Math.Max(maxAmplitude, amplitude);
+                            }
+                        }
+                        
+                        // Consider it "real audio" if the amplitude is above a threshold
+                        // This helps filter out very quiet background noise or near-silence
+                        const float AUDIO_THRESHOLD = 0.02f; // 2% of max amplitude - adjust as needed
+                        hasAudio = maxAmplitude > AUDIO_THRESHOLD;
+                        
+                        if (_random.NextDouble() < 0.1) // 10% chance to log for debugging
+                        {
+                            _debugLog.LogAudio($"Audio analysis for peer {peerId}: maxAmplitude={maxAmplitude:F3}, threshold={AUDIO_THRESHOLD:F3}, hasAudio={hasAudio}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _debugLog.LogAudio($"Error analyzing audio amplitude for peer {peerId}: {ex.Message}");
+                    // Fallback to simple MuLaw detection if PCM analysis fails
+                    hasAudio = hasMuLawAudio;
+                }
+            }
         }
 
         // Track transmission status

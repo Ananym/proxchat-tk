@@ -33,7 +33,7 @@ public class MemoryAddressConfig
 
 public class AudioConfig
 {
-    public float MaxDistance { get; set; } = 15.0f;
+    public float MaxDistance { get; set; } = 10.0f;
     public float VolumeScale { get; set; } = 1.0f;
     public string? SelectedInputDevice { get; set; }
 } 

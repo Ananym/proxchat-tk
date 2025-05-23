@@ -10,7 +10,7 @@
   },
   "ProximityRange": 100.0,
   "AudioSettings": {
-    "MaxDistance": 15.0,
+    "MaxDistance": 10.0,
     "VolumeScale": 1.0,
     "SelectedInputDevice": null
   },
