@@ -985,15 +985,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     // Handler for the new DataChannelOpened event
-    private void HandleDataChannelOpened(object? sender, string peerId)
+    private async void HandleDataChannelOpened(object? sender, string peerId)
     {
-        _debugLog.LogMain($"Peer {peerId}: data channel opened");
+        _debugLog.LogMain($"[UI_TIMING] HandleDataChannelOpened START for peer {peerId}.");
         // We will not add the peer to the ConnectedPeers collection here.
         // HandlePeerPosition will be responsible for adding the peer when the first position update is received.
         // This simplifies logic and avoids race conditions for adding.
         // However, we should send our current position to the peer whose data channel just opened,
         // so they become aware of us and can send their position back.
-        SendPositionUpdateForPeer(peerId);
+        _debugLog.LogMain($"[UI_TIMING] HandleDataChannelOpened for {peerId}: About to dispatch SendPositionUpdateForPeer.");
+        await Task.Run(() => SendPositionUpdateForPeer(peerId)); // Run on a background thread
+        _debugLog.LogMain($"[UI_TIMING] HandleDataChannelOpened for {peerId}: Dispatched SendPositionUpdateForPeer. Method returning.");
     }
     
     // New method to send position update to a specific peer
@@ -1022,8 +1024,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 name = gameData.CharacterName;
             }
 
-            _debugLog.LogMain($"sending pos to {peerId}: map={mapId} pos=({x},{y}) name={name}");
+            _debugLog.LogMain($"[UI_TIMING] SendPositionUpdateForPeer START for peer {peerId}. My pos: Map={mapId}, X={x}, Y={y}, Name={name}.");
+            _debugLog.LogMain($"[UI_TIMING] SendPositionUpdateForPeer for {peerId}: About to call _webRtcService.SendPosition.");
             _webRtcService.SendPosition(peerId, mapId, x, y, name);
+            _debugLog.LogMain($"[UI_TIMING] SendPositionUpdateForPeer for {peerId}: Called _webRtcService.SendPosition. Method returning.");
         }
         catch (Exception ex)
         {
@@ -1097,6 +1101,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private async void HandlePeerPosition(object? sender, (string PeerId, int MapId, int X, int Y, string CharacterName) positionData)
     {
         // This method can be called from background threads (e.g., via WebRtcService events)
+        _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition START for peer {positionData.PeerId}. Data: Map={positionData.MapId}, X={positionData.X}, Y={positionData.Y}, Name='{positionData.CharacterName}'.");
 
         PeerViewModel? existingPeerVm = null;
         bool needsToAdd = false;
@@ -1114,6 +1119,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         if (needsToAdd)
         {
             _debugLog.LogMain($"Peer {peerIdentifier} (Name from data: {positionData.CharacterName}) not in UI collection. Preparing to create and add.");
+            _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {peerIdentifier}: Needs to add. About to Dispatcher.InvokeAsync.");
             
             // Create the new ViewModel outside the Dispatcher, but add it inside.
             var newPeerVmInstance = new PeerViewModel(); // Use default constructor
@@ -1131,16 +1137,18 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     var peerAlreadyAdded = ConnectedPeers.FirstOrDefault(p => p.Id == newPeerVmInstance.Id);
                     if (peerAlreadyAdded == null)
                     {
+                        _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}): ADDING to ConnectedPeers collection.");
                         ConnectedPeers.Add(newPeerVmInstance);
+                        _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}): ADDED to ConnectedPeers collection.");
                         _debugLog.LogMain($"New peer {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}) added to UI collection.");
                         // Apply persisted settings *after* adding and *after* CharacterName might be set
                         // The UpdatePeerViewModelProperties below will handle the initial name setting if needed.
-                        // ApplyPersistedSettings(newPeerVmInstance); // This should be called after char name is confirmed
                         UpdatePeerViewModelProperties(newPeerVmInstance, positionData); // Set initial properties
                         RecalculateDistanceAndVolume(newPeerVmInstance); 
                     }
                     else
                     {
+                        _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {peerAlreadyAdded.Id}: CONCURRENTLY ADDED. Updating its properties instead.");
                         _debugLog.LogMain($"Peer {peerAlreadyAdded.Id} was concurrently added. Updating its properties instead of adding new.");
                         UpdatePeerViewModelProperties(peerAlreadyAdded, positionData);
                         RecalculateDistanceAndVolume(peerAlreadyAdded);
@@ -1151,8 +1159,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         else if (existingPeerVm != null) // Peer already exists, update its properties
         {
             _debugLog.LogMain($"Peer {existingPeerVm.Id} ({existingPeerVm.CharacterName}) exists in UI collection. Dispatching update.");
+            _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {existingPeerVm.Id} ({existingPeerVm.CharacterName}): Exists. About to Dispatcher.InvokeAsync to update properties.");
             await App.Current.Dispatcher.InvokeAsync(() =>
             {
+                _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {existingPeerVm.Id} ({existingPeerVm.CharacterName}): UPDATING existing peer in ConnectedPeers.");
                 UpdatePeerViewModelProperties(existingPeerVm, positionData);
                 RecalculateDistanceAndVolume(existingPeerVm);
             });

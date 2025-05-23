@@ -249,11 +249,12 @@ public class WebRtcService : IDisposable
                 ConfigureDataChannel(peerId, dataChannel); // Configure it right away for the creator
                 _debugLog.LogWebRtc($"VM Initiator (for peer {peerId}) created data channel 'position'.");
             }
+            // Note: Non-initiators do NOT create a data channel - they receive it via ondatachannel event below
             
             // All peers listen for incoming data channels.
             pc.ondatachannel += (dc) =>
             {
-                _debugLog.LogWebRtc($"Received data channel '{dc.label}' from peer {peerId}. Configuring...");
+                _debugLog.LogWebRtc($"[WEBRTC_DC_TIMING] Received data channel '{dc.label}' from peer {peerId}. ReadyState: {dc.readyState}. Configuring...");
                 ConfigureDataChannel(peerId, dc); // Configure it when received
             };
 
@@ -302,6 +303,7 @@ public class WebRtcService : IDisposable
         if (peerId != null && _peerConnections.TryGetValue(peerId, out var state))
         {
             state.DataChannel = dc; 
+            _debugLog.LogWebRtc($"[WEBRTC_DC_TIMING] ConfigureDataChannel for peer {peerId} with DC {dc.label}. Current readyState: {dc.readyState}");
             
             dc.onmessage += (channel, type, data) =>
             {
@@ -330,9 +332,23 @@ public class WebRtcService : IDisposable
                 });
             };
             
+            _debugLog.LogWebRtc($"[WEBRTC_DC_TIMING] ConfigureDataChannel for peer {peerId} with DC {dc.label}. Setting up onopen handler.");
             dc.onopen += () => {
+                _debugLog.LogWebRtc($"[WEBRTC_DC_TIMING] Data channel ONOPEN fired for peer {peerId}, DC {dc.label}. ReadyState: {dc.readyState}");
                 DataChannelOpened?.Invoke(this, peerId);
             };
+            
+            // Also set up state change handler for better debugging
+            dc.onstatechange += () => {
+                _debugLog.LogWebRtc($"[WEBRTC_DC_TIMING] Data channel state changed for peer {peerId}, DC {dc.label}. New state: {dc.readyState}");
+            };
+            
+            // If data channel is already open, fire the event immediately
+            if (dc.readyState == RTCDataChannelState.open)
+            {
+                _debugLog.LogWebRtc($"[WEBRTC_DC_TIMING] Data channel for peer {peerId} is already open, firing event immediately");
+                DataChannelOpened?.Invoke(this, peerId);
+            }
         }
     }
 
@@ -346,10 +362,11 @@ public class WebRtcService : IDisposable
             RTCPeerConnection pc;
             PeerConnectionState? state; // Declare here
 
+            // Check if peer connection exists, if not create it
             if (!_peerConnections.TryGetValue(peerId, out state) || state == null)
             {
-                // if peer connection doesn't exist, or state is null, create it.
-                // This client is the non-initiator in the MainViewModel sense for this new connection.
+                // This client is the non-initiator, so create peer connection without data channel
+                // The data channel will come via ondatachannel event when we set remote description
                 await CreatePeerConnection(peerId, isInitiator: false).ConfigureAwait(false);
                 if (!_peerConnections.TryGetValue(peerId, out state) || state == null)
                 {
@@ -370,6 +387,7 @@ public class WebRtcService : IDisposable
                 
                 _debugLog.LogWebRtc($"Received offer from {peerId} with SDP: {offerSdp.sdp}");
                 
+                // Setting remote description will trigger ondatachannel event if data channel is in SDP
                 var result = pc.setRemoteDescription(offerSdp); // Synchronous, returns SetDescriptionResultEnum
                 if (result != SetDescriptionResultEnum.OK)
                 {
@@ -471,8 +489,20 @@ public class WebRtcService : IDisposable
 
     public void SendPosition(string peerId, int mapId, int x, int y, string characterName)
     {
-        if (_peerConnections.TryGetValue(peerId, out var state) && state.DataChannel?.readyState == RTCDataChannelState.open)
+        if (_peerConnections.TryGetValue(peerId, out var state))
         {
+            if (state.DataChannel == null)
+            {
+                _debugLog.LogWebRtc($"Cannot send position to {peerId}: DataChannel is null");
+                return;
+            }
+            
+            if (state.DataChannel.readyState != RTCDataChannelState.open)
+            {
+                _debugLog.LogWebRtc($"Cannot send position to {peerId}: DataChannel state is {state.DataChannel.readyState}, expected open");
+                return;
+            }
+            
             try
             {
                 var positionData = new PositionData { MapId = mapId, X = x, Y = y, CharacterName = characterName };
@@ -486,6 +516,10 @@ public class WebRtcService : IDisposable
             {
                 _debugLog.LogWebRtc($"Error sending position to {peerId}: {ex.Message}");
             }
+        }
+        else
+        {
+            _debugLog.LogWebRtc($"Cannot send position to {peerId}: peer connection not found");
         }
     }
 
