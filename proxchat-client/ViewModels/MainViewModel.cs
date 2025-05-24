@@ -30,13 +30,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _isRunning;
     private float _audioLevel;
     private bool _isPushToTalk;
-    private Key _pushToTalkKey = Key.F12; // Changed to F12 - common gaming hotkey
+    private HotkeyDefinition _pushToTalkHotkey = new(Key.F12); // Changed from Key to HotkeyDefinition
     private bool _isEditingPushToTalk;
-    private Key _muteSelfKey = Key.F11; // Changed to F11 - next to F12, easy to remember
+    private HotkeyDefinition _muteSelfHotkey = new(Key.F11); // Changed from Key to HotkeyDefinition
     private bool _isEditingMuteSelf; // Add editing state
-    private float _volumeScale = 1.0f;
-    private float _inputVolumeScale = 1.0f;
-    private float _minBroadcastThreshold = 0.0f;
+    private float _volumeScale; // Will be initialized from config
+    private float _inputVolumeScale; // Will be initialized from config
+    private float _minBroadcastThreshold; // Will be initialized from config
     private Timer? _positionSendTimer; // Renamed from _positionTimer for clarity
     private Timer? _uiUpdateTimer; // New timer for UI updates
     private bool _isMemoryReaderInitialized = false; // Flag for memory reader status
@@ -47,7 +47,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _debugX = 110; // Changed to int
     private int _debugY = 206; // Changed to int
     private int _debugMapId = 0;
-    private bool _useWavInput = false;
+    private bool _useWavInput; // Debug-only, not persisted
 
     // Fields to track last sent position for conditional updates
     private int? _lastSentMapId;
@@ -169,6 +169,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             _inputVolumeScale = Math.Clamp(value, 0.0f, 2.0f);
             _audioService.SetInputVolumeScale(_inputVolumeScale);
+            _config.AudioSettings.InputVolumeScale = _inputVolumeScale; // Save to config
+            SaveConfig(); // Persist to file
             OnPropertyChanged();
         }
     }
@@ -178,8 +180,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         get => _volumeScale;
         set
         {
-            _volumeScale = Math.Clamp(value, 0.0f, 2.0f);
+            _volumeScale = Math.Clamp(value, 0.0f, 1.0f); // Updated range to 0-1
             _audioService.SetOverallVolumeScale(_volumeScale);
+            _config.AudioSettings.VolumeScale = _volumeScale; // Save to config
+            SaveConfig(); // Persist to file
             OnPropertyChanged();
         }
     }
@@ -194,6 +198,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _isPushToTalk = value;
                 _audioService.SetPushToTalk(value); 
                 UpdateGlobalHotkeys(); // Update global hotkey service
+                _config.AudioSettings.IsPushToTalk = _isPushToTalk; // Save to config
+                SaveConfig(); // Persist to file
                 OnPropertyChanged();
                 if (!value) IsEditingPushToTalk = false; 
                 ((RelayCommand)EditPushToTalkCommand).RaiseCanExecuteChanged();
@@ -201,15 +207,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public Key PushToTalkKey
+    public HotkeyDefinition PushToTalkHotkey
     {
-        get => _pushToTalkKey;
+        get => _pushToTalkHotkey;
         set
         {
-            if (_pushToTalkKey != value)
+            if (_pushToTalkHotkey != value)
             {
-                _pushToTalkKey = value;
+                _pushToTalkHotkey = value;
                 UpdateGlobalHotkeys(); // Update global hotkey service
+                _config.AudioSettings.PushToTalkKey = value.ToString(); // Save to config
+                SaveConfig(); // Persist to file
                 OnPropertyChanged();
             }
         }
@@ -330,6 +338,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _debugLog.LogMain($"audio input changed: wav={value}");
                 _useWavInput = value;
                 _audioService.UseAudioFileInput = value;
+                // UseWavInput is debug-only, not persisted to config
                 OnPropertyChanged();
             }
         }
@@ -344,20 +353,24 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 _minBroadcastThreshold = value;
                 _audioService.MinBroadcastThreshold = value;
+                _config.AudioSettings.MinBroadcastThreshold = _minBroadcastThreshold; // Save to config
+                SaveConfig(); // Persist to file
                 OnPropertyChanged();
             }
         }
     }
 
-    public Key MuteSelfKey
+    public HotkeyDefinition MuteSelfHotkey
     {
-        get => _muteSelfKey;
+        get => _muteSelfHotkey;
         set
         {
-            if (_muteSelfKey != value)
+            if (_muteSelfHotkey != value)
             {
-                _muteSelfKey = value;
+                _muteSelfHotkey = value;
                 UpdateGlobalHotkeys(); // Update global hotkey service
+                _config.AudioSettings.MuteSelfKey = value.ToString(); // Save to config
+                SaveConfig(); // Persist to file
                 OnPropertyChanged();
             }
         }
@@ -380,6 +393,35 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public MainViewModel(Config config)
     {
         _config = config;
+        
+        // Initialize audio settings from config
+        _volumeScale = _config.AudioSettings.VolumeScale;
+        _inputVolumeScale = _config.AudioSettings.InputVolumeScale;
+        _minBroadcastThreshold = _config.AudioSettings.MinBroadcastThreshold;
+        _isPushToTalk = _config.AudioSettings.IsPushToTalk;
+        
+        // Load hotkeys from config with fallbacks
+        _pushToTalkHotkey = HotkeyDefinition.FromStringWithDefault(_config.AudioSettings.PushToTalkKey, Key.F12);
+        _muteSelfHotkey = HotkeyDefinition.FromStringWithDefault(_config.AudioSettings.MuteSelfKey, Key.F11);
+        
+        // Notify UI that hotkeys have been loaded
+        OnPropertyChanged(nameof(PushToTalkHotkey));
+        OnPropertyChanged(nameof(MuteSelfHotkey));
+        
+        // Ensure UI controls are updated after construction completes
+        Task.Run(async () =>
+        {
+            await Task.Delay(100); // Small delay to ensure UI is ready
+            App.Current.Dispatcher.Invoke(() =>
+            {
+                OnPropertyChanged(nameof(PushToTalkHotkey));
+                OnPropertyChanged(nameof(MuteSelfHotkey));
+            });
+        });
+        
+        // UseWavInput is debug-only, not persisted
+        _useWavInput = false;
+        
         // Define path for peer settings, e.g., in user's app data or alongside main config
         _peerSettingsFilePath = Path.Combine(AppContext.BaseDirectory, "PeerSettings.json");
         LoadPeerSettings(); // Load settings on startup
@@ -400,9 +442,12 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         
         var debugLog = new DebugLogService(logFileName);
         _debugLog = debugLog;
-        _audioService = new AudioService(config.AudioSettings.MaxDistance, config, debugLog);
+        
+        // Use hardcoded max distance for consistency across all users
+        const float HARDCODED_MAX_DISTANCE = 10.0f;
+        _audioService = new AudioService(HARDCODED_MAX_DISTANCE, config, debugLog);
         _signalingService = new SignalingService(config.WebSocketServer, debugLog);
-        _webRtcService = new WebRtcService(_audioService, _signalingService, config.AudioSettings.MaxDistance, debugLog);
+        _webRtcService = new WebRtcService(_audioService, _signalingService, HARDCODED_MAX_DISTANCE, debugLog);
         _globalHotkeyService = new GlobalHotkeyService(debugLog);
         
         // Subscribe to game data read events
@@ -503,6 +548,20 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"Error saving peer settings: {ex.Message}");
+        }
+    }
+
+    private void SaveConfig()
+    {
+        try
+        {
+            string json = JsonSerializer.Serialize(_config, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText("config.json", json);
+            Debug.WriteLine("Saved config to config.json");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error saving config: {ex.Message}");
         }
     }
 
@@ -1389,6 +1448,6 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void UpdateGlobalHotkeys()
     {
-        _globalHotkeyService.UpdateHotkeys(_pushToTalkKey, _muteSelfKey, _isPushToTalk);
+        _globalHotkeyService.UpdateHotkeys(_pushToTalkHotkey, _muteSelfHotkey, _isPushToTalk);
     }
 } 

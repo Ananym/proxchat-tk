@@ -43,69 +43,26 @@ public partial class MainWindow : Window
         }
     }
 
-    private void PushToTalkKeyEditor_KeyChanged(object sender, RoutedEventArgs e)
+    private void PushToTalkKeyEditor_HotkeyChanged(object sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel viewModel && sender is KeyBindingEditor editor)
         {
-            viewModel.PushToTalkKey = editor.Key;
+            viewModel.PushToTalkHotkey = editor.Hotkey;
         }
     }
 
-    private void MuteSelfKeyEditor_KeyChanged(object sender, RoutedEventArgs e)
+    private void MuteSelfKeyEditor_HotkeyChanged(object sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel viewModel && sender is KeyBindingEditor editor)
         {
-            viewModel.MuteSelfKey = editor.Key;
+            viewModel.MuteSelfHotkey = editor.Hotkey;
         }
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Handle editing PTT Key
-        if (_viewModel?.IsEditingPushToTalk == true)
-        {
-             // Ignore modifier keys
-             if (e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl || 
-                 e.Key == Key.LeftShift || e.Key == Key.RightShift || 
-                 e.Key == Key.LeftAlt || e.Key == Key.RightAlt || 
-                 e.Key == Key.LWin || e.Key == Key.RWin ||
-                 e.Key == Key.System || e.Key == Key.Capital || 
-                 e.Key == Key.NumLock || e.Key == Key.Scroll ||
-                 e.Key == Key.Snapshot || e.Key == Key.Apps)
-             {
-                 return;
-             }
-            
-            // Assign the key
-            _viewModel.PushToTalkKey = e.Key; 
-            _viewModel.IsEditingPushToTalk = false; // Stop editing mode
-            e.Handled = true;
-            Focus(); 
-            return;
-        }
-        
-        // Handle editing Mute Self Key
-        if (_viewModel?.IsEditingMuteSelf == true)
-        {
-             // Ignore modifier keys
-             if (e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl || 
-                 e.Key == Key.LeftShift || e.Key == Key.RightShift || 
-                 e.Key == Key.LeftAlt || e.Key == Key.RightAlt || 
-                 e.Key == Key.LWin || e.Key == Key.RWin ||
-                 e.Key == Key.System || e.Key == Key.Capital || 
-                 e.Key == Key.NumLock || e.Key == Key.Scroll ||
-                 e.Key == Key.Snapshot || e.Key == Key.Apps)
-             {
-                 return;
-             }
-            
-            // Assign the key
-            _viewModel.MuteSelfKey = e.Key; 
-            _viewModel.IsEditingMuteSelf = false; // Stop editing mode
-            e.Handled = true;
-            Focus(); 
-            return;
-        }
+        // Key capture is now handled by the KeyBindingEditor controls
+        // This method can be kept for any future window-level key handling
     }
 
     private void MainWindow_PreviewKeyUp(object sender, KeyEventArgs e)
@@ -115,15 +72,6 @@ public partial class MainWindow : Window
     
     private void MainWindow_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        // If the window loses focus while editing, cancel editing
-        if (_viewModel?.IsEditingPushToTalk == true)
-        {
-            _viewModel.IsEditingPushToTalk = false;
-        }
-        
-        if (_viewModel?.IsEditingMuteSelf == true)
-        {
-            _viewModel.IsEditingMuteSelf = false;
-        }
+        // Focus loss is handled by individual KeyBindingEditor controls
     }
 }

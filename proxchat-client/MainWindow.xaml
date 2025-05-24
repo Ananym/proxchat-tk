@@ -58,14 +58,18 @@
             <Label Content="Microphone Input Volume:"/>
             <Slider Value="{Binding InputVolumeScale}"
                     Minimum="0" Maximum="2"
-                    TickFrequency="0.1"
+                    TickFrequency="0.05"
+                    SmallChange="0.05"
+                    LargeChange="0.1"
                     IsSnapToTickEnabled="True"
                     ToolTip="Controls the volume of your microphone input when transmitting"/>
             
             <Label Content="Overall Output Volume:" Margin="0,10,0,0"/>
             <Slider Value="{Binding VolumeScale}"
-                    Minimum="0" Maximum="2"
-                    TickFrequency="0.1"
+                    Minimum="0" Maximum="1"
+                    TickFrequency="0.05"
+                    SmallChange="0.05"
+                    LargeChange="0.1"
                     IsSnapToTickEnabled="True"
                     ToolTip="Controls the overall volume of all received audio"/>
 
@@ -73,7 +77,9 @@
             <Label Content="Minimum Broadcast Threshold:" Margin="0,10,0,0"/>
             <Slider Value="{Binding MinBroadcastThreshold}"
                     Minimum="0" Maximum="1"
-                    TickFrequency="0.1"
+                    TickFrequency="0.01"
+                    SmallChange="0.01"
+                    LargeChange="0.05"
                     IsSnapToTickEnabled="True"
                     ToolTip="Audio below this level will not be broadcast"/>
 
@@ -116,14 +122,14 @@
                               Grid.Column="0"
                               ToolTip="Enable push-to-talk mode - only transmit while key is held"/>
                     <controls:KeyBindingEditor x:Name="PushToTalkKeyEditor"
-                                            Key="{Binding PushToTalkKey, Mode=TwoWay}"
-                                            KeyChanged="PushToTalkKeyEditor_KeyChanged"
+                                            Hotkey="{Binding PushToTalkHotkey, Mode=TwoWay}"
+                                            HotkeyChanged="PushToTalkKeyEditor_HotkeyChanged"
                                             IsEnabled="{Binding IsPushToTalk}"
                                             HorizontalAlignment="Stretch"
                                             MinWidth="100"
                                             Margin="10,0,0,0"
                                             Grid.Column="1"
-                                            ToolTip="Global hotkey for push-to-talk (works system-wide, default: F12)"/>
+                                            ToolTip="Global hotkey for push-to-talk (works system-wide, supports modifiers like Ctrl+F12)"/>
                 </Grid>
             </Border>
 
@@ -145,13 +151,13 @@
                               Grid.Column="0"
                               ToolTip="Toggle microphone mute on/off"/>
                     <controls:KeyBindingEditor x:Name="MuteSelfKeyEditor"
-                                            Key="{Binding MuteSelfKey, Mode=TwoWay}"
-                                            KeyChanged="MuteSelfKeyEditor_KeyChanged"
+                                            Hotkey="{Binding MuteSelfHotkey, Mode=TwoWay}"
+                                            HotkeyChanged="MuteSelfKeyEditor_HotkeyChanged"
                                             HorizontalAlignment="Stretch"
                                             MinWidth="100"
                                             Margin="10,0,0,0"
                                             Grid.Column="1"
-                                            ToolTip="Global hotkey to toggle mute (works system-wide, default: F11)"/>
+                                            ToolTip="Global hotkey to toggle mute (works system-wide, supports modifiers like Ctrl+F11)"/>
                 </Grid>
             </Border>
         </StackPanel>

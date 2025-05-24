@@ -10,10 +10,15 @@
   },
   "ProximityRange": 100.0,
   "AudioSettings": {
-    "MaxDistance": 10.0,
-    "VolumeScale": 1.0,
-    "SelectedInputDevice": null
+    "VolumeScale": 0.5,
+    "InputVolumeScale": 1.0,
+    "MinBroadcastThreshold": 0.0,
+    "SelectedInputDevice": null,
+    "IsPushToTalk": false,
+    "PushToTalkKey": "Ctrl+F12",
+    "MuteSelfKey": "Alt+F11"
   },
+  "PeerSettings": {},
   "DebugSettings": {
     "EnableConsoleLogging": true,
     "EnableFileLogging": true,

@@ -1,17 +1,18 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using ProxChatClient.Services; // For HotkeyDefinition
 
 namespace ProxChatClient.Controls;
 
 public partial class KeyBindingEditor : UserControl
 {
-    public static readonly DependencyProperty KeyProperty =
+    public static readonly DependencyProperty HotkeyProperty =
         DependencyProperty.Register(
-            nameof(Key),
-            typeof(Key),
+            nameof(Hotkey),
+            typeof(HotkeyDefinition),
             typeof(KeyBindingEditor),
-            new PropertyMetadata(Key.None, OnKeyChanged));
+            new PropertyMetadata(new HotkeyDefinition(), OnHotkeyChanged));
 
     public static readonly DependencyProperty IsEditingProperty =
         DependencyProperty.Register(
@@ -20,10 +21,23 @@ public partial class KeyBindingEditor : UserControl
             typeof(KeyBindingEditor),
             new PropertyMetadata(false));
 
+    // Backwards compatibility property - maps to Hotkey.Key
     public Key Key
     {
-        get => (Key)GetValue(KeyProperty);
-        set => SetValue(KeyProperty, value);
+        get => Hotkey?.Key ?? Key.None;
+        set 
+        { 
+            if (Hotkey == null)
+                Hotkey = new HotkeyDefinition(value);
+            else
+                Hotkey = new HotkeyDefinition(value, Hotkey.Ctrl, Hotkey.Shift, Hotkey.Alt, Hotkey.Win);
+        }
+    }
+
+    public HotkeyDefinition Hotkey
+    {
+        get => (HotkeyDefinition)GetValue(HotkeyProperty);
+        set => SetValue(HotkeyProperty, value ?? new HotkeyDefinition());
     }
 
     public bool IsEditing
@@ -33,6 +47,7 @@ public partial class KeyBindingEditor : UserControl
     }
 
     public event RoutedEventHandler? KeyChanged;
+    public event RoutedEventHandler? HotkeyChanged;
 
     public KeyBindingEditor()
     {
@@ -40,7 +55,7 @@ public partial class KeyBindingEditor : UserControl
         UpdateKeyDisplay();
     }
 
-    private static void OnKeyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static void OnHotkeyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is KeyBindingEditor editor)
         {
@@ -50,26 +65,13 @@ public partial class KeyBindingEditor : UserControl
 
     private void UpdateKeyDisplay()
     {
-        if (Key == Key.None)
+        if (Hotkey?.Key == Key.None || Hotkey == null)
         {
             KeyDisplay.Text = "None";
         }
         else
         {
-            var modifiers = Keyboard.Modifiers;
-            var keyText = new System.Text.StringBuilder();
-
-            if (modifiers.HasFlag(ModifierKeys.Control))
-                keyText.Append("Ctrl + ");
-            if (modifiers.HasFlag(ModifierKeys.Alt))
-                keyText.Append("Alt + ");
-            if (modifiers.HasFlag(ModifierKeys.Shift))
-                keyText.Append("Shift + ");
-            if (modifiers.HasFlag(ModifierKeys.Windows))
-                keyText.Append("Win + ");
-
-            keyText.Append(Key.ToString());
-            KeyDisplay.Text = keyText.ToString();
+            KeyDisplay.Text = Hotkey.ToString();
         }
     }
 
@@ -87,7 +89,7 @@ public partial class KeyBindingEditor : UserControl
             // Start editing
             IsEditing = true;
             EditButton.Content = "Cancel";
-            KeyDisplay.Text = "Press any key...";
+            KeyDisplay.Text = "Press key combination...";
             Focus();
         }
     }
@@ -104,17 +106,45 @@ public partial class KeyBindingEditor : UserControl
                 e.Key == Key.LeftShift || e.Key == Key.RightShift ||
                 e.Key == Key.LWin || e.Key == Key.RWin)
             {
+                // Just update display to show current modifiers being held
+                var currentModifiers = Keyboard.Modifiers;
+                var previewText = new System.Text.StringBuilder();
+                
+                if (currentModifiers.HasFlag(ModifierKeys.Control))
+                    previewText.Append("Ctrl + ");
+                if (currentModifiers.HasFlag(ModifierKeys.Shift))
+                    previewText.Append("Shift + ");
+                if (currentModifiers.HasFlag(ModifierKeys.Alt))
+                    previewText.Append("Alt + ");
+                if (currentModifiers.HasFlag(ModifierKeys.Windows))
+                    previewText.Append("Win + ");
+                
+                previewText.Append("?");
+                KeyDisplay.Text = previewText.ToString();
                 return;
             }
 
-            // Update the key
-            Key = e.Key;
+            // Capture the current modifier state
+            var modifiers = Keyboard.Modifiers;
+            
+            // Create new hotkey definition
+            var newHotkey = new HotkeyDefinition(
+                e.Key,
+                modifiers.HasFlag(ModifierKeys.Control),
+                modifiers.HasFlag(ModifierKeys.Shift),
+                modifiers.HasFlag(ModifierKeys.Alt),
+                modifiers.HasFlag(ModifierKeys.Windows)
+            );
+
+            // Update the hotkey
+            Hotkey = newHotkey;
             IsEditing = false;
             EditButton.Content = "Edit";
             UpdateKeyDisplay();
 
-            // Raise the KeyChanged event
+            // Raise both events for backwards compatibility
             KeyChanged?.Invoke(this, new RoutedEventArgs());
+            HotkeyChanged?.Invoke(this, new RoutedEventArgs());
         }
         else
         {

@@ -33,7 +33,11 @@ public class MemoryAddressConfig
 
 public class AudioConfig
 {
-    public float MaxDistance { get; set; } = 10.0f;
-    public float VolumeScale { get; set; } = 1.0f;
+    public float VolumeScale { get; set; } = 0.5f;
+    public float InputVolumeScale { get; set; } = 1.0f;
+    public float MinBroadcastThreshold { get; set; } = 0.0f;
     public string? SelectedInputDevice { get; set; }
+    public bool IsPushToTalk { get; set; } = false;
+    public string PushToTalkKey { get; set; } = "F12";
+    public string MuteSelfKey { get; set; } = "F11";
 } 
