@@ -75,3 +75,5 @@ dist/
 
 # allow .def files in memoryreadingdll/
 !memoryreadingdll/*.def
+
+*.log
