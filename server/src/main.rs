@@ -1,7 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
@@ -25,6 +25,7 @@ struct ClientPosition {
 #[serde(tag = "type", content = "data")]
 enum ClientMessage {
     UpdatePosition(ClientPosition),
+    RequestPeerRefresh, // request fresh nearby peer list (e.g., after failed connection)
     // Add messages for sending signaling data
     SendOffer { target_id: String, offer: String }, // Assuming offer is JSON string
     SendAnswer { target_id: String, answer: String }, // Assuming answer is JSON string
@@ -47,6 +48,8 @@ enum ServerMessage {
 struct ServerState {
     // Separate position data from connection channels
     positions: HashMap<String, ClientPosition>,
+    // cache last sent nearby lists to avoid redundant updates
+    last_nearby_lists: HashMap<String, HashSet<String>>,
     // Map connection_id (server-generated UUID) to a channel sender for sending messages *to* that client
     connections: HashMap<String, mpsc::Sender<ServerMessage>>,
     // Map client_id (client-provided GUID) to connection_id (server-generated UUID)
@@ -60,42 +63,89 @@ impl ServerState {
     fn new() -> Self {
         ServerState {
             positions: HashMap::new(),
+            last_nearby_lists: HashMap::new(),
             connections: HashMap::new(),
             client_id_to_connection_id: HashMap::new(),
             last_update_time: HashMap::new(),
         }
     }
 
-    // Calculate which clients are within proximity range using the positions map
+    // highly optimized proximity calculation for small client counts
     fn get_nearby_clients(&self, pos: &ClientPosition, range: f32) -> Vec<String> {
-        // Use the 'positions' map now
+        const RANGE_SQUARED: f32 = 20.0 * 20.0; // pre-calculate to avoid sqrt
+        
         self.positions
             .iter()
-            .filter(|(id, other_pos)| {
-                // Skip self
-                if *id == &pos.client_id {
-                    return false;
-                }
+            .filter_map(|(id, other_pos)| {
+                // early exit conditions (cheap comparisons first)
+                if id == &pos.client_id { return None; }
+                if other_pos.map_id != pos.map_id { return None; }
+                if other_pos.channel != pos.channel { return None; }
                 
-                // Must be on same channel
-                if other_pos.channel != pos.channel {
-                    return false;
-                }
-                
-                // Must be on same map (compare integers now)
-                if other_pos.map_id != pos.map_id {
-                    return false;
-                }
-
-                // Calculate distance
+                // squared distance check (no sqrt needed)
                 let dx = other_pos.x - pos.x;
                 let dy = other_pos.y - pos.y;
-                let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                let distance_squared = (dx * dx + dy * dy) as f32;
                 
-                distance <= range
+                if distance_squared <= RANGE_SQUARED {
+                    Some(id.clone())
+                } else {
+                    None
+                }
             })
-            .map(|(id, _)| id.clone())
             .collect()
+    }
+
+    // efficient update that only notifies for NEW peer introductions
+    fn update_position_and_notify(&mut self, new_pos: ClientPosition, sender_tx: &mpsc::Sender<ServerMessage>) -> Vec<(String, mpsc::Sender<ServerMessage>)> {
+        let client_id = new_pos.client_id.clone();
+        let mut notifications = Vec::new();
+        
+        // update position and timestamp
+        self.positions.insert(client_id.clone(), new_pos.clone());
+        self.last_update_time.insert(client_id.clone(), Instant::now());
+        
+        // get new nearby list for this client
+        let nearby_for_sender = self.get_nearby_clients(&new_pos, 20.0);
+        let nearby_set: HashSet<String> = nearby_for_sender.iter().cloned().collect();
+        
+        // only notify for NEW peers (not for position changes of existing peers)
+        let previous_nearby = self.last_nearby_lists.get(&client_id).cloned().unwrap_or_default();
+        let new_peers: HashSet<String> = nearby_set.difference(&previous_nearby).cloned().collect();
+        let lost_peers: HashSet<String> = previous_nearby.difference(&nearby_set).cloned().collect();
+        
+        // only send update if there are actually new or lost peers
+        if !new_peers.is_empty() || !lost_peers.is_empty() {
+            self.last_nearby_lists.insert(client_id.clone(), nearby_set.clone());
+            notifications.push((client_id.clone(), sender_tx.clone()));
+            
+            info!("Client {} peer changes: +{} new peers, -{} lost peers", 
+                  client_id, new_peers.len(), lost_peers.len());
+        }
+        
+        // notify existing peers that this client is now nearby (introduction in reverse)
+        for new_peer_id in new_peers {
+            if let Some(peer_pos) = self.positions.get(&new_peer_id) {
+                // check if this moving client is NEW to the peer's nearby list
+                let peer_nearby = self.get_nearby_clients(peer_pos, 20.0);
+                let peer_nearby_set: HashSet<String> = peer_nearby.iter().cloned().collect();
+                let peer_previous_nearby = self.last_nearby_lists.get(&new_peer_id).cloned().unwrap_or_default();
+                
+                // if the moving client is new to this peer's view, notify the peer
+                if !peer_previous_nearby.contains(&client_id) && peer_nearby_set.contains(&client_id) {
+                    self.last_nearby_lists.insert(new_peer_id.clone(), peer_nearby_set);
+                    
+                    if let Some(peer_conn_id) = self.client_id_to_connection_id.get(&new_peer_id) {
+                        if let Some(peer_tx) = self.connections.get(peer_conn_id) {
+                            notifications.push((new_peer_id.clone(), peer_tx.clone()));
+                            info!("Notifying peer {} of new client {}", new_peer_id, client_id);
+                        }
+                    }
+                }
+            }
+        }
+        
+        notifications
     }
 }
 
@@ -199,8 +249,6 @@ async fn handle_connection(
                 match client_msg {
                     ClientMessage::UpdatePosition(pos) => {
                         let client_id_from_payload = pos.client_id.clone();
-                        // Clone the position data early for use in calculations
-                        let current_pos = pos.clone();
 
                         let mut state_write = state.write().await;
 
@@ -235,59 +283,45 @@ async fn handle_connection(
                             continue;
                         }
 
-                        // Update position using the (now verified) client_id_from_payload
-                        state_write.positions.insert(client_id_from_payload.clone(), pos); // Use original 'pos' here
-                        // Record the update time for timeout tracking
-                        state_write.last_update_time.insert(client_id_from_payload.clone(), Instant::now());
+                        // Use optimized update that only sends notifications when nearby lists change
+                        let notifications = state_write.update_position_and_notify(pos, &tx);
+                        
+                        // Release write lock before sending notifications to reduce contention
+                        drop(state_write);
 
-                        // --- Start: Notify sender and nearby peers ---
-                        // Hold the write lock for the entire notification process to ensure consistency
-
-                        // 1. Calculate nearby peers for the sender based on the *new* position
-                        let nearby_for_sender = state_write.get_nearby_clients(&current_pos, 20.0);
-
-                        // 2. Send the list back to the original sender
-                        let response_for_sender = ServerMessage::NearbyPeers(nearby_for_sender.clone()); // Clone for sending
-                        if let Err(e) = tx.send(response_for_sender).await {
-                            // Log error if sending back to self fails (channel might be closing)
-                            error!("Failed to send NearbyPeers back to sender {}: {}", client_id_from_payload, e);
-                        }
-
-                        // 3. Iterate through the list of peers now nearby the sender
-                        for nearby_peer_id in nearby_for_sender {
-                            // Don't recalculate/resend for the original sender
-                            if nearby_peer_id == client_id_from_payload {
-                                continue;
-                            }
-
-                            // Find the position and connection details for this nearby peer
-                            if let Some(nearby_peer_pos) = state_write.positions.get(&nearby_peer_id) {
-                                if let Some(nearby_peer_conn_id) = state_write.client_id_to_connection_id.get(&nearby_peer_id) {
-                                    if let Some(nearby_peer_tx) = state_write.connections.get(nearby_peer_conn_id) {
-                                        // Calculate *their* nearby list based on the current state
-                                        let nearby_for_peer = state_write.get_nearby_clients(nearby_peer_pos, 20.0);
-                                        let response_for_peer = ServerMessage::NearbyPeers(nearby_for_peer);
-
-                                        // Send the updated list to the nearby peer
-                                        if let Err(e) = nearby_peer_tx.send(response_for_peer).await {
-                                            // Log if sending to a peer fails (they might have disconnected)
-                                            warn!("Failed to send NearbyPeers update to {}: {}", nearby_peer_id, e);
-                                        }
-                                    } else {
-                                        // Should not happen if client_id_to_connection_id is consistent
-                                        warn!("State inconsistency: Connection sender not found for connection ID {} (Client ID: {})", nearby_peer_conn_id, nearby_peer_id);
-                                    }
-                                } else {
-                                    // Should not happen if positions map is consistent with client_id map
-                                    warn!("State inconsistency: Connection ID not found for client ID {}", nearby_peer_id);
+                        // Send notifications outside of write lock
+                        for (notify_client_id, notify_tx) in notifications {
+                            // get fresh nearby list for this client
+                            let state_read = state.read().await;
+                            if let Some(client_pos) = state_read.positions.get(&notify_client_id) {
+                                let nearby_list = state_read.get_nearby_clients(client_pos, 20.0);
+                                drop(state_read);
+                                
+                                let response = ServerMessage::NearbyPeers(nearby_list);
+                                if let Err(e) = notify_tx.send(response).await {
+                                    warn!("Failed to send NearbyPeers update to {}: {}", notify_client_id, e);
                                 }
-                            } else {
-                                // Should not happen if get_nearby_clients is correct
-                                warn!("State inconsistency: Position not found for nearby client ID {}", nearby_peer_id);
                             }
                         }
-                        // Write lock is released here when state_write goes out of scope
-                        // --- End: Notify sender and nearby peers ---
+                    }
+                    ClientMessage::RequestPeerRefresh => {
+                        if let Some(sender_id) = registered_client_id.as_ref() {
+                            // send current nearby peers regardless of cache
+                            let state_read = state.read().await;
+                            if let Some(client_pos) = state_read.positions.get(sender_id) {
+                                let nearby_list = state_read.get_nearby_clients(client_pos, 20.0);
+                                drop(state_read);
+                                
+                                let response = ServerMessage::NearbyPeers(nearby_list);
+                                if let Err(e) = tx.send(response).await {
+                                    warn!("Failed to send peer refresh to {}: {}", sender_id, e);
+                                } else {
+                                    info!("Sent peer refresh to {} (explicit request)", sender_id);
+                                }
+                            }
+                        } else {
+                            error!("RequestPeerRefresh received before client ID registration (connection {}).", connection_id);
+                        }
                     }
                     ClientMessage::SendOffer { target_id, offer } => {
                         if let Some(sender_id) = registered_client_id.as_ref() {
@@ -389,7 +423,9 @@ async fn handle_connection(
         // If a client_id was registered for this connection, remove its mappings
         if let Some(disconnected_client_id) = disconnected_client_id_option {
             state_write.positions.remove(&disconnected_client_id);
-            state_write.last_update_time.remove(&disconnected_client_id); // Remove timestamp
+            state_write.last_update_time.remove(&disconnected_client_id);
+            state_write.last_nearby_lists.remove(&disconnected_client_id); // clean up nearby cache
+            
             // Only remove the client_id -> connection_id mapping if it still points to *this* connection
             // (Avoid removing it if the client reconnected quickly and the mapping was updated)
             if state_write.client_id_to_connection_id.get(&disconnected_client_id) == Some(&disconnected_connection_id) {
@@ -427,8 +463,11 @@ async fn check_timeouts(state: Arc<RwLock<ServerState>>) {
             let mut state_write = state.write().await; // Write lock to remove
             for client_id in timed_out_clients {
                 warn!("Disconnecting timed out client: {}", client_id);
+                
                 state_write.positions.remove(&client_id);
                 state_write.last_update_time.remove(&client_id);
+                state_write.last_nearby_lists.remove(&client_id); // clean up nearby cache
+                
                 if let Some(connection_id) = state_write.client_id_to_connection_id.remove(&client_id) {
                     // Removing the connection sender will cause the send_task for that client to terminate,
                     // eventually leading to the handle_connection task finishing and cleaning up fully.

@@ -208,7 +208,25 @@ public class WebRtcService : IDisposable
                 {
                     _debugLog.LogWebRtc($"WebRTC connection established with {peerId}");
                 }
-                else if (connState == RTCPeerConnectionState.failed || connState == RTCPeerConnectionState.closed)
+                else if (connState == RTCPeerConnectionState.failed)
+                {
+                    _debugLog.LogWebRtc($"WebRTC connection failed for {peerId}, requesting peer refresh");
+                    RemovePeerConnection(peerId);
+                    // Request fresh peer list in case this peer is still nearby but connection failed
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await Task.Delay(1000); // Brief delay before requesting refresh
+                            await _signalingService.RequestPeerRefresh();
+                        }
+                        catch (Exception ex)
+                        {
+                            _debugLog.LogWebRtc($"Error requesting peer refresh after connection failure: {ex.Message}");
+                        }
+                    });
+                }
+                else if (connState == RTCPeerConnectionState.closed)
                 {
                     RemovePeerConnection(peerId);
                 }

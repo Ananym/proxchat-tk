@@ -267,6 +267,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand RefreshDevicesCommand { get; }
     public ICommand ToggleSelfMuteCommand { get; }
     public ICommand EditMuteSelfCommand { get; }
+    public ICommand RefreshPeersCommand { get; }
 
     // Updated property type to int
     public int CurrentMapId
@@ -468,6 +469,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         RefreshDevicesCommand = new RelayCommand(_audioService.RefreshInputDevices);
         ToggleSelfMuteCommand = new RelayCommand(ToggleSelfMute);
         EditMuteSelfCommand = new RelayCommand(() => { IsEditingMuteSelf = !IsEditingMuteSelf; });
+        RefreshPeersCommand = new RelayCommand(RefreshPeers);
 
         // Initialize Debug Commands
         IncrementDebugXCommand = new RelayCommand(() => DebugX++);
@@ -1053,6 +1055,30 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     // Create WebRTC connection, but don't add to UI yet
                     // The peer will be added to ConnectedPeers when first position data is received
                     await _webRtcService.CreatePeerConnection(peerId, amInitiator);
+                    
+                    // Set up a timeout to request peer refresh if connection doesn't establish
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(15000); // 15 second timeout
+                        
+                        // Check if peer is still pending (not connected)
+                        if (_pendingPeers.ContainsKey(peerId))
+                        {
+                            var connectedPeer = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
+                            if (connectedPeer == null)
+                            {
+                                _debugLog.LogMain($"WebRTC connection timeout for peer {peerId}, requesting peer refresh");
+                                try
+                                {
+                                    await _signalingService.RequestPeerRefresh();
+                                }
+                                catch (Exception ex)
+                                {
+                                    _debugLog.LogMain($"Error requesting peer refresh after timeout: {ex.Message}");
+                                }
+                            }
+                        }
+                    });
                 }
             }
         });
@@ -1287,6 +1313,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                      {
                          _webRtcService.SendPosition(peer.Id, mapId, x, y, name);
                      }
+                     
+                     // Request fresh peer list after reconnection
+                     await Task.Delay(500); // Brief delay to ensure position update is processed
+                     await _signalingService.RequestPeerRefresh();
+                     _debugLog.LogMain("Requested peer refresh after signaling reconnection");
                  }
                  catch (Exception ex)
                  {
@@ -1448,5 +1479,27 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private void UpdateGlobalHotkeys()
     {
         _globalHotkeyService.UpdateHotkeys(_pushToTalkHotkey, _muteSelfHotkey, _isPushToTalk);
+    }
+
+    private void RefreshPeers()
+    {
+        if (!IsRunning || !_signalingService.IsConnected)
+        {
+            _debugLog.LogMain("Cannot refresh peers: not running or not connected to signaling server");
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                _debugLog.LogMain("Manual peer refresh requested");
+                await _signalingService.RequestPeerRefresh();
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogMain($"Error requesting manual peer refresh: {ex.Message}");
+            }
+        });
     }
 } 
