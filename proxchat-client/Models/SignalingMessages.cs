@@ -46,6 +46,9 @@ public class ClientMessage : SignalingMessageBase
     public static ClientMessage CreateSendIceCandidate(string targetId, string candidate) =>
         new ClientMessage { Type = "SendIceCandidate", Data = new { target_id = targetId, candidate } };
 
+    public static ClientMessage CreateRequestPeerRefresh() =>
+        new ClientMessage { Type = "RequestPeerRefresh", Data = null }; // No data needed
+
     public static ClientMessage CreateDisconnect() =>
         new ClientMessage { Type = "Disconnect", Data = null }; // No data needed
 }

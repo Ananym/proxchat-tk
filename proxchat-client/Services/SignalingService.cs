@@ -252,6 +252,13 @@ public class SignalingService : IDisposable
         await SendMessageAsync(message);
     }
 
+    public async Task RequestPeerRefresh()
+    {
+        _debugLog.LogSignaling("Requesting peer refresh from server");
+        var message = ClientMessage.CreateRequestPeerRefresh();
+        await SendMessageAsync(message);
+    }
+
     private async Task SendMessageAsync(ClientMessage message)
     {
         if (!IsConnected) 
