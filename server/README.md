@@ -2,6 +2,22 @@
 
 A WebSocket-based signaling server for facilitating proximity-based WebRTC mesh connections.
 
+## Features
+
+- **Proximity-based matching**: Clients are only connected to peers within 20 units distance (hardcoded)
+- **Map-based isolation**: Clients on different maps are never connected
+- **Channel system**: Clients must be on the same channel to be matched together
+- **Real-time position updates**: Position changes trigger automatic peer list updates
+
+## Channel System
+
+The server supports a channel system that allows for logical separation of users. Only clients using the same channel value will be matched together, even if they are in proximity and on the same map.
+
+- Channel 0 is the default channel
+- Channels are integer values (can be negative, zero, or positive)
+- Clients on different channels will never see each other in the nearby peers list
+- This allows for multiple separate voice chat groups in the same game world
+
 ## Protocol Documentation
 
 ### WebSocket Connection
@@ -15,61 +31,68 @@ All messages are JSON with a `type` field indicating the message type and a `dat
 #### Client -> Server Messages
 
 1. Update Position
+
 ```json
 {
-    "type": "UpdatePosition",
-    "data": {
-        "client_id": "string",
-        "map_id": "integer",
-        "x": "integer",
-        "y": "integer"
-    }
+  "type": "UpdatePosition",
+  "data": {
+    "client_id": "string",
+    "map_id": "integer",
+    "x": "integer",
+    "y": "integer",
+    "channel": "integer"
+  }
 }
 ```
 
 2. Send Offer
+
 ```json
 {
-    "type": "SendOffer",
-    "data": {
-        "target_id": "string",
-        "offer": "string"
-    }
+  "type": "SendOffer",
+  "data": {
+    "target_id": "string",
+    "offer": "string"
+  }
 }
 ```
 
 3. Send Answer
+
 ```json
 {
-    "type": "SendAnswer",
-    "data": {
-        "target_id": "string",
-        "answer": "string"
-    }
+  "type": "SendAnswer",
+  "data": {
+    "target_id": "string",
+    "answer": "string"
+  }
 }
 ```
 
 4. Send Ice Candidate
+
 ```json
 {
-    "type": "SendIceCandidate",
-    "data": {
-        "target_id": "string",
-        "candidate": "string"
-    }
+  "type": "SendIceCandidate",
+  "data": {
+    "target_id": "string",
+    "candidate": "string"
+  }
 }
 ```
 
 5. Disconnect
+
 ```json
 {
-    "type": "Disconnect"
+  "type": "Disconnect"
 }
 ```
 
 #### Server -> Client Messages
 
 1. Nearby Peers
+
 ```json
 {
     "type": "NearbyPeers",
@@ -78,43 +101,47 @@ All messages are JSON with a `type` field indicating the message type and a `dat
 ```
 
 2. Receive Offer
+
 ```json
 {
-    "type": "ReceiveOffer",
-    "data": {
-        "sender_id": "string",
-        "offer": "string"
-    }
+  "type": "ReceiveOffer",
+  "data": {
+    "sender_id": "string",
+    "offer": "string"
+  }
 }
 ```
 
 3. Receive Answer
+
 ```json
 {
-    "type": "ReceiveAnswer",
-    "data": {
-        "sender_id": "string",
-        "answer": "string"
-    }
+  "type": "ReceiveAnswer",
+  "data": {
+    "sender_id": "string",
+    "answer": "string"
+  }
 }
 ```
 
 4. Receive Ice Candidate
+
 ```json
 {
-    "type": "ReceiveIceCandidate",
-    "data": {
-        "sender_id": "string",
-        "candidate": "string"
-    }
+  "type": "ReceiveIceCandidate",
+  "data": {
+    "sender_id": "string",
+    "candidate": "string"
+  }
 }
 ```
 
 5. Error
+
 ```json
 {
-    "type": "Error",
-    "data": "error message string"
+  "type": "Error",
+  "data": "error message string"
 }
 ```
 
@@ -138,23 +165,24 @@ All messages are JSON with a `type` field indicating the message type and a `dat
 
 ```javascript
 const rtcConfig = {
-    iceServers: [
-        {
-            urls: "stun:stun.l.google.com:19302"
-        }
-    ]
+  iceServers: [
+    {
+      urls: "stun:stun.l.google.com:19302",
+    },
+  ],
 };
 ```
 
 ### Position Updates Over Data Channel
 
 Send position updates directly to connected peers using the following JSON format over the established WebRTC data channel:
+
 ```json
 {
-    "map_id": "integer",
-    "x": "integer",
-    "y": "integer",
-    "character_name": "string"
+  "map_id": "integer",
+  "x": "integer",
+  "y": "integer",
+  "character_name": "string"
 }
 ```
 
@@ -204,12 +232,30 @@ Send position updates directly to connected peers using the following JSON forma
 ## Building and Running
 
 ### Local Development
+
 ```powershell
-cargo run
+# Local Cargo build
+.\build.ps1
+
+# Local Docker build and run
+.\build.ps1 -Docker -Run
+
+# Build specific platform
+.\build.ps1 -Docker -Platform "linux/arm64"
 ```
 
-### Docker
+### Multi-Architecture Builds
+
+For deployment to ARM-based AWS ECS:
+
 ```powershell
-docker build -t prox-chat-server .
-docker run -p 8080:8080 prox-chat-server
-``` 
+# Build multi-arch image (cached locally)
+.\build.ps1 -Docker -MultiArch
+
+# Build and push to registry
+.\build.ps1 -Docker -MultiArch -Push -Registry "your-ecr-repo" -Tag "v1.0"
+```
+
+### AWS ECS Deployment
+
+See `AWS-deployment-guide.md` for complete step-by-step instructions for deploying to AWS ECS with ARM instances.

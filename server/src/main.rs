@@ -17,6 +17,7 @@ struct ClientPosition {
     map_id: i32,
     x: i32,
     y: i32,
+    channel: i32,
 }
 
 // Message types for client -> server communication
@@ -73,6 +74,11 @@ impl ServerState {
             .filter(|(id, other_pos)| {
                 // Skip self
                 if *id == &pos.client_id {
+                    return false;
+                }
+                
+                // Must be on same channel
+                if other_pos.channel != pos.channel {
                     return false;
                 }
                 

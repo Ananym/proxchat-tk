@@ -3,25 +3,15 @@
     "Host": "127.0.0.1",
     "Port": 8080
   },
-  "MemoryAddresses": {
-    "MapId": "0x12345678",
-    "XCoord": "0x12345680",
-    "YCoord": "0x12345684"
-  },
-  "ProximityRange": 100.0,
+  "Channel": 0,
   "AudioSettings": {
     "VolumeScale": 0.5,
     "InputVolumeScale": 1.0,
     "MinBroadcastThreshold": 0.0,
     "SelectedInputDevice": null,
     "IsPushToTalk": false,
-    "PushToTalkKey": "Ctrl+F12",
-    "MuteSelfKey": "Alt+F11"
+    "PushToTalkKey": "F12",
+    "MuteSelfKey": "F11"
   },
-  "PeerSettings": {},
-  "DebugSettings": {
-    "EnableConsoleLogging": true,
-    "EnableFileLogging": true,
-    "LogLevel": "Debug"
-  }
-}
+  "PeerSettings": {}
+} 

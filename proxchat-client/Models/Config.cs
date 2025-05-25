@@ -12,8 +12,7 @@ public class PeerPersistentState
 public class Config
 {
     public WebSocketServerConfig WebSocketServer { get; set; } = new();
-    public MemoryAddressConfig MemoryAddresses { get; set; } = new();
-    public float ProximityRange { get; set; } = 100.0f;
+    public int Channel { get; set; } = 0;
     public AudioConfig AudioSettings { get; set; } = new();
     public Dictionary<string, PeerPersistentState> PeerSettings { get; set; } = new Dictionary<string, PeerPersistentState>();
 }
@@ -22,13 +21,6 @@ public class WebSocketServerConfig
 {
     public string Host { get; set; } = "127.0.0.1";
     public int Port { get; set; } = 8080;
-}
-
-public class MemoryAddressConfig
-{
-    public string MapId { get; set; } = "0x12345678";
-    public string XCoord { get; set; } = "0x12345680";
-    public string YCoord { get; set; } = "0x12345684";
 }
 
 public class AudioConfig

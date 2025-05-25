@@ -70,5 +70,8 @@ nupkg/
 .DS_Store
 Thumbs.db 
 
+# build artifacts
+dist/
+
 # allow .def files in memoryreadingdll/
 !memoryreadingdll/*.def

@@ -215,7 +215,7 @@ public class SignalingService : IDisposable
         }
     }
 
-    public async Task UpdatePosition(int mapId, int x, int y)
+    public async Task UpdatePosition(int mapId, int x, int y, int channel)
     {
         if (!IsConnected) return;
 
@@ -224,7 +224,8 @@ public class SignalingService : IDisposable
             ClientId = _clientId,
             MapId = mapId,
             X = x,
-            Y = y
+            Y = y,
+            Channel = channel
         };
         var message = ClientMessage.CreateUpdatePosition(positionData);
         await SendMessageAsync(message);

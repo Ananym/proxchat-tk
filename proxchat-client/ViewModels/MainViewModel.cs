@@ -55,8 +55,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _lastSentY; // Changed to int
     private DateTime _lastSentTime = DateTime.MinValue;
     private readonly TimeSpan _forceSendInterval = TimeSpan.FromSeconds(5); // Changed from 10s to 5s
-    private readonly TimeSpan _positionSendInterval = TimeSpan.FromMilliseconds(250); // Keep this for UI updates
-    private readonly TimeSpan _uiUpdateInterval = TimeSpan.FromMilliseconds(200); // Interval for UI updates (e.g., 5 times/sec)
+    private readonly TimeSpan _uiUpdateInterval = TimeSpan.FromMilliseconds(100); // Interval for UI updates (e.g., 10 times/sec)
 
     // New properties for UI binding
     private int _currentMapId = 0; // Changed to int, default 0
@@ -788,8 +787,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             }
 
             _positionSendTimer?.Dispose();
-            // Update timer to tick every second FOR SENDING
-            _positionSendTimer = new Timer(SendPositionUpdate, null, TimeSpan.Zero, _positionSendInterval); // Use the send interval
+            // Timer for force position updates every 5 seconds (fallback when no game data changes)
+            _positionSendTimer = new Timer(SendPositionUpdate, null, TimeSpan.Zero, _forceSendInterval); // Use the send interval
 
             // In debug mode, we don't need to wait for game data initialization
             if (IsDebugModeEnabled)
@@ -899,7 +898,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
             if ((mapChanged || positionChanged || forceSend) && _signalingService.IsConnected)
             {
-                await _signalingService.UpdatePosition(data.MapId, data.X, data.Y);
+                await _signalingService.UpdatePosition(data.MapId, data.X, data.Y, _config.Channel);
                 _lastSentMapId = data.MapId;
                 _lastSentX = data.X;
                 _lastSentY = data.Y;
@@ -963,7 +962,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     name = gameData.CharacterName;
                 }
 
-                await _signalingService.UpdatePosition(mapId, x, y);
+                await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
                 _lastSentMapId = mapId;
                 _lastSentX = x;
                 _lastSentY = y;
@@ -1277,7 +1276,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                          name = gameData.CharacterName;
                      }
 
-                     await _signalingService.UpdatePosition(mapId, x, y);
+                     await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
                      _lastSentMapId = mapId;
                      _lastSentX = x;
                      _lastSentY = y;
@@ -1404,7 +1403,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
             if (positionChanged || timeElapsed)
             {
-                await _signalingService.UpdatePosition(mapId, x, y);
+                await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
                 _lastSentMapId = mapId;
                 _lastSentX = x;
                 _lastSentY = y;

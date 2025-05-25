@@ -1,0 +1,17 @@
+{
+  "WebSocketServer": {
+    "Host": "127.0.0.1",
+    "Port": 8080
+  },
+  "Channel": 0,
+  "AudioSettings": {
+    "VolumeScale": 0.5,
+    "InputVolumeScale": 1.0,
+    "MinBroadcastThreshold": 0.0,
+    "SelectedInputDevice": null,
+    "IsPushToTalk": false,
+    "PushToTalkKey": "F12",
+    "MuteSelfKey": "F11"
+  },
+  "PeerSettings": {}
+} 
