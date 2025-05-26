@@ -11,7 +11,7 @@ namespace ProxChatClient.ViewModels
         private string _characterName = DefaultCharacterName;
         private bool _isMuted;
         private float _distance;
-        private float _volume = 1.0f; // Default volume to 1.0f
+        private float _volume = 0.5f; // Default volume to 0.5f to leave room for boosting specific peers
         private int _mapId;
         private int _x;
         private int _y;

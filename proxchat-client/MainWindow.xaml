@@ -112,7 +112,8 @@
                     Padding="5">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="20"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <CheckBox Content="Push to Talk" 
@@ -121,6 +122,41 @@
                               MinWidth="100"
                               Grid.Column="0"
                               ToolTip="Enable push-to-talk mode - only transmit while key is held"/>
+                    
+                    <!-- PTT Active Indicator -->
+                    <Ellipse Grid.Column="1" 
+                             Width="12" 
+                             Height="12"
+                             VerticalAlignment="Center"
+                             HorizontalAlignment="Center"
+                             ToolTip="Push-to-talk key is currently pressed">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsPushToTalk}" Value="True"/>
+                                            <Condition Binding="{Binding IsPushToTalkActive}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="Fill" Value="LimeGreen"/>
+                                    </MultiDataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsPushToTalk}" Value="True"/>
+                                            <Condition Binding="{Binding IsPushToTalkActive}" Value="False"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="Fill" Value="Transparent"/>
+                                        <Setter Property="Stroke" Value="DarkGray"/>
+                                        <Setter Property="StrokeThickness" Value="1"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    
                     <controls:KeyBindingEditor x:Name="PushToTalkKeyEditor"
                                             Hotkey="{Binding PushToTalkHotkey, Mode=TwoWay}"
                                             HotkeyChanged="PushToTalkKeyEditor_HotkeyChanged"
@@ -128,7 +164,7 @@
                                             HorizontalAlignment="Stretch"
                                             MinWidth="100"
                                             Margin="10,0,0,0"
-                                            Grid.Column="1"
+                                            Grid.Column="2"
                                             ToolTip="Global hotkey for push-to-talk (works system-wide, supports modifiers like Ctrl+F12)"/>
                 </Grid>
             </Border>
@@ -147,7 +183,7 @@
                               IsChecked="{Binding IsSelfMuted, Mode=OneWay}"
                               Command="{Binding ToggleSelfMuteCommand}"
                               VerticalAlignment="Center"
-                              MinWidth="100"
+                              MinWidth="120"
                               Grid.Column="0"
                               ToolTip="Toggle microphone mute on/off"/>
                     <controls:KeyBindingEditor x:Name="MuteSelfKeyEditor"
@@ -185,7 +221,7 @@
             <GroupBox Grid.Row="3" Header="Current Position" Margin="0,5,0,0">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Map: " FontWeight="Bold" Margin="0,0,2,0"/>
-                <TextBlock Text="{Binding CurrentMapName, FallbackValue=N/A}" Margin="0,0,10,0"/>
+                <TextBlock Text="{Binding CurrentMapDisplay, FallbackValue=N/A}" Margin="0,0,10,0"/>
                 <TextBlock Text="X: " FontWeight="Bold" Margin="0,0,2,0"/>
                 <TextBlock Text="{Binding CurrentX, FallbackValue=0}" Margin="0,0,10,0"/>
                 <TextBlock Text="Y: " FontWeight="Bold" Margin="0,0,2,0"/>

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using ProxChatClient.Services; // For HotkeyDefinition
+using ProxChatClient.Converters;
 
 namespace ProxChatClient.Controls;
 
@@ -49,6 +50,8 @@ public partial class KeyBindingEditor : UserControl
     public event RoutedEventHandler? KeyChanged;
     public event RoutedEventHandler? HotkeyChanged;
 
+    private readonly KeyDisplayConverter _keyDisplayConverter = new();
+
     public KeyBindingEditor()
     {
         InitializeComponent();
@@ -71,7 +74,9 @@ public partial class KeyBindingEditor : UserControl
         }
         else
         {
-            KeyDisplay.Text = Hotkey.ToString();
+            // use converter to get better display text
+            var displayText = _keyDisplayConverter.Convert(Hotkey.ToString(), typeof(string), null, System.Globalization.CultureInfo.CurrentCulture);
+            KeyDisplay.Text = displayText?.ToString() ?? Hotkey.ToString();
         }
     }
 

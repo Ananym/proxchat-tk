@@ -2,7 +2,12 @@
 FROM rust:latest AS builder
 
 WORKDIR /usr/src/app
-COPY . .
+
+# copy cargo files first for better layer caching
+COPY Cargo.toml Cargo.lock ./
+
+# copy source code
+COPY src/ ./src/
 
 RUN cargo build --release
 

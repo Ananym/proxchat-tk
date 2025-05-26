@@ -36,7 +36,18 @@ public class SignalingService : IDisposable
 
     public SignalingService(WebSocketServerConfig config, DebugLogService debugLog)
     {
-        _serverUri = new Uri($"ws://{config.Host}:{config.Port}");
+        // trim trailing slash from host
+        var host = config.Host.TrimEnd('/');
+        
+        // use wss:// for secure connections (port 443) or ws:// for insecure (other ports)
+        var protocol = config.Port == 443 ? "wss" : "ws";
+        
+        // for standard ports (443 for wss, 80 for ws), omit port from URI
+        var portSuffix = (protocol == "wss" && config.Port == 443) || (protocol == "ws" && config.Port == 80) 
+            ? "" 
+            : $":{config.Port}";
+            
+        _serverUri = new Uri($"{protocol}://{host}{portSuffix}");
         _clientId = Guid.NewGuid().ToString();
         _debugLog = debugLog;
     }

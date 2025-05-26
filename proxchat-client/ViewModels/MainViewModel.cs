@@ -30,10 +30,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _isRunning;
     private float _audioLevel;
     private bool _isPushToTalk;
-    private HotkeyDefinition _pushToTalkHotkey = new(Key.F12); // Changed from Key to HotkeyDefinition
+    private HotkeyDefinition _pushToTalkHotkey = new(Key.OemBackslash); // Changed from Key.F12 to backslash
     private bool _isEditingPushToTalk;
-    private HotkeyDefinition _muteSelfHotkey = new(Key.F11); // Changed from Key to HotkeyDefinition
+    private HotkeyDefinition _muteSelfHotkey = new(Key.M, ctrl: true); // Changed from Key.F11 to Ctrl+M
     private bool _isEditingMuteSelf; // Add editing state
+    private bool _isPushToTalkActive; // Track if PTT is currently being pressed
     private float _volumeScale; // Will be initialized from config
     private float _inputVolumeScale; // Will be initialized from config
     private float _minBroadcastThreshold; // Will be initialized from config
@@ -179,7 +180,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         get => _volumeScale;
         set
         {
-            _volumeScale = Math.Clamp(value, 0.0f, 1.0f); // Updated range to 0-1
+            _volumeScale = Math.Clamp(value, 0.0f, 1.0f); // Keep 0-1 range
             _audioService.SetOverallVolumeScale(_volumeScale);
             _config.AudioSettings.VolumeScale = _volumeScale; // Save to config
             SaveConfig(); // Persist to file
@@ -284,7 +285,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     // Added property for map name
     public string CurrentMapName
     {
-        get => IsDebugModeEnabled ? $"DebugMap ({_debugMapId})" : _currentMapName; // Provide a debug map name
+        get => IsDebugModeEnabled ? "DebugMap" : _currentMapName; // Remove the brackets from debug mode here
         set 
         { 
             // Assuming map name isn't directly settable in debug mode, or linked to DebugMapId
@@ -294,8 +295,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    // Combined display property
-    public string CurrentMapDisplay => IsDebugModeEnabled ? $"DebugMap ({DebugMapId})" : (IsRunning || _isMemoryReaderInitialized ? $"{_currentMapName} ({_currentMapId})" : "Waiting...");
+    // Combined display property - always show map ID in brackets
+    public string CurrentMapDisplay => IsRunning || _isMemoryReaderInitialized ? $"{CurrentMapName} ({CurrentMapId})" : "Waiting...";
 
     public int CurrentX // Changed to int
     {
@@ -390,19 +391,32 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public bool IsPushToTalkActive
+    {
+        get => _isPushToTalkActive;
+        private set
+        {
+            if (_isPushToTalkActive != value)
+            {
+                _isPushToTalkActive = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public MainViewModel(Config config)
     {
         _config = config;
         
         // Initialize audio settings from config
-        _volumeScale = _config.AudioSettings.VolumeScale;
+        _volumeScale = _config.AudioSettings.VolumeScale > 0 ? _config.AudioSettings.VolumeScale : 0.5f; // Default to 0.5f if not set
         _inputVolumeScale = _config.AudioSettings.InputVolumeScale;
         _minBroadcastThreshold = _config.AudioSettings.MinBroadcastThreshold;
         _isPushToTalk = _config.AudioSettings.IsPushToTalk;
         
         // Load hotkeys from config with fallbacks
-        _pushToTalkHotkey = HotkeyDefinition.FromStringWithDefault(_config.AudioSettings.PushToTalkKey, Key.F12);
-        _muteSelfHotkey = HotkeyDefinition.FromStringWithDefault(_config.AudioSettings.MuteSelfKey, Key.F11);
+        _pushToTalkHotkey = HotkeyDefinition.FromStringWithDefault(_config.AudioSettings.PushToTalkKey, Key.OemBackslash);
+        _muteSelfHotkey = GlobalHotkeyService.StringToHotkeyWithDefault(_config.AudioSettings.MuteSelfKey, new HotkeyDefinition(Key.M, ctrl: true));
         
         // Notify UI that hotkeys have been loaded
         OnPropertyChanged(nameof(PushToTalkHotkey));
@@ -444,7 +458,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _debugLog = debugLog;
         
         // Use hardcoded max distance for consistency across all users
-        const float HARDCODED_MAX_DISTANCE = 10.0f;
+        const float HARDCODED_MAX_DISTANCE = 15.0f; // Extended range for more realistic audio falloff
         _audioService = new AudioService(HARDCODED_MAX_DISTANCE, config, debugLog);
         _signalingService = new SignalingService(config.WebSocketServer, debugLog);
         _webRtcService = new WebRtcService(_audioService, _signalingService, HARDCODED_MAX_DISTANCE, debugLog);
@@ -588,6 +602,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             // This ensures that a new known peer gets their initial (default) state persisted.
             UpdateAndSavePeerSetting(peerVm.CharacterName, peerVm.Volume, peerVm.IsMuted); 
         }
+        
+        // ViewModel is the single source of truth - ensure AudioService reflects ViewModel state
+        _audioService.SyncPeerVolumeFromViewModel(peerVm.Id, peerVm.Volume);
     }
     
     private void UpdateAndSavePeerSetting(string characterName, float volume, bool isMuted)
@@ -916,7 +933,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                         var dy = data.Y - peer.Y;
                         var distance = MathF.Sqrt(dx * dx + dy * dy);
                         _debugLog.LogMain($"peer {peer.CharacterName}: dist={distance:F1} (me:{data.X},{data.Y} them:{peer.X},{peer.Y})");
-                        _audioService.UpdatePeerDistance(peer.Id, distance);
+                        // use new method that includes stereo panning based on position
+                        _audioService.UpdatePeerPosition(peer.Id, distance, data.X, data.Y, peer.X, peer.Y);
                         peer.Distance = distance;
                     }
                     else
@@ -982,7 +1000,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                         var dy = y - peer.Y;
                         var distance = MathF.Sqrt(dx * dx + dy * dy);
                         _debugLog.LogMain($"Recalculated distance to peer {peer.CharacterName}: {distance:F2} units");
-                        _audioService.UpdatePeerDistance(peer.Id, distance);
+                        // use new method that includes stereo panning based on position
+                        _audioService.UpdatePeerPosition(peer.Id, distance, x, y, peer.X, peer.Y);
                         peer.Distance = distance;
                     }
                     else
@@ -1171,7 +1190,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             var distance = MathF.Sqrt(dx * dx + dy * dy);
 
             _debugLog.LogMain($"Recalculated distance for peer {peerVm.CharacterName} ({peerVm.Id}): {distance:F1} (me:{myX},{myY} them:{peerVm.X},{peerVm.Y})");
-            _audioService.UpdatePeerDistance(peerVm.Id, distance);
+            // use new method that includes stereo panning based on position
+            _audioService.UpdatePeerPosition(peerVm.Id, distance, myX, myY, peerVm.X, peerVm.Y);
             peerVm.Distance = distance;
         }
     }
@@ -1228,7 +1248,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             newPeerVmInstance.MapId = positionData.MapId;
             newPeerVmInstance.X = positionData.X;
             newPeerVmInstance.Y = positionData.Y;
-            newPeerVmInstance.Volume = 1.0f; // Default volume as per PeerViewModel field initializer
+            newPeerVmInstance.Volume = 0.5f; // Default volume to 0.5f to leave room for boosting specific peers
+            
+            // ViewModel is the single source of truth for peer volume - ensure AudioService gets it immediately
+            _audioService.SyncPeerVolumeFromViewModel(newPeerVmInstance.Id, newPeerVmInstance.Volume);
 
             await App.Current.Dispatcher.InvokeAsync(() =>
             {
@@ -1469,6 +1492,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private void HandlePushToTalkStateChanged(object? sender, bool isActive)
     {
         _audioService.SetPushToTalkActive(isActive);
+        IsPushToTalkActive = isActive; // Update UI indicator
     }
 
     private void HandleMuteToggleRequested(object? sender, EventArgs e)

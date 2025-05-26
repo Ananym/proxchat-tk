@@ -5,7 +5,7 @@ namespace ProxChatClient.Models;
 
 public class PeerPersistentState
 {
-    public float Volume { get; set; } = 1.0f;
+    public float Volume { get; set; } = 0.5f;
     public bool IsMuted { get; set; } = false;
 }
 
@@ -20,7 +20,7 @@ public class Config
 public class WebSocketServerConfig
 {
     public string Host { get; set; } = "127.0.0.1";
-    public int Port { get; set; } = 8080;
+    public int Port { get; set; } = 443;
 }
 
 public class AudioConfig

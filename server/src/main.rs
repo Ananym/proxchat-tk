@@ -9,6 +9,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{self, Duration, Instant};
 use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
+use serde_json;
 
 // Client position data structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,15 +155,19 @@ async fn handle_connection(
     raw_stream: TcpStream,
     addr: SocketAddr,
 ) {
-    info!("New WebSocket connection attempt from: {}", addr);
+    info!("New connection attempt from: {}", addr);
 
+    // try websocket upgrade directly - if it's a health check, it will fail gracefully
     let ws_stream = match tokio_tungstenite::accept_async(raw_stream).await {
         Ok(stream) => stream,
         Err(e) => {
-            error!("Error during WebSocket handshake: {}", e);
+            // could be a health check or other HTTP request
+            info!("WebSocket handshake failed from {}: {} (likely health check)", addr, e);
             return;
         }
     };
+
+    info!("WebSocket connection established from: {}", addr);
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
     // Server-generated ID to uniquely identify this WebSocket connection instance

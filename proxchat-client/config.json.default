@@ -1,7 +1,6 @@
 {
   "WebSocketServer": {
-    "Host": "127.0.0.1",
-    "Port": 8080
+    "Host": "prox-chat-tk.fly.dev"
   },
   "Channel": 0,
   "AudioSettings": {
@@ -10,8 +9,8 @@
     "MinBroadcastThreshold": 0.0,
     "SelectedInputDevice": null,
     "IsPushToTalk": false,
-    "PushToTalkKey": "F12",
-    "MuteSelfKey": "F11"
+    "PushToTalkKey": "Oem5",
+    "MuteSelfKey": "Ctrl+M"
   },
   "PeerSettings": {}
 } 

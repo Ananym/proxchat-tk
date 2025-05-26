@@ -26,7 +26,7 @@ public class AudioService : IDisposable
     private readonly WaveFormat _playbackFormat = new WaveFormat(48000, 16, 1); // Output format for speakers
     private readonly WaveFormat _captureFormat = new WaveFormat(48000, 16, 1); // Default microphone capture format
     
-    private float _volumeScale = 1.0f;
+    private float _volumeScale = 0.5f;
     private float _inputVolumeScale = 1.0f;
     private float _minBroadcastThreshold = 0.0f;
     private readonly float _maxDistance;
@@ -669,19 +669,21 @@ public class AudioService : IDisposable
             try
             {
                 // Incoming data is PCMU (MuLaw) 8kHz, 8-bit, 1 channel.
-                // The playback.Buffer is (now) configured for 8kHz, 16-bit PCM, 1 channel.
-                // We need to decode MuLaw to PCM.
+                // We need to decode MuLaw to PCM, then convert mono to stereo with panning.
                 using var ms = new MemoryStream(data, 0, length);
-                using var muLawReader = new MuLawWaveStream(ms); // Helper stream to read MuLaw
+                using var muLawReader = new MuLawWaveStream(ms);
                 using var pcmStream = new WaveFormatConversionStream(_pcm8KhzFormat, muLawReader);
                 
-                byte[] pcmBuffer = new byte[length * 2]; // PCM 16-bit will be twice the size of MuLaw 8-bit
-                int bytesDecoded = pcmStream.Read(pcmBuffer, 0, pcmBuffer.Length);
+                byte[] monoPcmBuffer = new byte[length * 2]; // PCM 16-bit will be twice the size of MuLaw 8-bit
+                int bytesDecoded = pcmStream.Read(monoPcmBuffer, 0, monoPcmBuffer.Length);
 
                 if (bytesDecoded > 0)
                 {
-                    playback.Buffer.AddSamples(pcmBuffer, 0, bytesDecoded);
-                    _debugLog.LogAudio($"Played {bytesDecoded} decoded PCM bytes from peer {peerId} (original MuLaw: {length} bytes).");
+                    // convert mono PCM to stereo PCM with panning
+                    byte[] stereoPcmBuffer = ConvertMonoToStereoWithPanning(monoPcmBuffer, bytesDecoded, playback.PanningFactor);
+                    
+                    playback.Buffer.AddSamples(stereoPcmBuffer, 0, stereoPcmBuffer.Length);
+                    _debugLog.LogAudio($"Played {stereoPcmBuffer.Length} stereo PCM bytes from peer {peerId} (original MuLaw: {length} bytes, panning: {playback.PanningFactor:F2}).");
                 }
             }
             catch (Exception ex)
@@ -696,20 +698,29 @@ public class AudioService : IDisposable
         try
         {
             var waveOut = new WaveOutEvent();
-            // The BufferedWaveProvider should be configured for the format we will ADD to it,
-            // which is 8kHz, 16-bit PCM (after decoding from MuLaw).
-            var buffer = new BufferedWaveProvider(_pcm8KhzFormat) // Use _pcm8KhzFormat
+            // create stereo format for panning support (8kHz, 16-bit, 2 channels)
+            var stereoFormat = new WaveFormat(PCMU_SAMPLE_RATE, 16, 2);
+            var buffer = new BufferedWaveProvider(stereoFormat)
             {
                 DiscardOnBufferOverflow = true,
-                BufferDuration = TimeSpan.FromMilliseconds(200) // Increased buffer duration slightly
+                BufferDuration = TimeSpan.FromMilliseconds(200)
             };
+            
             waveOut.Init(buffer);
             waveOut.Play();
 
-            var playback = new PeerPlayback { WaveOut = waveOut, Buffer = buffer, PeerId = peerId };
+            var playback = new PeerPlayback 
+            { 
+                WaveOut = waveOut, 
+                Buffer = buffer, 
+                PeerId = peerId,
+                PanningFactor = 0.0f, // start centered
+                UiVolumeSetting = 0.0f // will be set by ViewModel immediately after creation
+            };
+            
             if (_peerPlaybackStreams.TryAdd(peerId, playback))
             {
-                 _debugLog.LogAudio($"Created audio playback for peer {peerId} with format {_pcm8KhzFormat}.");
+                 _debugLog.LogAudio($"Created stereo audio playback for peer {peerId} with format {stereoFormat}. Volume will be set by ViewModel.");
                  return playback;
             }
             else
@@ -749,6 +760,34 @@ public class AudioService : IDisposable
         }
     }
 
+    // new method that includes position data for stereo panning
+    public void UpdatePeerPosition(string peerId, float distance, int myX, int myY, int peerX, int peerY)
+    {
+        if (_peerPlaybackStreams.TryGetValue(peerId, out var playback))
+        {
+            // calculate stereo panning based on X-axis offset
+            float xOffset = peerX - myX;
+            float panningFactor = CalculateStereoPanning(distance, xOffset);
+            
+            ApplyVolumeAndPanningSettings(playback, distance, panningFactor);
+        }
+    }
+
+    private float CalculateStereoPanning(float distance, float xOffset)
+    {
+        // quadratic panning curve - gets stronger as distance increases
+        float normalizedDistance = Math.Clamp(distance / _maxDistance, 0.0f, 1.0f);
+        float panningStrength = normalizedDistance * normalizedDistance; // quadratic curve
+        
+        // determine direction: negative = left, positive = right
+        float direction = Math.Sign(xOffset);
+        
+        // calculate final panning: 0 = center, -1 = full left, +1 = full right
+        float panning = direction * panningStrength;
+        
+        return Math.Clamp(panning, -1.0f, 1.0f);
+    }
+
     private void ApplyVolumeSettings(PeerPlayback playback, float? distance = null)
     {
         if (playback?.WaveOut == null) return;
@@ -756,9 +795,27 @@ public class AudioService : IDisposable
         float distanceFactor = 1.0f;
         if (distance.HasValue)
         {
-            distanceFactor = Math.Clamp(1.0f - (distance.Value / _maxDistance), 0.0f, 1.0f);
+            // exponential-style falloff for very gradual dropoff near max distance
+            // exactly 1% volume at distance 14, complete silence at distance 15
+            float normalizedDistance = Math.Clamp(distance.Value / _maxDistance, 0.0f, 1.0f);
+            if (normalizedDistance >= 1.0f)
+            {
+                distanceFactor = 0.0f; // complete silence at max distance
+            }
+            else
+            {
+                // use exponential curve: volume = 0.01^(normalizedDistance / 0.933)
+                // at distance 14: normalizedDistance = 0.933, so volume = 0.01^(0.933/0.933) = 0.01 = 1%
+                // at distance 0: normalizedDistance = 0, so volume = 0.01^0 = 1 = 100%
+                float exponent = normalizedDistance / 0.933f; // 0.933 = 14/15
+                distanceFactor = (float)Math.Pow(0.01, exponent);
+            }
         }
 
+        // calculate final volume as multiplication of all factors:
+        // - distance factor (0-1, exponential falloff)
+        // - peer UI volume setting (0-1, user adjustable per peer, default 0.5)
+        // - overall volume scale (0-1, global setting, default 0.5)
         float finalVolume = playback.IsMuted 
                             ? 0.0f 
                             : distanceFactor * playback.UiVolumeSetting * _volumeScale;
@@ -769,7 +826,7 @@ public class AudioService : IDisposable
         {
             playback.WaveOut.Volume = finalVolume;
             
-            // Debug logging for volume scaling
+            // debug logging for volume scaling
             if (distance.HasValue)
             {
                 _debugLog.LogAudio($"Volume for peer {playback.PeerId}: distance={distance.Value:F1}, distanceFactor={distanceFactor:F2}, uiVolume={playback.UiVolumeSetting:F2}, finalVolume={finalVolume:F2}");
@@ -778,6 +835,53 @@ public class AudioService : IDisposable
         catch (Exception ex)
         {
             _debugLog.LogAudio($"Error applying volume settings for peer {playback.PeerId}: {ex.Message}");
+        }
+    }
+
+    private void ApplyVolumeAndPanningSettings(PeerPlayback playback, float distance, float panningFactor)
+    {
+        if (playback?.WaveOut == null) return;
+
+        // calculate volume using exponential falloff
+        float normalizedDistance = Math.Clamp(distance / _maxDistance, 0.0f, 1.0f);
+        float distanceFactor;
+        if (normalizedDistance >= 1.0f)
+        {
+            distanceFactor = 0.0f; // complete silence at max distance
+        }
+        else
+        {
+            // use exponential curve: volume = 0.01^(normalizedDistance / 0.933)
+            // at distance 14: normalizedDistance = 0.933, so volume = 0.01^(0.933/0.933) = 0.01 = 1%
+            // at distance 0: normalizedDistance = 0, so volume = 0.01^0 = 1 = 100%
+            float exponent = normalizedDistance / 0.933f; // 0.933 = 14/15
+            distanceFactor = (float)Math.Pow(0.01, exponent);
+        }
+
+        // calculate final volume as multiplication of all factors:
+        // - distance factor (0-1, exponential falloff)
+        // - peer UI volume setting (0-1, user adjustable per peer, default 0.5)
+        // - overall volume scale (0-1, global setting, default 0.5)
+        float finalVolume = playback.IsMuted 
+                            ? 0.0f 
+                            : distanceFactor * playback.UiVolumeSetting * _volumeScale;
+        
+        finalVolume = Math.Clamp(finalVolume, 0.0f, 1.0f);
+
+        try
+        {
+            // apply volume
+            playback.WaveOut.Volume = finalVolume;
+            
+            // store panning factor for use during audio processing
+            playback.PanningFactor = panningFactor;
+            
+            // debug logging
+            _debugLog.LogAudio($"Audio for peer {playback.PeerId}: distance={distance:F1}, volume={finalVolume:F2}, panning={panningFactor:F2}");
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error applying volume/panning settings for peer {playback.PeerId}: {ex.Message}");
         }
     }
 
@@ -813,7 +917,7 @@ public class AudioService : IDisposable
 
     public void SetOverallVolumeScale(float scale)
     {
-        _volumeScale = Math.Clamp(scale, 0.0f, 2.0f);
+        _volumeScale = Math.Clamp(scale, 0.0f, 1.0f);
         foreach (var playback in _peerPlaybackStreams.Values)
         {
             ApplyVolumeSettings(playback);
@@ -858,6 +962,17 @@ public class AudioService : IDisposable
         if (!_peerPlaybackStreams.ContainsKey(peerId))
         {
             CreatePeerPlayback(peerId);
+        }
+    }
+
+    // new method to sync volume from ViewModel after peer creation
+    public void SyncPeerVolumeFromViewModel(string peerId, float uiVolume)
+    {
+        if (_peerPlaybackStreams.TryGetValue(peerId, out var playback))
+        {
+            playback.UiVolumeSetting = Math.Clamp(uiVolume, 0.0f, 1.0f);
+            // don't call ApplyVolumeSettings here as it will be called by distance updates
+            _debugLog.LogAudio($"Synced volume for peer {peerId}: {uiVolume:F2}");
         }
     }
 
@@ -988,6 +1103,37 @@ public class AudioService : IDisposable
         Array.Fill(silenceData, (byte)0xFF);
         return (silenceData, 0.0f);
     }
+
+    private byte[] ConvertMonoToStereoWithPanning(byte[] monoPcmBuffer, int validBytes, float panningFactor)
+    {
+        // Convert mono PCM to stereo PCM with panning
+        // validBytes is the number of bytes in the mono buffer
+        int sampleCount = validBytes / 2; // 16-bit samples = 2 bytes per sample
+        byte[] stereoPcmBuffer = new byte[validBytes * 2]; // stereo = double the bytes
+        
+        for (int i = 0; i < sampleCount; i++)
+        {
+            // read mono sample (16-bit)
+            short monoSample = BitConverter.ToInt16(monoPcmBuffer, i * 2);
+            
+            // calculate left and right channel volumes based on panning
+            // panningFactor: -1.0 = full left, 0.0 = center, +1.0 = full right
+            float leftVolume = Math.Clamp(1.0f - panningFactor, 0.0f, 1.0f);
+            float rightVolume = Math.Clamp(1.0f + panningFactor, 0.0f, 1.0f);
+            
+            short leftSample = (short)(monoSample * leftVolume);
+            short rightSample = (short)(monoSample * rightVolume);
+            
+            // write stereo samples (left, then right)
+            int stereoIndex = i * 4; // 4 bytes per stereo sample (2 channels * 2 bytes each)
+            stereoPcmBuffer[stereoIndex] = (byte)(leftSample & 0xFF);
+            stereoPcmBuffer[stereoIndex + 1] = (byte)(leftSample >> 8);
+            stereoPcmBuffer[stereoIndex + 2] = (byte)(rightSample & 0xFF);
+            stereoPcmBuffer[stereoIndex + 3] = (byte)(rightSample >> 8);
+        }
+        
+        return stereoPcmBuffer;
+    }
 }
 
 internal class PeerPlayback
@@ -996,7 +1142,8 @@ internal class PeerPlayback
     public WaveOutEvent? WaveOut { get; set; }
     public BufferedWaveProvider? Buffer { get; set; }
     public bool IsMuted { get; set; }
-    public float UiVolumeSetting { get; set; } = 1.0f;
+    public float UiVolumeSetting { get; set; } // No default - must be set explicitly by ViewModel
+    public float PanningFactor { get; set; } // for stereo panning
 }
 
 public class EncodedAudioPacketEventArgs : EventArgs

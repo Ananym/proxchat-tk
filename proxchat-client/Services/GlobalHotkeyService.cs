@@ -145,8 +145,8 @@ public class GlobalHotkeyService : IDisposable
     private readonly DebugLogService? _debugLog;
 
     // Hotkey configuration
-    public HotkeyDefinition PushToTalkHotkey { get; set; } = new HotkeyDefinition(Key.F12);
-    public HotkeyDefinition MuteToggleHotkey { get; set; } = new HotkeyDefinition(Key.F11);
+    public HotkeyDefinition PushToTalkHotkey { get; set; } = new HotkeyDefinition(Key.OemBackslash);
+    public HotkeyDefinition MuteToggleHotkey { get; set; } = new HotkeyDefinition(Key.M, ctrl: true);
     public bool IsPushToTalkEnabled { get; set; } = false;
 
     public GlobalHotkeyService(DebugLogService? debugLog = null)
