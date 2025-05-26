@@ -27,7 +27,7 @@ public class WebRtcService : IDisposable
     private uint _rtpTimestamp = 0; // Add timestamp tracking
 
     private static readonly Random _random = new Random(); // For probabilistic logging
-    private const double LOG_PROBABILITY = 0.01; // 1% chance to log detailed packet info
+    private const double LOG_PROBABILITY = 0.0; // Disabled verbose logging to focus on core issues
 
     private static readonly RTCIceServer _stunServer = new RTCIceServer { urls = "stun:stun.l.google.com:19302" };
     private WindowsAudioEndPoint? _audioEndPoint;
@@ -129,6 +129,13 @@ public class WebRtcService : IDisposable
     {
         EnsureInitialized();
         
+        // CRITICAL SAFETY: Never create connection to ourselves
+        if (peerId == _signalingService.ClientId)
+        {
+            _debugLog.LogWebRtc($"[CRITICAL BUG PREVENTION] Attempted to create peer connection to own client ID {peerId}! Blocking this.");
+            return;
+        }
+        
         if (_peerConnections.ContainsKey(peerId)) return;
         if (_audioTrack == null)
         {
@@ -181,10 +188,7 @@ public class WebRtcService : IDisposable
                                 hasAudio = rtpPacket.Payload.Any(b => b != 0xFF); // MuLaw silence is 0xFF
                             }
 
-                            if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
-                            {
-                                _debugLog.LogWebRtc($"(Sampled Log) RTP for peer {foundPeerId} (Identified by PC instance, incoming packet SSRC: {incomingSsrc}): seq={rtpPacket.Header.SequenceNumber}, pt={rtpPacket.Header.PayloadType}, size={rtpPacket.Payload.Length}, hasAudio={hasAudio}");
-                            }
+                            // Removed verbose RTP logging to focus on core issues
 
                             _audioService.PlayAudio(foundPeerId, rtpPacket.Payload, rtpPacket.Payload.Length);
                         }
@@ -520,8 +524,7 @@ public class WebRtcService : IDisposable
             {
                 var positionData = new PositionData { MapId = mapId, X = x, Y = y, CharacterName = characterName };
                 string message = JsonConvert.SerializeObject(positionData);
-                // TEMP LOG: Sending position update
-                _debugLog.LogWebRtc($"[TEMP] DC Sending Position to {peerId}: {message}");
+                // Removed verbose position sending logging
                 state.DataChannel.send(Encoding.UTF8.GetBytes(message));
                 _debugLog.LogWebRtc($"Sent position update to {peerId}: MapId={mapId}, X={x}, Y={y}");
             }
@@ -578,11 +581,7 @@ public class WebRtcService : IDisposable
                 hasAudio = audioData.Any(b => b != 0xFF);
             }
 
-            // _debugLog.LogWebRtc($"OnEncodedAudioPacketReadyToSend: samples={samplesInPacket}, hasAudio={hasAudio}. Attempting to send via MediaStreamTrack.");
-            if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging for the general send event
-            {
-                _debugLog.LogWebRtc($"(Sampled Log) OnEncodedAudioPacketReadyToSend: samples={samplesInPacket}, hasAudio={hasAudio}. Attempting to send to all peers.");
-            }
+            // Removed verbose audio packet logging to focus on core issues
 
             foreach (var peerId in _peerConnections.Keys)
             {
@@ -612,13 +611,7 @@ public class WebRtcService : IDisposable
                         // The duration (samplesInPacket) is how much the RTP timestamp will be incremented by the sender for this packet.
                         state.PeerConnection.SendAudio((uint)samplesInPacket, audioData);
 
-                        if (hasAudio)
-                        {
-                            if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging for sent packets
-                            {
-                                _debugLog.LogWebRtc($"(Sampled Log) Sent audio packet via PeerConnection.SendAudio to {peerId}: duration={samplesInPacket}, size={audioData.Length}, local_ts_approx={_rtpTimestamp}");
-                            }
-                        }
+                        // Removed verbose sent audio packet logging
                     }
                     catch (Exception ex)
                     {

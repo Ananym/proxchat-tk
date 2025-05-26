@@ -22,6 +22,10 @@ public class SignalingService : IDisposable
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _receiveCts;
     private readonly DebugLogService _debugLog;
+    
+    // throttle position update logging
+    private int _lastLoggedMapId = -1;
+    private DateTime _lastPositionLogTime = DateTime.MinValue;
 
     public event EventHandler<List<string>>? NearbyClientsReceived;
     public event EventHandler<OfferPayload>? OfferReceived;
@@ -171,6 +175,17 @@ public class SignalingService : IDisposable
                     if (nearbyPeersData?.Peers != null) 
                     {
                         _debugLog.LogSignaling($"Received nearby peers: {string.Join(", ", nearbyPeersData.Peers)}");
+                        
+                        // check if our own client ID is in the list
+                        if (nearbyPeersData.Peers.Contains(_clientId))
+                        {
+                            _debugLog.LogSignaling($"[BUG] Server sent our own client ID {_clientId} in nearby peers list!");
+                            
+                            // remove our own ID from the list to prevent self-connection
+                            nearbyPeersData.Peers = nearbyPeersData.Peers.Where(id => id != _clientId).ToList();
+                            _debugLog.LogSignaling($"[FIX] Removed own client ID from nearby list. Remaining peers: {string.Join(", ", nearbyPeersData.Peers)}");
+                        }
+                        
                         NearbyClientsReceived?.Invoke(this, nearbyPeersData.Peers);
                     }
                     break;
@@ -238,6 +253,15 @@ public class SignalingService : IDisposable
             Y = y,
             Channel = channel
         };
+        
+        // only log position updates occasionally to avoid spam
+        if (mapId != _lastLoggedMapId || DateTime.Now - _lastPositionLogTime > TimeSpan.FromSeconds(5))
+        {
+            _debugLog.LogSignaling($"Sending position: ClientId={_clientId}, MapId={mapId}, X={x}, Y={y}, Channel={channel}");
+            _lastLoggedMapId = mapId;
+            _lastPositionLogTime = DateTime.Now;
+        }
+        
         var message = ClientMessage.CreateUpdatePosition(positionData);
         await SendMessageAsync(message);
     }

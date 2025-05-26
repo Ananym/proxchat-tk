@@ -111,7 +111,7 @@ namespace ProxChatClient.ViewModels
             }
         }
 
-        public string DistanceDisplay => $"{Distance:F1}";
+        public string DistanceDisplay => Distance < 0 ? "Different Map" : $"{Distance:F1}";
 
         public event PropertyChangedEventHandler? PropertyChanged;
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)

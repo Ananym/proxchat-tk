@@ -609,10 +609,7 @@ public class AudioService : IDisposable
                 if (bytesRead == PCMU_PACKET_SIZE_BYTES)
                 {
                     EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(pcmuPacket, bytesRead));
-                    if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
-                    {
-                        _debugLog.LogAudio($"(Sampled Log) Mic: Sent {bytesRead} PCMU bytes after resample/encode.");
-                    }
+                    // Removed verbose microphone encoding logging
                 }
                 else if (bytesRead > 0)
                 {
@@ -787,11 +784,7 @@ public class AudioService : IDisposable
             // Send the audio data (either real audio if above threshold, or silence if below)
             EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(finalAudioData, finalAudioData.Length));
             
-            if (_random.NextDouble() < LOG_PROBABILITY) // Probabilistic logging
-            {
-                bool isBroadcasting = hasValidAudio && calculatedLevel >= _minBroadcastThreshold;
-                _debugLog.LogAudio($"(Sampled Log) File: Sent {finalAudioData.Length} bytes, level: {calculatedLevel:F3}, broadcasting: {isBroadcasting}");
-            }
+            // Removed verbose audio file logging
         }
         catch (Exception ex)
         {
@@ -891,10 +884,7 @@ public class AudioService : IDisposable
                         const float AUDIO_THRESHOLD = 0.02f; // 2% of max amplitude - adjust as needed
                         hasAudio = maxAmplitude > AUDIO_THRESHOLD;
                         
-                        if (_random.NextDouble() < 0.1) // 10% chance to log for debugging
-                        {
-                            _debugLog.LogAudio($"Audio analysis for peer {peerId}: maxAmplitude={maxAmplitude:F3}, threshold={AUDIO_THRESHOLD:F3}, hasAudio={hasAudio}");
-                        }
+                        // Removed verbose audio analysis logging
                     }
                 }
                 catch (Exception ex)
@@ -939,7 +929,7 @@ public class AudioService : IDisposable
                     byte[] stereoPcmBuffer = ConvertMonoToStereoWithPanning(monoPcmBuffer, bytesDecoded, playback.PanningFactor);
                     
                     playback.Buffer.AddSamples(stereoPcmBuffer, 0, stereoPcmBuffer.Length);
-                    _debugLog.LogAudio($"Played {stereoPcmBuffer.Length} stereo PCM bytes from peer {peerId} (original MuLaw: {length} bytes, panning: {playback.PanningFactor:F2}).");
+                    // Removed verbose audio playback logging to focus on core issues
                 }
             }
             catch (Exception ex)
@@ -1102,11 +1092,7 @@ public class AudioService : IDisposable
         {
             playback.WaveOut.Volume = finalVolume;
             
-            // debug logging for volume scaling
-            if (distance.HasValue)
-            {
-                _debugLog.LogAudio($"Volume for peer {playback.PeerId}: distance={distance.Value:F1}, distanceFactor={distanceFactor:F3}, uiVolume={playback.UiVolumeSetting:F2}, finalVolume={finalVolume:F3}");
-            }
+            // Removed verbose volume logging to focus on core issues
         }
         catch (Exception ex)
         {
@@ -1139,8 +1125,7 @@ public class AudioService : IDisposable
             // store panning factor for use during audio processing
             playback.PanningFactor = panningFactor;
             
-            // debug logging
-            _debugLog.LogAudio($"Audio for peer {playback.PeerId}: distance={distance:F1}, volume={finalVolume:F3}, panning={panningFactor:F2}");
+            // Removed verbose audio logging to focus on core issues
         }
         catch (Exception ex)
         {

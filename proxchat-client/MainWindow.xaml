@@ -321,12 +321,13 @@
 
         <!-- Right Column - Connected Peers -->
         <GroupBox Grid.Column="1" Header="Connected Peers" Margin="5,0,0,0">
-            <ListView ItemsSource="{Binding ConnectedPeers}">
+            <ListView ItemsSource="{Binding ConnectedPeers}" 
+                      HorizontalContentAlignment="Stretch">
                 <ListView.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:PeerViewModel}"> 
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" MinWidth="100"/>
+                                <ColumnDefinition Width="90"/>
                                 <ColumnDefinition Width="Auto" MinWidth="60"/>
                                 <ColumnDefinition Width="*" MinWidth="100"/>
                                 <ColumnDefinition Width="Auto" MinWidth="60"/>
@@ -368,14 +369,18 @@
                                         VerticalAlignment="Center"/>
                             </StackPanel>
                                         
-                            <StackPanel Grid.Column="2" Orientation="Vertical" Margin="5,0" HorizontalAlignment="Stretch">
-                                <TextBlock Text="Volume" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                <Slider Value="{Binding Volume, Mode=TwoWay}" 
+                            <Grid Grid.Column="2" Margin="5,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="Volume" HorizontalAlignment="Center" Margin="0,0,0,2"/>
+                                <Slider Grid.Row="1" Value="{Binding Volume, Mode=TwoWay}" 
                                         Minimum="0" Maximum="1"
                                         SmallChange="0.05" LargeChange="0.1"
                                         ToolTip="Peer Volume"
                                         HorizontalAlignment="Stretch"/>
-                            </StackPanel>
+                            </Grid>
                                     
                             <Button Grid.Column="3"
                                     Content="{Binding IsMuted, Converter={StaticResource MuteButtonContentConverter}, FallbackValue=Mute}"

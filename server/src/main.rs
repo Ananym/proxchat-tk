@@ -269,10 +269,12 @@ async fn handle_connection(
                                     // Maybe send a disconnect message to the old connection?
                                     // _old_tx.send(ServerMessage::Error("Disconnected: Replaced by new connection".to_string())).await;
                                 }
-                                // Remove the potentially dangling mapping entry regardless
+                                // clean up ALL old client data to prevent stale position data issues
                                 state_write.client_id_to_connection_id.remove(&client_id_from_payload);
-                                // TODO: Decide if we need to remove the old connection from state.connections here too?
-                                // state_write.connections.remove(existing_conn_id); // This might interfere with its own cleanup
+                                state_write.positions.remove(&client_id_from_payload);
+                                state_write.last_update_time.remove(&client_id_from_payload);
+                                state_write.last_nearby_lists.remove(&client_id_from_payload);
+                                // note: not removing from connections as old connection will clean itself up
                             }
 
                             state_write.client_id_to_connection_id.insert(client_id_from_payload.clone(), connection_id.clone());

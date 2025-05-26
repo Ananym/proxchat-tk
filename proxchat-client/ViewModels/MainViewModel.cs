@@ -47,7 +47,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _debugCharacterName = Guid.NewGuid().ToString().Substring(0, 8); // Default random string
     private int _debugX = 110; // Changed to int
     private int _debugY = 206; // Changed to int
-    private int _debugMapId = 0;
+    private int _debugMapId = 0; // Map 0 is perfectly valid - it's the first map
     private bool _useWavInput; // Debug-only, not persisted
     private string? _selectedAudioFile; // Path to selected audio file
     private string _audioFileDisplayName = "No file selected"; // Display name for UI
@@ -892,8 +892,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async void OnGameDataRead(object? sender, (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) data)
     {
-        // add debug logging to see if this method is being called
-        _debugLog.LogMain($"OnGameDataRead called: Success={data.Success}, Map={data.MapId}, X={data.X}, Y={data.Y}, Name='{data.CharacterName}', IsRunning={IsRunning}");
+        // only log game data reads when not running to avoid spam
+        if (!IsRunning)
+            _debugLog.LogMain($"OnGameDataRead: Success={data.Success}, Map={data.MapId}, X={data.X}, Y={data.Y}, Name='{data.CharacterName}'");
         
         try
         {
@@ -996,15 +997,21 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
             if ((mapChanged || positionChangedForSending || forceSend) && _signalingService.IsConnected)
             {
-                await _signalingService.UpdatePosition(data.MapId, data.X, data.Y, _config.Channel);
-                _lastSentMapId = data.MapId;
-                _lastSentX = data.X;
-                _lastSentY = data.Y;
+                // use debug values if debug mode is enabled, otherwise use game data
+                int mapId = IsDebugModeEnabled ? _debugMapId : data.MapId;
+                int x = IsDebugModeEnabled ? _debugX : data.X;
+                int y = IsDebugModeEnabled ? _debugY : data.Y;
+                string characterName = IsDebugModeEnabled ? _debugCharacterName : data.CharacterName;
+
+                await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
+                _lastSentMapId = mapId;
+                _lastSentX = x;
+                _lastSentY = y;
                 _lastSentTime = now;
 
                 foreach (var peer in ConnectedPeers)
                 {
-                    _webRtcService.SendPosition(peer.Id, data.MapId, data.X, data.Y, data.CharacterName);
+                    _webRtcService.SendPosition(peer.Id, mapId, x, y, characterName);
                 }
             }
             
@@ -1093,6 +1100,16 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
             Debug.WriteLine($"Nearby update: MyId={myClientId}, Current={string.Join(",", currentPeerIds)}, Pending={string.Join(",", pendingPeerIds)}, Nearby={string.Join(",", nearbyClients)}, Add={string.Join(",", toAddIds)}, Remove={string.Join(",", toRemoveIds)}");
 
+            // check if our own client ID is in the nearby list
+            if (nearbyClients.Contains(myClientId))
+            {
+                _debugLog.LogMain($"[BUG] Our own client ID {myClientId} is in the nearby peers list!");
+                
+                // remove our own ID from the list to prevent self-connection
+                nearbyClients = nearbyClients.Where(id => id != myClientId).ToList();
+                _debugLog.LogMain($"[FIX] Removed own client ID from nearby list. Remaining peers: {string.Join(", ", nearbyClients)}");
+            }
+
             foreach (var peerId in toRemoveIds)
             {
                 // Check and remove from UI collection
@@ -1122,6 +1139,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 {
                     bool amInitiator = string.CompareOrdinal(myClientId, peerId) > 0;
                     Debug.WriteLine($"Adding new pending peer {peerId}, Initiator: {amInitiator}");
+                    
+                    // log current map info when adding peers for debugging
+                    var currentMapId = IsDebugModeEnabled ? _debugMapId : _gameMapId;
+                    _debugLog.LogMain($"Adding peer {peerId} while on MapId={currentMapId}. Initiator: {amInitiator}");
                     
                     _pendingPeers[peerId] = true;
                     
@@ -1157,21 +1178,15 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         });
     }
 
-    // Handler for the new DataChannelOpened event
+    // handler for the new DataChannelOpened event
     private async void HandleDataChannelOpened(object? sender, string peerId)
     {
-        _debugLog.LogMain($"[UI_TIMING] HandleDataChannelOpened START for peer {peerId}.");
-        // We will not add the peer to the ConnectedPeers collection here.
-        // HandlePeerPosition will be responsible for adding the peer when the first position update is received.
-        // This simplifies logic and avoids race conditions for adding.
-        // However, we should send our current position to the peer whose data channel just opened,
-        // so they become aware of us and can send their position back.
-        _debugLog.LogMain($"[UI_TIMING] HandleDataChannelOpened for {peerId}: About to dispatch SendPositionUpdateForPeer.");
-        await Task.Run(() => SendPositionUpdateForPeer(peerId)); // Run on a background thread
-        _debugLog.LogMain($"[UI_TIMING] HandleDataChannelOpened for {peerId}: Dispatched SendPositionUpdateForPeer. Method returning.");
+        // send our current position to the peer whose data channel just opened,
+        // so they become aware of us and can send their position back
+        await Task.Run(() => SendPositionUpdateForPeer(peerId));
     }
     
-    // New method to send position update to a specific peer
+    // send position update to a specific peer
     private void SendPositionUpdateForPeer(string peerId)
     {
         try
@@ -1197,10 +1212,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 name = gameData.CharacterName;
             }
 
-            _debugLog.LogMain($"[UI_TIMING] SendPositionUpdateForPeer START for peer {peerId}. My pos: Map={mapId}, X={x}, Y={y}, Name={name}.");
-            _debugLog.LogMain($"[UI_TIMING] SendPositionUpdateForPeer for {peerId}: About to call _webRtcService.SendPosition.");
             _webRtcService.SendPosition(peerId, mapId, x, y, name);
-            _debugLog.LogMain($"[UI_TIMING] SendPositionUpdateForPeer for {peerId}: Called _webRtcService.SendPosition. Method returning.");
         }
         catch (Exception ex)
         {
@@ -1291,9 +1303,12 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         else
         {
-            // different map, set max distance
+            // different map, set max distance but display as "Different Map"
+            _debugLog.LogMain($"[DISTANCE_CALC] Peer {peerVm.CharacterName} on different map: MyMapId={localMapId}, PeerMapId={peerVm.MapId} - setting max distance");
             _audioService.UpdatePeerDistance(peerVm.Id, float.MaxValue);
-            peerVm.Distance = float.MaxValue;
+            
+            // use a special value that the UI can recognize and display as "Different Map"
+            peerVm.Distance = -1.0f; // Special value to indicate different map
         }
     }
 
@@ -1308,8 +1323,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async void HandlePeerPosition(object? sender, (string PeerId, int MapId, int X, int Y, string CharacterName) positionData)
     {
-        // This method can be called from background threads (e.g., via WebRtcService events)
-        _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition START for peer {positionData.PeerId}. Data: Map={positionData.MapId}, X={positionData.X}, Y={positionData.Y}, Name='{positionData.CharacterName}'.");
+        // check if we're receiving position data from our own client ID
+        var myClientId = _signalingService.ClientId;
+        if (positionData.PeerId == myClientId)
+        {
+            _debugLog.LogMain($"[BUG] Received position data from our own client ID {myClientId}!");
+            return; // don't process our own position data
+        }
 
         PeerViewModel? existingPeerVm = null;
         bool needsToAdd = false;
@@ -1326,57 +1346,43 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
         if (needsToAdd)
         {
-            _debugLog.LogMain($"Peer {peerIdentifier} (Name from data: {positionData.CharacterName}) not in UI collection. Preparing to create and add.");
-            _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {peerIdentifier}: Needs to add. About to Dispatcher.InvokeAsync.");
-            
-            // Create the new ViewModel outside the Dispatcher, but add it inside.
-            var newPeerVmInstance = new PeerViewModel(); // Use default constructor
+            // create the new ViewModel outside the Dispatcher, but add it inside
+            var newPeerVmInstance = new PeerViewModel();
             newPeerVmInstance.Id = peerIdentifier;
             newPeerVmInstance.CharacterName = string.IsNullOrEmpty(positionData.CharacterName) ? PeerViewModel.DefaultCharacterName : positionData.CharacterName;
             newPeerVmInstance.MapId = positionData.MapId;
             newPeerVmInstance.X = positionData.X;
             newPeerVmInstance.Y = positionData.Y;
-            newPeerVmInstance.Volume = 0.5f; // Default volume to 0.5f to leave room for boosting specific peers
+            newPeerVmInstance.Volume = 0.5f; // default volume to 0.5f to leave room for boosting specific peers
             
-            // ViewModel is the single source of truth for peer volume - ensure AudioService gets it immediately
+            // viewModel is the single source of truth for peer volume - ensure AudioService gets it immediately
             _audioService.SyncPeerVolumeFromViewModel(newPeerVmInstance.Id, newPeerVmInstance.Volume);
 
             await App.Current.Dispatcher.InvokeAsync(() =>
             {
-                lock (_peersLock) // Lock for the critical check-and-add section on the UI thread
+                lock (_peersLock) // lock for the critical check-and-add section on the UI thread
                 {
                     var peerAlreadyAdded = ConnectedPeers.FirstOrDefault(p => p.Id == newPeerVmInstance.Id);
                     if (peerAlreadyAdded == null)
                     {
-                        _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}): ADDING to ConnectedPeers collection.");
                         ConnectedPeers.Add(newPeerVmInstance);
-                        _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}): ADDED to ConnectedPeers collection.");
                         _debugLog.LogMain($"New peer {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}) added to UI collection.");
-                        // Apply persisted settings *after* adding and *after* CharacterName might be set
-                        // The UpdatePeerViewModelProperties below will handle the initial name setting if needed.
-                        UpdatePeerViewModelProperties(newPeerVmInstance, positionData); // Set initial properties
-                        // calculate initial distance for new peer
-                        RecalculatePeerDistance(newPeerVmInstance); 
+                        UpdatePeerViewModelProperties(newPeerVmInstance, positionData); // set initial properties
+                        RecalculatePeerDistance(newPeerVmInstance); // calculate initial distance for new peer
                     }
                     else
                     {
-                        _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {peerAlreadyAdded.Id}: CONCURRENTLY ADDED. Updating its properties instead.");
                         _debugLog.LogMain($"Peer {peerAlreadyAdded.Id} was concurrently added. Updating its properties instead of adding new.");
                         UpdatePeerViewModelProperties(peerAlreadyAdded, positionData);
-                        // distance will be calculated in UpdatePeerViewModelProperties if position changed
                     }
                 }
             });
         }
-        else if (existingPeerVm != null) // Peer already exists, update its properties
+        else if (existingPeerVm != null) // peer already exists, update its properties
         {
-            _debugLog.LogMain($"Peer {existingPeerVm.Id} ({existingPeerVm.CharacterName}) exists in UI collection. Dispatching update.");
-            _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {existingPeerVm.Id} ({existingPeerVm.CharacterName}): Exists. About to Dispatcher.InvokeAsync to update properties.");
             await App.Current.Dispatcher.InvokeAsync(() =>
             {
-                _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {existingPeerVm.Id} ({existingPeerVm.CharacterName}): UPDATING existing peer in ConnectedPeers.");
                 UpdatePeerViewModelProperties(existingPeerVm, positionData);
-                // distance will be calculated in UpdatePeerViewModelProperties if position changed
             });
         }
     }
