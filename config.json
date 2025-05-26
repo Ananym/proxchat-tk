@@ -1,16 +1,17 @@
 {
   "WebSocketServer": {
-    "Host": "prox-chat-tk.fly.dev"
+    "Host": "prox-chat-tk.fly.dev",
+    "Port": 443
   },
   "Channel": 0,
   "AudioSettings": {
     "VolumeScale": 0.5,
-    "InputVolumeScale": 1,
+    "InputVolumeScale": 1.05,
     "MinBroadcastThreshold": 0,
-    "SelectedInputDevice": "Microphone (Razer BlackShark V2",
-    "IsPushToTalk": true,
+    "SelectedInputDevice": "Microphone (Razer Seiren Mini)",
+    "IsPushToTalk": false,
     "PushToTalkKey": "Oem5",
-    "MuteSelfKey": "Ctrl+Q"
+    "MuteSelfKey": "Ctrl\u002BM"
   },
   "PeerSettings": {
     "35606cda": {

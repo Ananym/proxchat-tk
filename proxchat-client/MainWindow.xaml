@@ -8,7 +8,7 @@
         xmlns:converters="clr-namespace:ProxChatClient.Converters"
         xmlns:controls="clr-namespace:ProxChatClient.Controls"
         mc:Ignorable="d"
-        Title="Proximity Chat" Width="800" MinHeight="550" MinWidth="700"
+        Title="ProxChatTK" Width="800" MinHeight="550" MinWidth="700"
         SizeToContent="Height"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel, IsDesignTimeCreatable=True}" 
         WindowStartupLocation="CenterScreen">
@@ -55,16 +55,28 @@
 
         <!-- Audio Controls (Row 1) -->
         <StackPanel Grid.Row="1" Margin="0,0,0,10">
-            <Label Content="Microphone Input Volume:"/>
+            <Label>
+                <TextBlock>
+                    <Run Text="Microphone Input Volume: ("/>
+                    <Run Text="{Binding InputVolumeScale, StringFormat='{}{0:F1}'}"/>
+                    <Run Text=")"/>
+                </TextBlock>
+            </Label>
             <Slider Value="{Binding InputVolumeScale}"
-                    Minimum="0" Maximum="2"
-                    TickFrequency="0.05"
-                    SmallChange="0.05"
-                    LargeChange="0.1"
+                    Minimum="0" Maximum="5"
+                    TickFrequency="0.1"
+                    SmallChange="0.1"
+                    LargeChange="0.5"
                     IsSnapToTickEnabled="True"
                     ToolTip="Controls the volume of your microphone input when transmitting"/>
             
-            <Label Content="Overall Output Volume:" Margin="0,10,0,0"/>
+            <Label Margin="0,10,0,0">
+                <TextBlock>
+                    <Run Text="Overall Output Volume: ("/>
+                    <Run Text="{Binding VolumeScale, StringFormat='{}{0:F2}'}"/>
+                    <Run Text=")"/>
+                </TextBlock>
+            </Label>
             <Slider Value="{Binding VolumeScale}"
                     Minimum="0" Maximum="1"
                     TickFrequency="0.05"
@@ -74,7 +86,13 @@
                     ToolTip="Controls the overall volume of all received audio"/>
 
             <!-- Move Threshold Above Input Level -->
-            <Label Content="Minimum Broadcast Threshold:" Margin="0,10,0,0"/>
+            <Label Margin="0,10,0,0">
+                <TextBlock>
+                    <Run Text="Minimum Broadcast Threshold: ("/>
+                    <Run Text="{Binding MinBroadcastThreshold, StringFormat='{}{0:F2}'}"/>
+                    <Run Text=")"/>
+                </TextBlock>
+            </Label>
             <Slider Value="{Binding MinBroadcastThreshold}"
                     Minimum="0" Maximum="1"
                     TickFrequency="0.01"

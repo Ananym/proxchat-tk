@@ -75,7 +75,7 @@ public partial class KeyBindingEditor : UserControl
         else
         {
             // use converter to get better display text
-            var displayText = _keyDisplayConverter.Convert(Hotkey.ToString(), typeof(string), null, System.Globalization.CultureInfo.CurrentCulture);
+            var displayText = _keyDisplayConverter.Convert(Hotkey.ToString(), typeof(string), parameter: null!, System.Globalization.CultureInfo.CurrentCulture);
             KeyDisplay.Text = displayText?.ToString() ?? Hotkey.ToString();
         }
     }

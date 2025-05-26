@@ -18,7 +18,7 @@ namespace ProxChatClient.Services;
 public class SignalingService : IDisposable
 {
     private readonly Uri _serverUri;
-    private readonly string _clientId;
+    private string _clientId;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _receiveCts;
     private readonly DebugLogService _debugLog;
@@ -295,5 +295,24 @@ public class SignalingService : IDisposable
     public void Dispose()
     {
         _ = HandleDisconnect();
+    }
+
+    // add method to regenerate client id and reconnect
+    public async Task RegenerateClientIdAndReconnect()
+    {
+        _debugLog.LogSignaling("Regenerating client ID for anonymity and reconnecting...");
+        
+        // disconnect first if connected
+        if (IsConnected)
+        {
+            await HandleDisconnect();
+        }
+        
+        // generate new client id
+        _clientId = Guid.NewGuid().ToString();
+        _debugLog.LogSignaling($"Generated new client ID: {_clientId}");
+        
+        // reconnect with new id
+        await Connect();
     }
 } 

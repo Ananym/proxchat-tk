@@ -5,7 +5,8 @@ param(
     [switch]$Clean,
     [switch]$NoZip,
     [string]$Version = "latest",
-    [switch]$Verbose
+    [switch]$Verbose,
+    [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,6 +44,7 @@ Options:
   -NoZip           Skip creating the ZIP archive
   -Version <ver>   Version string for the package (default: latest)
   -Verbose         Show detailed build output
+  -Help            Show this help message
 
 Examples:
   .\build_package.ps1                    # Build complete package
@@ -186,19 +188,14 @@ function Create-DistributionPackage {
     Copy-Item $ClientPaths.Config $targetConfig -Force
     Write-Host "  ✓ config.json (default configuration)" -ForegroundColor Cyan
     
-    # Copy documentation from client directory
-    $clientDocs = @(
-        "CONFIG-README.md",
-        "DISTRIBUTION-README.md"
-    )
-    
-    foreach ($doc in $clientDocs) {
-        $sourcePath = Join-Path $ClientDir $doc
-        if (Test-Path $sourcePath) {
-            $targetPath = Join-Path $ReleaseDir $doc
-            Copy-Item $sourcePath $targetPath -Force
-            Write-Host "  ✓ $doc" -ForegroundColor Cyan
-        }
+    # Copy user guide from client directory
+    $userGuidePath = Join-Path $ClientDir "user_guide.txt"
+    if (Test-Path $userGuidePath) {
+        $targetUserGuide = Join-Path $ReleaseDir "user_guide.txt"
+        Copy-Item $userGuidePath $targetUserGuide -Force
+        Write-Host "  ✓ user_guide.txt" -ForegroundColor Cyan
+    } else {
+        Write-Warning "User guide not found at: $userGuidePath"
     }
     
     Write-Host "✅ Distribution package created in: $ReleaseDir" -ForegroundColor Green
@@ -264,7 +261,8 @@ function Show-Summary {
 
 # Main execution
 try {
-    if ($PSBoundParameters.Count -eq 0 -and -not $Clean) {
+    # Show help if explicitly requested
+    if ($Help) {
         Show-Help
         return
     }

@@ -52,6 +52,10 @@ public class AudioService : IDisposable
     // Buffer for microphone data before resampling and encoding
     private CircularBuffer? _microphoneCircularBuffer;
     private WaveFormat _pcm8KhzFormat = new WaveFormat(PCMU_SAMPLE_RATE, 16, PCMU_CHANNELS);
+    
+    // track last audio level update time to prevent stuck displays
+    private DateTime _lastAudioLevelUpdate = DateTime.UtcNow;
+    private Timer? _audioLevelResetTimer;
 
 
     public ObservableCollection<string> InputDevices { get; } = new();
@@ -110,7 +114,16 @@ public class AudioService : IDisposable
         get => _minBroadcastThreshold;
         set
         {
-            _minBroadcastThreshold = Math.Clamp(value, 0.0f, 1.0f);
+            // validate input and clamp to safe range
+            if (float.IsNaN(value) || float.IsInfinity(value))
+            {
+                _debugLog.LogAudio($"Invalid MinBroadcastThreshold: {value}. Using default value 0.0f");
+                _minBroadcastThreshold = 0.0f;
+            }
+            else
+            {
+                _minBroadcastThreshold = Math.Clamp(value, 0.0f, 1.0f);
+            }
             _debugLog.LogAudio($"MinBroadcastThreshold set to: {_minBroadcastThreshold}");
         }
     }
@@ -124,6 +137,9 @@ public class AudioService : IDisposable
         
         // Start timer to check for transmission timeouts
         _transmissionCheckTimer = new Timer(CheckTransmissionTimeouts, null, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100));
+        
+        // Start timer to reset stuck audio level displays
+        _audioLevelResetTimer = new Timer(CheckAudioLevelTimeout, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     public void RefreshInputDevices()
@@ -277,7 +293,14 @@ public class AudioService : IDisposable
             };
             
             // Initialize circular buffer for microphone input (e.g., for 1 second of 48kHz, 16-bit mono audio)
-            _microphoneCircularBuffer = new CircularBuffer(_captureFormat.SampleRate * _captureFormat.Channels * (_captureFormat.BitsPerSample / 8) * 1);
+            // calculate buffer size with validation to prevent extreme values
+            int bufferSizeBytes = _captureFormat.SampleRate * _captureFormat.Channels * (_captureFormat.BitsPerSample / 8) * 1;
+            
+            // clamp buffer size to reasonable range (min 1KB, max 10MB)
+            bufferSizeBytes = Math.Clamp(bufferSizeBytes, 1024, 10 * 1024 * 1024);
+            
+            _debugLog.LogAudio($"Initializing circular buffer with size: {bufferSizeBytes} bytes");
+            _microphoneCircularBuffer = new CircularBuffer(bufferSizeBytes);
 
 
             _waveIn.DataAvailable += OnWaveInDataAvailable;
@@ -309,9 +332,77 @@ public class AudioService : IDisposable
 
         if (e.BytesRecorded == 0 || _microphoneCircularBuffer == null)
         {
+            // ensure audio level updates even when no data is available
+            try
+            {
+                AudioLevelChanged?.Invoke(this, 0.0f);
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogAudio($"Error firing AudioLevelChanged event for no data: {ex.Message}");
+            }
             return;
         }
-        _microphoneCircularBuffer.Write(e.Buffer, 0, e.BytesRecorded);
+
+        // validate input data to prevent exceptions
+        if (e.Buffer == null || e.BytesRecorded < 0 || e.BytesRecorded > e.Buffer.Length)
+        {
+            _debugLog.LogAudio($"Invalid audio data: BytesRecorded={e.BytesRecorded}, BufferLength={e.Buffer?.Length ?? 0}");
+            try
+            {
+                AudioLevelChanged?.Invoke(this, 0.0f);
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogAudio($"Error firing AudioLevelChanged event for invalid data: {ex.Message}");
+            }
+            return;
+        }
+
+        // ensure we have even number of bytes for 16-bit samples
+        int validBytesRecorded = e.BytesRecorded;
+        if (validBytesRecorded % 2 != 0)
+        {
+            validBytesRecorded--; // drop the last odd byte to maintain 16-bit alignment
+            _debugLog.LogAudio($"Adjusted BytesRecorded from {e.BytesRecorded} to {validBytesRecorded} for 16-bit alignment");
+        }
+        try
+        {
+            _microphoneCircularBuffer.Write(e.Buffer, 0, validBytesRecorded);
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error writing to circular buffer: {ex.Message}");
+            // calculate audio level directly from incoming buffer as fallback
+            try
+            {
+                float fallbackLevel = 0;
+                // use validBytesRecorded and ensure we don't go out of bounds
+                for (int i = 0; i < validBytesRecorded - 1; i += 2)
+                {
+                    if (i + 1 < e.Buffer.Length) // additional bounds check
+                    {
+                        short sample = BitConverter.ToInt16(e.Buffer, i);
+                        // clamp sample to prevent overflow in calculations
+                        sample = (short)Math.Clamp(sample, short.MinValue, short.MaxValue);
+                        float normalizedSample = Math.Abs(sample) / 32768f;
+                        // clamp normalized sample to valid range
+                        normalizedSample = Math.Clamp(normalizedSample, 0.0f, 1.0f);
+                        fallbackLevel = Math.Max(fallbackLevel, normalizedSample);
+                    }
+                }
+                // clamp final level to valid range
+                fallbackLevel = Math.Clamp(fallbackLevel, 0.0f, 1.0f);
+                AudioLevelChanged?.Invoke(this, fallbackLevel);
+                _lastAudioLevelUpdate = DateTime.UtcNow; // track successful fallback update
+            }
+            catch (Exception levelEx)
+            {
+                _debugLog.LogAudio($"Error calculating fallback audio level: {levelEx.Message}");
+                AudioLevelChanged?.Invoke(this, 0.0f);
+            }
+            return; // exit early if buffer write fails
+        }
 
         // Calculate required 48kHz PCM bytes for one 20ms 8kHz PCMU packet
         // One 20ms 8kHz PCMU packet = 160 samples.
@@ -319,45 +410,112 @@ public class AudioService : IDisposable
         // The resampler will take 48kHz data and output 8kHz. Ratio is 48/8 = 6.
         // So, we need 160 * 6 = 960 samples of 48kHz data.
         // Bytes for 960 samples of 48kHz, 16-bit mono = 960 * 2 bytes = 1920 bytes.
-        int requiredInputBytes = (_captureFormat.SampleRate / PCMU_SAMPLE_RATE) * PCMU_PACKET_SIZE_BYTES * (_captureFormat.BitsPerSample / 8) / (PCMU_BITS_PER_SAMPLE / 8) ;
+        
+        // validate format parameters to prevent division by zero
+        if (PCMU_SAMPLE_RATE <= 0 || PCMU_BITS_PER_SAMPLE <= 0 || _captureFormat.SampleRate <= 0 || _captureFormat.BitsPerSample <= 0)
+        {
+            _debugLog.LogAudio($"Invalid audio format parameters: PCMU_SAMPLE_RATE={PCMU_SAMPLE_RATE}, PCMU_BITS_PER_SAMPLE={PCMU_BITS_PER_SAMPLE}, CaptureRate={_captureFormat.SampleRate}, CaptureBits={_captureFormat.BitsPerSample}");
+            return; // exit early to prevent calculation errors
+        }
+        
+        int requiredInputBytes = (_captureFormat.SampleRate / PCMU_SAMPLE_RATE) * PCMU_PACKET_SIZE_BYTES * (_captureFormat.BitsPerSample / 8) / (PCMU_BITS_PER_SAMPLE / 8);
+        
+        // clamp to reasonable range to prevent extreme buffer requirements
+        requiredInputBytes = Math.Clamp(requiredInputBytes, 32, 65536); // min 32 bytes, max 64KB per packet
 
 
         while (_microphoneCircularBuffer.Count >= requiredInputBytes)
         {
             var pcm48kHzBuffer = new byte[requiredInputBytes];
+            
+            // validate buffer size before reading
+            if (requiredInputBytes <= 0 || requiredInputBytes > _microphoneCircularBuffer.Count)
+            {
+                _debugLog.LogAudio($"Invalid requiredInputBytes: {requiredInputBytes}, available: {_microphoneCircularBuffer.Count}");
+                break; // exit the loop to prevent infinite processing
+            }
+            
             _microphoneCircularBuffer.Read(pcm48kHzBuffer, 0, requiredInputBytes);
 
             // Apply input volume scaling (on 48kHz PCM before resampling and encoding)
-            if (_inputVolumeScale != 1.0f)
+            if (_inputVolumeScale != 1.0f && pcm48kHzBuffer.Length >= 2)
             {
                 int sampleCount = pcm48kHzBuffer.Length / 2;
-                short[] samples = new short[sampleCount];
-                Buffer.BlockCopy(pcm48kHzBuffer, 0, samples, 0, pcm48kHzBuffer.Length);
-                for (int i = 0; i < sampleCount; i++)
+                // validate sample count to prevent array issues
+                if (sampleCount > 0 && sampleCount <= pcm48kHzBuffer.Length / 2)
                 {
-                    samples[i] = (short)Math.Clamp(samples[i] * _inputVolumeScale, short.MinValue, short.MaxValue);
+                    short[] samples = new short[sampleCount];
+                    Buffer.BlockCopy(pcm48kHzBuffer, 0, samples, 0, pcm48kHzBuffer.Length);
+                    
+                    // clamp input volume scale to reasonable range to prevent extreme values
+                    float clampedVolumeScale = Math.Clamp(_inputVolumeScale, 0.0f, 10.0f);
+                    
+                    for (int i = 0; i < sampleCount; i++)
+                    {
+                        // use double precision for intermediate calculation to prevent overflow
+                        double scaledSample = samples[i] * clampedVolumeScale;
+                        samples[i] = (short)Math.Clamp(scaledSample, short.MinValue, short.MaxValue);
+                    }
+                    Buffer.BlockCopy(samples, 0, pcm48kHzBuffer, 0, pcm48kHzBuffer.Length);
                 }
-                Buffer.BlockCopy(samples, 0, pcm48kHzBuffer, 0, pcm48kHzBuffer.Length);
             }
             
             // Calculate audio level for visualization from 48kHz data
             float maxSample = 0;
-            for (int i = 0; i < pcm48kHzBuffer.Length; i += 2)
+            try
             {
-                short sample = BitConverter.ToInt16(pcm48kHzBuffer, i);
-                float normalizedSample = Math.Abs(sample) / 32768f;
-                maxSample = Math.Max(maxSample, normalizedSample);
+                // validate buffer length before processing
+                if (pcm48kHzBuffer.Length >= 2)
+                {
+                    for (int i = 0; i < pcm48kHzBuffer.Length - 1; i += 2)
+                    {
+                        // additional bounds check to prevent out-of-range access
+                        if (i + 1 < pcm48kHzBuffer.Length)
+                        {
+                            short sample = BitConverter.ToInt16(pcm48kHzBuffer, i);
+                            // clamp sample to prevent overflow in abs calculation
+                            sample = (short)Math.Clamp(sample, short.MinValue, short.MaxValue);
+                            float normalizedSample = Math.Abs(sample) / 32768f;
+                            // clamp normalized sample to valid range
+                            normalizedSample = Math.Clamp(normalizedSample, 0.0f, 1.0f);
+                            maxSample = Math.Max(maxSample, normalizedSample);
+                        }
+                    }
+                }
+                // clamp final max sample to valid range
+                maxSample = Math.Clamp(maxSample, 0.0f, 1.0f);
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogAudio($"Error calculating audio level: {ex.Message}");
+                maxSample = 0; // fallback to silence level on error
             }
 
             // Always show the actual detected audio level (color will indicate if broadcasting)
-            AudioLevelChanged?.Invoke(this, maxSample);
+            // ensure this always fires even if encoding fails
+            try
+            {
+                AudioLevelChanged?.Invoke(this, maxSample);
+                _lastAudioLevelUpdate = DateTime.UtcNow; // track successful update
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogAudio($"Error firing AudioLevelChanged event: {ex.Message}");
+            }
 
             // If audio level is below threshold, send silence but still show the level
             if (maxSample < _minBroadcastThreshold)
             {
                 var silencePacket = new byte[PCMU_PACKET_SIZE_BYTES];
                 Array.Fill(silencePacket, (byte)0xFF); // MuLaw silence
-                EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, silencePacket.Length));
+                try
+                {
+                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, silencePacket.Length));
+                }
+                catch (Exception ex)
+                {
+                    _debugLog.LogAudio($"Error sending silence packet: {ex.Message}");
+                }
                 continue; // Process next chunk in buffer if any
             }
 
@@ -397,6 +555,17 @@ public class AudioService : IDisposable
             catch (Exception ex)
             {
                 _debugLog.LogAudio($"Error during microphone audio resampling/encoding: {ex.Message}");
+                // send silence packet on encoding error to maintain audio stream continuity
+                try
+                {
+                    var silencePacket = new byte[PCMU_PACKET_SIZE_BYTES];
+                    Array.Fill(silencePacket, (byte)0xFF); // MuLaw silence
+                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, silencePacket.Length));
+                }
+                catch (Exception silenceEx)
+                {
+                    _debugLog.LogAudio($"Error sending silence packet after encoding failure: {silenceEx.Message}");
+                }
             }
         }
     }
@@ -788,6 +957,40 @@ public class AudioService : IDisposable
         return Math.Clamp(panning, -1.0f, 1.0f);
     }
 
+    private float CalculateDistanceFactor(float distance)
+    {
+        // piecewise distance curve for more gradual falloff:
+        // distance 0: 100%
+        // distance 3: 90%
+        // distance 14: 1%
+        // distance 19: 0.1%
+        // distance 20+: 0% (silence)
+        
+        if (distance >= 20.0f)
+        {
+            return 0.0f; // complete silence beyond 20 units
+        }
+        else if (distance <= 3.0f)
+        {
+            // linear interpolation from 100% at distance 0 to 90% at distance 3
+            return 1.0f - (distance / 3.0f) * 0.1f; // 1.0 to 0.9
+        }
+        else if (distance <= 14.0f)
+        {
+            // exponential curve from 90% at distance 3 to 1% at distance 14
+            // using exponential interpolation: 0.9 * (0.01/0.9)^((distance-3)/(14-3))
+            float t = (distance - 3.0f) / (14.0f - 3.0f); // normalize to 0-1 range
+            return 0.9f * (float)Math.Pow(0.01f / 0.9f, t);
+        }
+        else // distance between 14 and 20
+        {
+            // exponential curve from 1% at distance 14 to 0.1% at distance 19
+            // using exponential interpolation: 0.01 * (0.001/0.01)^((distance-14)/(19-14))
+            float t = (distance - 14.0f) / (19.0f - 14.0f); // normalize to 0-1 range
+            return 0.01f * (float)Math.Pow(0.001f / 0.01f, t);
+        }
+    }
+
     private void ApplyVolumeSettings(PeerPlayback playback, float? distance = null)
     {
         if (playback?.WaveOut == null) return;
@@ -795,21 +998,7 @@ public class AudioService : IDisposable
         float distanceFactor = 1.0f;
         if (distance.HasValue)
         {
-            // exponential-style falloff for very gradual dropoff near max distance
-            // exactly 1% volume at distance 14, complete silence at distance 15
-            float normalizedDistance = Math.Clamp(distance.Value / _maxDistance, 0.0f, 1.0f);
-            if (normalizedDistance >= 1.0f)
-            {
-                distanceFactor = 0.0f; // complete silence at max distance
-            }
-            else
-            {
-                // use exponential curve: volume = 0.01^(normalizedDistance / 0.933)
-                // at distance 14: normalizedDistance = 0.933, so volume = 0.01^(0.933/0.933) = 0.01 = 1%
-                // at distance 0: normalizedDistance = 0, so volume = 0.01^0 = 1 = 100%
-                float exponent = normalizedDistance / 0.933f; // 0.933 = 14/15
-                distanceFactor = (float)Math.Pow(0.01, exponent);
-            }
+            distanceFactor = CalculateDistanceFactor(distance.Value);
         }
 
         // calculate final volume as multiplication of all factors:
@@ -829,7 +1018,7 @@ public class AudioService : IDisposable
             // debug logging for volume scaling
             if (distance.HasValue)
             {
-                _debugLog.LogAudio($"Volume for peer {playback.PeerId}: distance={distance.Value:F1}, distanceFactor={distanceFactor:F2}, uiVolume={playback.UiVolumeSetting:F2}, finalVolume={finalVolume:F2}");
+                _debugLog.LogAudio($"Volume for peer {playback.PeerId}: distance={distance.Value:F1}, distanceFactor={distanceFactor:F3}, uiVolume={playback.UiVolumeSetting:F2}, finalVolume={finalVolume:F3}");
             }
         }
         catch (Exception ex)
@@ -842,21 +1031,8 @@ public class AudioService : IDisposable
     {
         if (playback?.WaveOut == null) return;
 
-        // calculate volume using exponential falloff
-        float normalizedDistance = Math.Clamp(distance / _maxDistance, 0.0f, 1.0f);
-        float distanceFactor;
-        if (normalizedDistance >= 1.0f)
-        {
-            distanceFactor = 0.0f; // complete silence at max distance
-        }
-        else
-        {
-            // use exponential curve: volume = 0.01^(normalizedDistance / 0.933)
-            // at distance 14: normalizedDistance = 0.933, so volume = 0.01^(0.933/0.933) = 0.01 = 1%
-            // at distance 0: normalizedDistance = 0, so volume = 0.01^0 = 1 = 100%
-            float exponent = normalizedDistance / 0.933f; // 0.933 = 14/15
-            distanceFactor = (float)Math.Pow(0.01, exponent);
-        }
+        // calculate volume using piecewise distance curve
+        float distanceFactor = CalculateDistanceFactor(distance);
 
         // calculate final volume as multiplication of all factors:
         // - distance factor (0-1, exponential falloff)
@@ -877,7 +1053,7 @@ public class AudioService : IDisposable
             playback.PanningFactor = panningFactor;
             
             // debug logging
-            _debugLog.LogAudio($"Audio for peer {playback.PeerId}: distance={distance:F1}, volume={finalVolume:F2}, panning={panningFactor:F2}");
+            _debugLog.LogAudio($"Audio for peer {playback.PeerId}: distance={distance:F1}, volume={finalVolume:F3}, panning={panningFactor:F2}");
         }
         catch (Exception ex)
         {
@@ -954,7 +1130,16 @@ public class AudioService : IDisposable
 
     public void SetInputVolumeScale(float scale)
     {
-        _inputVolumeScale = Math.Clamp(scale, 0.0f, 2.0f);
+        // validate input and clamp to safe range
+        if (float.IsNaN(scale) || float.IsInfinity(scale))
+        {
+            _debugLog.LogAudio($"Invalid input volume scale: {scale}. Using default value 1.0f");
+            _inputVolumeScale = 1.0f;
+        }
+        else
+        {
+            _inputVolumeScale = Math.Clamp(scale, 0.0f, 5.0f);
+        }
     }
 
     public void CreatePeerAudioStream(string peerId)
@@ -987,6 +1172,7 @@ public class AudioService : IDisposable
         _peerPlaybackStreams.Clear();
         _microphoneCircularBuffer = null; // Release circular buffer
         _transmissionCheckTimer?.Dispose(); // Dispose transmission timer
+        _audioLevelResetTimer?.Dispose(); // Dispose audio level reset timer
         GC.SuppressFinalize(this);
     }
 
@@ -1012,6 +1198,27 @@ public class AudioService : IDisposable
         foreach (var peerId in peersToUpdate)
         {
             PeerTransmissionChanged?.Invoke(this, (peerId, false));
+        }
+    }
+
+    private void CheckAudioLevelTimeout(object? state)
+    {
+        var now = DateTime.UtcNow;
+        var timeSinceLastUpdate = now - _lastAudioLevelUpdate;
+        
+        // if no audio level update for more than 2 seconds, reset to 0
+        if (timeSinceLastUpdate.TotalSeconds > 2.0 && _waveIn != null)
+        {
+            try
+            {
+                AudioLevelChanged?.Invoke(this, 0.0f);
+                _lastAudioLevelUpdate = now; // prevent repeated resets
+                _debugLog.LogAudio("Audio level display reset due to timeout (no updates for >2s)");
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogAudio($"Error resetting audio level on timeout: {ex.Message}");
+            }
         }
     }
 
@@ -1045,15 +1252,38 @@ public class AudioService : IDisposable
     {
         float maxSample = 0;
         
-        // analyze 16-bit PCM samples
-        for (int i = 0; i < validBytes - 1; i += 2)
+        // validate inputs to prevent exceptions
+        if (pcmData == null || validBytes <= 0 || validBytes > pcmData.Length)
         {
-            short sample = BitConverter.ToInt16(pcmData, i);
-            float normalizedSample = Math.Abs(sample) / 32768f;
-            maxSample = Math.Max(maxSample, normalizedSample);
+            _debugLog.LogAudio($"Invalid PCM data for level calculation: data={pcmData != null}, validBytes={validBytes}, dataLength={pcmData?.Length ?? 0}");
+            return 0.0f;
         }
         
-        return maxSample;
+        // ensure we have even number of bytes for 16-bit samples
+        int alignedBytes = validBytes;
+        if (alignedBytes % 2 != 0)
+        {
+            alignedBytes--; // drop the last odd byte
+        }
+        
+        // analyze 16-bit PCM samples
+        for (int i = 0; i < alignedBytes - 1; i += 2)
+        {
+            // additional bounds check
+            if (i + 1 < pcmData.Length)
+            {
+                short sample = BitConverter.ToInt16(pcmData, i);
+                // clamp sample to prevent overflow
+                sample = (short)Math.Clamp(sample, short.MinValue, short.MaxValue);
+                float normalizedSample = Math.Abs(sample) / 32768f;
+                // clamp normalized sample to valid range
+                normalizedSample = Math.Clamp(normalizedSample, 0.0f, 1.0f);
+                maxSample = Math.Max(maxSample, normalizedSample);
+            }
+        }
+        
+        // clamp final result to valid range
+        return Math.Clamp(maxSample, 0.0f, 1.0f);
     }
 
     private (byte[] muLawData, float level) ConvertPcmToMuLawAndCalculateLevel(byte[] sourcePcmData, int validBytes, WaveFormat sourceFormat)

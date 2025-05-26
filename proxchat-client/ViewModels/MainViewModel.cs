@@ -78,6 +78,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     // Add a dictionary to track pending peers (not yet in UI)
     private readonly ConcurrentDictionary<string, bool> _pendingPeers = new(); 
 
+    // add field to track last known character name for change detection
+    private string? _lastKnownCharacterName = null;
+
     public ObservableCollection<PeerViewModel> ConnectedPeers { get; } = new();
     public ObservableCollection<string> InputDevices => _audioService.InputDevices;
     
@@ -115,7 +118,34 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public string DebugCharacterName
     {
         get => _debugCharacterName;
-        set { _debugCharacterName = value; OnPropertyChanged(); if (IsDebugModeEnabled) OnPropertyChanged(nameof(CurrentCharacterName)); }
+        set 
+        { 
+            if (_debugCharacterName != value)
+            {
+                string oldValue = _debugCharacterName;
+                _debugCharacterName = value; 
+                OnPropertyChanged(); 
+                if (IsDebugModeEnabled) 
+                {
+                    OnPropertyChanged(nameof(CurrentCharacterName));
+                    
+                    // handle character name change in debug mode
+                    if (!string.IsNullOrEmpty(value) && value != "Player" && IsRunning)
+                    {
+                        if (_lastKnownCharacterName != null && _lastKnownCharacterName != value)
+                        {
+                            _debugLog.LogMain($"Debug character name change detected: '{_lastKnownCharacterName}' -> '{value}'");
+                            _ = Task.Run(async () => await HandleCharacterNameChange(value));
+                        }
+                        else if (_lastKnownCharacterName == null)
+                        {
+                            _lastKnownCharacterName = value;
+                            _debugLog.LogMain($"Initial debug character name set: '{value}'");
+                        }
+                    }
+                }
+            }
+        }
     }
 
     public int DebugX // Changed to int
@@ -167,7 +197,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         get => _inputVolumeScale;
         set
         {
-            _inputVolumeScale = Math.Clamp(value, 0.0f, 2.0f);
+            _inputVolumeScale = Math.Clamp(value, 0.0f, 5.0f);
             _audioService.SetInputVolumeScale(_inputVolumeScale);
             _config.AudioSettings.InputVolumeScale = _inputVolumeScale; // Save to config
             SaveConfig(); // Persist to file
@@ -692,6 +722,12 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _isMemoryReaderInitialized = false;
                 StatusMessage = "Lost connection to game data provider. Waiting...";
                 Debug.WriteLine("GameMemoryReader lost connection to MMF.");
+                
+                // clear all connected peers when data reading fails
+                ClearAllConnectedPeers();
+                
+                // reset character name tracking
+                _lastKnownCharacterName = null;
             }
 
             // Check for timeout and auto-disconnect if conditions are met
@@ -704,6 +740,24 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     Debug.WriteLine($"Game data timeout exceeded ({timeSinceLastRead.TotalSeconds:F1}s). Auto-disconnecting...");
                     _ = Task.Run(async () => await StopAsync()); // Call stop asynchronously to avoid blocking the timer
                     return; // Exit early, no need to update UI
+                }
+            }
+            
+            // check for character name changes before updating ui
+            if (currentReadSuccess && !string.IsNullOrEmpty(name) && name != "Player")
+            {
+                // check if character name has changed to a new non-null/non-empty value
+                if (_lastKnownCharacterName != null && _lastKnownCharacterName != name)
+                {
+                    _debugLog.LogMain($"Character name change detected: '{_lastKnownCharacterName}' -> '{name}'");
+                    // handle character name change asynchronously
+                    _ = Task.Run(async () => await HandleCharacterNameChange(name));
+                }
+                else if (_lastKnownCharacterName == null)
+                {
+                    // first time we've seen a character name
+                    _lastKnownCharacterName = name;
+                    _debugLog.LogMain($"Initial character name detected: '{name}'");
                 }
             }
             
@@ -725,6 +779,12 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (!IsDebugModeEnabled)
             {
                 _isMemoryReaderInitialized = false; // Only update if not in debug mode
+                
+                // clear all connected peers when data reading fails with exception
+                ClearAllConnectedPeers();
+                
+                // reset character name tracking
+                _lastKnownCharacterName = null;
             }
             App.Current.Dispatcher.Invoke(() =>
             {
@@ -873,6 +933,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         
         App.Current.Dispatcher.Invoke(() => ConnectedPeers.Clear());
+        
+        // clear pending peers and reset character name tracking
+        _pendingPeers.Clear();
+        _lastKnownCharacterName = null;
 
         IsRunning = false;
         // Keep UI timer running, reset status message
@@ -910,6 +974,24 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
+            // check for character name changes in game data read
+            if (data.Success && !string.IsNullOrEmpty(data.CharacterName) && data.CharacterName != "Player")
+            {
+                // check if character name has changed to a new non-null/non-empty value
+                if (_lastKnownCharacterName != null && _lastKnownCharacterName != data.CharacterName)
+                {
+                    _debugLog.LogMain($"Character name change detected in game data: '{_lastKnownCharacterName}' -> '{data.CharacterName}'");
+                    // handle character name change asynchronously
+                    _ = Task.Run(async () => await HandleCharacterNameChange(data.CharacterName));
+                    return; // exit early, reconnection will handle position updates
+                }
+                else if (_lastKnownCharacterName == null)
+                {
+                    // first time we've seen a character name
+                    _lastKnownCharacterName = data.CharacterName;
+                    _debugLog.LogMain($"Initial character name detected in game data: '{data.CharacterName}'");
+                }
+            }
             var now = DateTime.UtcNow;
             bool mapChanged = data.MapId != _lastSentMapId;
             bool positionChanged = data.X != _lastSentX || data.Y != _lastSentY;
@@ -927,12 +1009,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 {
                     _webRtcService.SendPosition(peer.Id, data.MapId, data.X, data.Y, data.CharacterName);
                     
-                    if (peer.MapId == data.MapId)
+                    // calculate distance using fresh game data
+                    if (data.MapId == peer.MapId)
                     {
                         var dx = data.X - peer.X;
                         var dy = data.Y - peer.Y;
                         var distance = MathF.Sqrt(dx * dx + dy * dy);
-                        _debugLog.LogMain($"peer {peer.CharacterName}: dist={distance:F1} (me:{data.X},{data.Y} them:{peer.X},{peer.Y})");
+                        _debugLog.LogMain($"[DISTANCE_CALC] OnGameDataRead for peer {peer.CharacterName}: {distance:F1} (me:{data.X},{data.Y} them:{peer.X},{peer.Y})");
                         // use new method that includes stereo panning based on position
                         _audioService.UpdatePeerPosition(peer.Id, distance, data.X, data.Y, peer.X, peer.Y);
                         peer.Distance = distance;
@@ -993,13 +1076,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 {
                     _webRtcService.SendPosition(peer.Id, mapId, x, y, name);
                     
-                    // Recalculate distance to this peer based on our new position
-                    if (peer.MapId == mapId) // Only calculate if on same map
+                    // calculate distance using fresh position data
+                    if (mapId == peer.MapId) // Only calculate if on same map
                     {
                         var dx = x - peer.X;
                         var dy = y - peer.Y;
                         var distance = MathF.Sqrt(dx * dx + dy * dy);
-                        _debugLog.LogMain($"Recalculated distance to peer {peer.CharacterName}: {distance:F2} units");
+                        _debugLog.LogMain($"[DISTANCE_CALC] SendPositionUpdate for peer {peer.CharacterName}: {distance:F1} (me:{x},{y} them:{peer.X},{peer.Y})");
                         // use new method that includes stereo panning based on position
                         _audioService.UpdatePeerPosition(peer.Id, distance, x, y, peer.X, peer.Y);
                         peer.Distance = distance;
@@ -1154,47 +1237,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void RecalculateDistanceAndVolume(PeerViewModel peerVm)
-    {
-        if (peerVm == null) return;
 
-        int myMapId;
-        int myX;
-        int myY;
-
-        if (IsDebugModeEnabled)
-        {
-            myMapId = _debugMapId;
-            myX = _debugX;
-            myY = _debugY;
-        }
-        else
-        {
-            // It's better to use the already updated CurrentMapId, CurrentX, CurrentY
-            // to avoid re-reading from memory reader in this specific context.
-            myMapId = this.CurrentMapId;
-            myX = this.CurrentX;
-            myY = this.CurrentY;
-        }
-
-        if (myMapId != peerVm.MapId)
-        {
-            _audioService.UpdatePeerDistance(peerVm.Id, float.MaxValue);
-            peerVm.Distance = float.MaxValue;
-            _debugLog.LogMain($"Peer {peerVm.CharacterName} ({peerVm.Id}) is on a different map. Setting distance to MaxValue.");
-        }
-        else
-        {
-            var dx = myX - peerVm.X;
-            var dy = myY - peerVm.Y;
-            var distance = MathF.Sqrt(dx * dx + dy * dy);
-
-            _debugLog.LogMain($"Recalculated distance for peer {peerVm.CharacterName} ({peerVm.Id}): {distance:F1} (me:{myX},{myY} them:{peerVm.X},{peerVm.Y})");
-            // use new method that includes stereo panning based on position
-            _audioService.UpdatePeerPosition(peerVm.Id, distance, myX, myY, peerVm.X, peerVm.Y);
-            peerVm.Distance = distance;
-        }
-    }
 
     private void UpdatePeerViewModelProperties(PeerViewModel peerVm, (string PeerId, int MapId, int X, int Y, string CharacterName) positionData)
     {
@@ -1213,9 +1256,27 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             }
         }
 
-        if (peerVm.MapId != positionData.MapId) peerVm.MapId = positionData.MapId;
-        if (peerVm.X != positionData.X) peerVm.X = positionData.X;
-        if (peerVm.Y != positionData.Y) peerVm.Y = positionData.Y;
+        bool positionChanged = false;
+        if (peerVm.MapId != positionData.MapId) 
+        {
+            peerVm.MapId = positionData.MapId;
+            positionChanged = true;
+        }
+        if (peerVm.X != positionData.X) 
+        {
+            peerVm.X = positionData.X;
+            positionChanged = true;
+        }
+        if (peerVm.Y != positionData.Y) 
+        {
+            peerVm.Y = positionData.Y;
+            positionChanged = true;
+        }
+        
+        if (positionChanged)
+        {
+            _debugLog.LogMain($"[PEER_POS_UPDATE] Peer {positionData.PeerId} position updated to Map={positionData.MapId}, X={positionData.X}, Y={positionData.Y}");
+        }
     }
 
     private async void HandlePeerPosition(object? sender, (string PeerId, int MapId, int X, int Y, string CharacterName) positionData)
@@ -1267,14 +1328,14 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                         // Apply persisted settings *after* adding and *after* CharacterName might be set
                         // The UpdatePeerViewModelProperties below will handle the initial name setting if needed.
                         UpdatePeerViewModelProperties(newPeerVmInstance, positionData); // Set initial properties
-                        RecalculateDistanceAndVolume(newPeerVmInstance); 
+                        // Note: Distance will be calculated on next position update from OnGameDataRead or SendPositionUpdate 
                     }
                     else
                     {
                         _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {peerAlreadyAdded.Id}: CONCURRENTLY ADDED. Updating its properties instead.");
                         _debugLog.LogMain($"Peer {peerAlreadyAdded.Id} was concurrently added. Updating its properties instead of adding new.");
                         UpdatePeerViewModelProperties(peerAlreadyAdded, positionData);
-                        RecalculateDistanceAndVolume(peerAlreadyAdded);
+                        // Note: Distance will be calculated on next position update from OnGameDataRead or SendPositionUpdate
                     }
                 }
             });
@@ -1287,7 +1348,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {existingPeerVm.Id} ({existingPeerVm.CharacterName}): UPDATING existing peer in ConnectedPeers.");
                 UpdatePeerViewModelProperties(existingPeerVm, positionData);
-                RecalculateDistanceAndVolume(existingPeerVm);
+                // Note: Distance will be calculated on next position update from OnGameDataRead or SendPositionUpdate
             });
         }
     }
@@ -1525,5 +1586,54 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _debugLog.LogMain($"Error requesting manual peer refresh: {ex.Message}");
             }
         });
+    }
+
+    // add method to clear all connected peers
+    private void ClearAllConnectedPeers()
+    {
+        _debugLog.LogMain("Clearing all connected peers");
+        
+        App.Current.Dispatcher.Invoke(() =>
+        {
+            lock (_peersLock)
+            {
+                ConnectedPeers.Clear();
+            }
+        });
+        
+        // clear pending peers
+        _pendingPeers.Clear();
+        
+        // clean up webrtc and audio resources
+        _webRtcService.CloseAllConnections();
+        
+        // note: audio service peer cleanup is handled by webrtc service
+    }
+
+    // add method to handle character name changes
+    private async Task HandleCharacterNameChange(string newCharacterName)
+    {
+        if (!IsRunning) return;
+        
+        _debugLog.LogMain($"Character name changed from '{_lastKnownCharacterName}' to '{newCharacterName}' - regenerating client ID for anonymity");
+        
+        try
+        {
+            // clear all connected peers first
+            ClearAllConnectedPeers();
+            
+            // regenerate client id and reconnect to signaling server
+            await _signalingService.RegenerateClientIdAndReconnect();
+            
+            // update last known character name
+            _lastKnownCharacterName = newCharacterName;
+            
+            _debugLog.LogMain($"Successfully reconnected with new client ID after character name change");
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogMain($"Error handling character name change: {ex.Message}");
+            StatusMessage = $"Error reconnecting after character change: {ex.Message}";
+        }
     }
 } 

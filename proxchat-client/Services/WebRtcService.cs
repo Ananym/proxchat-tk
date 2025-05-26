@@ -433,7 +433,7 @@ public class WebRtcService : IDisposable
     {
         if (payload.SenderId == null || payload.Answer == null) return;
 
-        _ = Task.Run(async () => // Ensure async Task
+        _ = Task.Run(() => // remove async since no await is used
         {
             var peerId = payload.SenderId;
             if (_peerConnections.TryGetValue(peerId, out var state) && state != null)
