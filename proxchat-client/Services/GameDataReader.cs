@@ -32,6 +32,9 @@ internal class GameData
     [JsonPropertyName("success")]
     public bool Success { get; set; }
 
+    [JsonPropertyName("timestamp")]
+    public string? Timestamp { get; set; } // ISO timestamp from memory reader
+
     [JsonPropertyName("data")]
     public PlayerData? Data { get; set; } // Nullable in case success is false or data is missing
 }
@@ -151,19 +154,53 @@ public class GameDataReader : IDisposable // Renamed class
 
             if (gameData != null && gameData.Success && gameData.Data != null)
             {
-                // Successfully parsed and success flag is true
-                success = true;
-                mapId = gameData.Data.MapId; // Now an int
-                mapName = gameData.Data.MapName ?? string.Empty; // Added mapName reading
-                x = gameData.Data.X;
-                y = gameData.Data.Y;
-                characterName = gameData.Data.CharacterName ?? "Player"; // Use default if null
+                // check timestamp validity (must be within 10 seconds)
+                bool timestampValid = true;
+                if (!string.IsNullOrEmpty(gameData.Timestamp))
+                {
+                    try
+                    {
+                        var timestamp = DateTime.Parse(gameData.Timestamp, null, System.Globalization.DateTimeStyles.RoundtripKind);
+                        var age = DateTime.UtcNow - timestamp;
+                        if (age.TotalSeconds > 10.0)
+                        {
+                            timestampValid = false;
+                            Debug.WriteLine($"Game data timestamp too old: {age.TotalSeconds:F1}s ago");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        timestampValid = false;
+                        Debug.WriteLine($"Failed to parse timestamp '{gameData.Timestamp}': {ex.Message}");
+                    }
+                }
+                else
+                {
+                    timestampValid = false;
+                    Debug.WriteLine("Game data missing timestamp");
+                }
 
-                // Raise event with new data
-                GameDataRead?.Invoke(this, (success, mapId, mapName, x, y, characterName));
+                if (timestampValid)
+                {
+                    // Successfully parsed and success flag is true with valid timestamp
+                    success = true;
+                    mapId = gameData.Data.MapId; // Now an int
+                    mapName = gameData.Data.MapName ?? string.Empty; // Added mapName reading
+                    x = gameData.Data.X;
+                    y = gameData.Data.Y;
+                    characterName = gameData.Data.CharacterName ?? "Player"; // Use default if null
 
-                // Optional: Verbose logging for successful reads
-                // Debug.WriteLine($"Read data: MapId={mapId}, MapName='{mapName}', X={x}, Y={y}, Name='{characterName}'");
+                    // Raise event with new data
+                    GameDataRead?.Invoke(this, (success, mapId, mapName, x, y, characterName));
+
+                    // Optional: Verbose logging for successful reads
+                    // Debug.WriteLine($"Read data: MapId={mapId}, MapName='{mapName}', X={x}, Y={y}, Name='{characterName}'");
+                }
+                else
+                {
+                    // timestamp validation failed, treat as unsuccessful read
+                    success = false;
+                }
             }
             else if (gameData == null)
             {

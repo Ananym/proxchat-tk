@@ -685,8 +685,15 @@ public class AudioService : IDisposable
                             Array.Fill(finalAudioData, (byte)0xFF, bytesRead, PCMU_PACKET_SIZE_BYTES - bytesRead);
                         }
 
+                        // Apply input volume scaling to MuLaw data (convert to PCM, scale, convert back)
+                        if (_inputVolumeScale != 1.0f)
+                        {
+                            _debugLog.LogAudio($"Applying input volume scaling ({_inputVolumeScale:F2}x) to audio file MuLaw data");
+                            finalAudioData = ApplyInputVolumeScalingToMuLaw(finalAudioData, bytesRead);
+                        }
+
                         // Calculate level from MuLaw data by converting to PCM for analysis
-                        calculatedLevel = CalculateLevelFromMuLaw(finalAudioData, bytesRead);
+                        calculatedLevel = CalculateLevelFromMuLaw(finalAudioData, PCMU_PACKET_SIZE_BYTES);
                         hasValidAudio = true;
                     }
                     else
@@ -713,6 +720,13 @@ public class AudioService : IDisposable
                     
                     if (bytesRead > 0)
                     {
+                        // Apply input volume scaling to source PCM data before conversion
+                        if (_inputVolumeScale != 1.0f)
+                        {
+                            _debugLog.LogAudio($"Applying input volume scaling ({_inputVolumeScale:F2}x) to audio file PCM data");
+                        }
+                        ApplyInputVolumeScaling(sourcePcmData, bytesRead, sourceFormat);
+                        
                         // Convert to MuLaw and calculate level
                         (finalAudioData, calculatedLevel) = ConvertPcmToMuLawAndCalculateLevel(sourcePcmData, bytesRead, sourceFormat);
                         hasValidAudio = true;
@@ -744,7 +758,14 @@ public class AudioService : IDisposable
                         Array.Fill(finalAudioData, (byte)0xFF, bytesRead, PCMU_PACKET_SIZE_BYTES - bytesRead);
                     }
                     
-                    calculatedLevel = CalculateLevelFromMuLaw(finalAudioData, bytesRead);
+                    // Apply input volume scaling to MuLaw data (convert to PCM, scale, convert back)
+                    if (_inputVolumeScale != 1.0f)
+                    {
+                        _debugLog.LogAudio($"Applying input volume scaling ({_inputVolumeScale:F2}x) to raw MuLaw stream data");
+                        finalAudioData = ApplyInputVolumeScalingToMuLaw(finalAudioData, bytesRead);
+                    }
+                    
+                    calculatedLevel = CalculateLevelFromMuLaw(finalAudioData, PCMU_PACKET_SIZE_BYTES);
                     hasValidAudio = true;
                 }
                 else
@@ -1306,7 +1327,94 @@ public class AudioService : IDisposable
         }
     }
 
-    // helper methods for audio level calculation
+    // helper methods for audio level calculation and processing
+    private void ApplyInputVolumeScaling(byte[] pcmData, int validBytes, WaveFormat format)
+    {
+        // only apply scaling if it's not 1.0 and we have valid data
+        if (_inputVolumeScale == 1.0f || validBytes <= 0 || pcmData == null || format.BitsPerSample != 16)
+        {
+            return;
+        }
+
+        try
+        {
+            // clamp input volume scale to reasonable range
+            float clampedVolumeScale = Math.Clamp(_inputVolumeScale, 0.0f, 10.0f);
+            
+            // ensure we have even number of bytes for 16-bit samples
+            int alignedBytes = validBytes;
+            if (alignedBytes % 2 != 0)
+            {
+                alignedBytes--; // drop the last odd byte
+            }
+            
+            // apply scaling to 16-bit PCM samples
+            for (int i = 0; i < alignedBytes - 1; i += 2)
+            {
+                if (i + 1 < pcmData.Length)
+                {
+                    short sample = BitConverter.ToInt16(pcmData, i);
+                    // use double precision for intermediate calculation to prevent overflow
+                    double scaledSample = sample * clampedVolumeScale;
+                    sample = (short)Math.Clamp(scaledSample, short.MinValue, short.MaxValue);
+                    
+                    // write back the scaled sample
+                    pcmData[i] = (byte)(sample & 0xFF);
+                    pcmData[i + 1] = (byte)(sample >> 8);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error applying input volume scaling to audio file: {ex.Message}");
+        }
+    }
+
+    private byte[] ApplyInputVolumeScalingToMuLaw(byte[] muLawData, int validBytes)
+    {
+        try
+        {
+            // convert MuLaw to PCM, apply scaling, then convert back to MuLaw
+            using var ms = new MemoryStream(muLawData, 0, validBytes);
+            using var muLawReader = new MuLawWaveStream(ms);
+            using var pcmStream = new WaveFormatConversionStream(_pcm8KhzFormat, muLawReader);
+            
+            byte[] pcmBuffer = new byte[validBytes * 2]; // PCM 16-bit will be roughly twice the size
+            int bytesDecoded = pcmStream.Read(pcmBuffer, 0, pcmBuffer.Length);
+            
+            if (bytesDecoded > 0)
+            {
+                // apply input volume scaling to the PCM data
+                ApplyInputVolumeScaling(pcmBuffer, bytesDecoded, _pcm8KhzFormat);
+                
+                // convert back to MuLaw
+                var muLawFormat = WaveFormat.CreateMuLawFormat(PCMU_SAMPLE_RATE, PCMU_CHANNELS);
+                using var rawPcmStream = new RawSourceWaveStream(pcmBuffer, 0, bytesDecoded, _pcm8KhzFormat);
+                using var muLawStream = new WaveFormatConversionStream(muLawFormat, rawPcmStream);
+                
+                byte[] scaledMuLawData = new byte[PCMU_PACKET_SIZE_BYTES];
+                int muLawBytesRead = muLawStream.Read(scaledMuLawData, 0, scaledMuLawData.Length);
+                
+                if (muLawBytesRead > 0)
+                {
+                    // pad with silence if needed
+                    if (muLawBytesRead < PCMU_PACKET_SIZE_BYTES)
+                    {
+                        Array.Fill(scaledMuLawData, (byte)0xFF, muLawBytesRead, PCMU_PACKET_SIZE_BYTES - muLawBytesRead);
+                    }
+                    return scaledMuLawData;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error applying input volume scaling to MuLaw data: {ex.Message}");
+        }
+        
+        // fallback: return original data
+        return muLawData;
+    }
+
     private float CalculateLevelFromMuLaw(byte[] muLawData, int validBytes)
     {
         try

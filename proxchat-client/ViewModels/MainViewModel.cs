@@ -84,6 +84,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     // add field to track last known character name for change detection
     private string? _lastKnownCharacterName = null;
 
+    // track consecutive read failures for auto-disconnect
+    private int _consecutiveReadFailures = 0;
+    private const int MAX_CONSECUTIVE_FAILURES = 3;
+
     public ObservableCollection<PeerViewModel> ConnectedPeers { get; } = new();
     public ObservableCollection<string> InputDevices => _audioService.InputDevices;
     
@@ -103,6 +107,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(CurrentY));
                 OnPropertyChanged(nameof(CurrentMapId));
                 OnPropertyChanged(nameof(CurrentMapName)); // Map name might also be affected or need a debug version
+                ((RelayCommand)StartCommand).RaiseCanExecuteChanged(); // update start button state
                 // If debug mode is turned on, update the UI immediately with debug values
                 if (_isDebugModeEnabled)
                 {
@@ -154,19 +159,49 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public int DebugX // Changed to int
     {
         get => _debugX;
-        set { _debugX = value; OnPropertyChanged(); if (IsDebugModeEnabled) OnPropertyChanged(nameof(CurrentX)); }
+        set 
+        { 
+            _debugX = value; 
+            OnPropertyChanged(); 
+            if (IsDebugModeEnabled) 
+            {
+                OnPropertyChanged(nameof(CurrentX));
+                // recalculate distances when debug position changes
+                if (IsRunning) RecalculateAllPeerDistances();
+            }
+        }
     }
 
     public int DebugY // Changed to int
     {
         get => _debugY;
-        set { _debugY = value; OnPropertyChanged(); if (IsDebugModeEnabled) OnPropertyChanged(nameof(CurrentY)); }
+        set 
+        { 
+            _debugY = value; 
+            OnPropertyChanged(); 
+            if (IsDebugModeEnabled) 
+            {
+                OnPropertyChanged(nameof(CurrentY));
+                // recalculate distances when debug position changes
+                if (IsRunning) RecalculateAllPeerDistances();
+            }
+        }
     }
 
     public int DebugMapId
     {
         get => _debugMapId;
-        set { _debugMapId = value; OnPropertyChanged(); if (IsDebugModeEnabled) OnPropertyChanged(nameof(CurrentMapId)); }
+        set 
+        { 
+            _debugMapId = value; 
+            OnPropertyChanged(); 
+            if (IsDebugModeEnabled) 
+            {
+                OnPropertyChanged(nameof(CurrentMapId));
+                // recalculate distances when debug map changes
+                if (IsRunning) RecalculateAllPeerDistances();
+            }
+        }
     }
 
     // Debug Mode Commands
@@ -549,6 +584,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 Start();
             }
+        }, () => {
+            // enable start button if:
+            // 1. currently running (to allow stop), OR
+            // 2. not running AND (debug mode enabled OR memory reader is working)
+            return _isRunning || (!_isRunning && (IsDebugModeEnabled || _isMemoryReaderInitialized));
         });
         StopCommand = new RelayCommand(Stop, () => _isRunning);
         ToggleMuteCommand = new RelayCommand<string>(TogglePeerMute);
@@ -750,6 +790,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (currentReadSuccess)
             {
                 _lastSuccessfulReadTime = DateTime.UtcNow; // Update last successful read time
+                _consecutiveReadFailures = 0; // reset failure counter on success
                 
                 if (!_isMemoryReaderInitialized)
                 {
@@ -757,15 +798,27 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     _isMemoryReaderInitialized = true;
                     StatusMessage = "Game data connection established. Ready.";
                     Debug.WriteLine("GameMemoryReader successfully connected to MMF.");
+                    ((RelayCommand)StartCommand).RaiseCanExecuteChanged(); // update start button state
                 }
             }
             else if (!currentReadSuccess && _isMemoryReaderInitialized && !IsDebugModeEnabled)
             {
+                _consecutiveReadFailures++;
+                
+                // auto-disconnect if running and too many consecutive failures
+                if (IsRunning && _consecutiveReadFailures >= MAX_CONSECUTIVE_FAILURES)
+                {
+                    _debugLog.LogMain($"Auto-disconnecting after {_consecutiveReadFailures} consecutive read failures");
+                    _ = Task.Run(async () => await StopAsync());
+                    return; // exit early to avoid further processing
+                }
+                
                 // Lost connection after it was previously established
                 // Only update _isMemoryReaderInitialized if not in debug mode
                 _isMemoryReaderInitialized = false;
                 StatusMessage = "Lost connection to game data provider. Waiting...";
                 Debug.WriteLine("GameMemoryReader lost connection to MMF.");
+                ((RelayCommand)StartCommand).RaiseCanExecuteChanged(); // update start button state
                 
                 // clear all connected peers when data reading fails
                 ClearAllConnectedPeers();
@@ -981,6 +1034,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         // clear pending peers and reset character name tracking
         _pendingPeers.Clear();
         _lastKnownCharacterName = null;
+        _consecutiveReadFailures = 0; // reset failure counter when stopping
 
         IsRunning = false;
         // Keep UI timer running, reset status message
@@ -1052,24 +1106,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 foreach (var peer in ConnectedPeers)
                 {
                     _webRtcService.SendPosition(peer.Id, data.MapId, data.X, data.Y, data.CharacterName);
-                    
-                    // calculate distance using fresh game data
-                    if (data.MapId == peer.MapId)
-                    {
-                        var dx = data.X - peer.X;
-                        var dy = data.Y - peer.Y;
-                        var distance = MathF.Sqrt(dx * dx + dy * dy);
-                        _debugLog.LogMain($"[DISTANCE_CALC] OnGameDataRead for peer {peer.CharacterName}: {distance:F1} (me:{data.X},{data.Y} them:{peer.X},{peer.Y})");
-                        // use new method that includes stereo panning based on position
-                        _audioService.UpdatePeerPosition(peer.Id, distance, data.X, data.Y, peer.X, peer.Y);
-                        peer.Distance = distance;
-                    }
-                    else
-                    {
-                        _audioService.UpdatePeerDistance(peer.Id, float.MaxValue);
-                        peer.Distance = float.MaxValue;
-                    }
                 }
+                
+                // recalculate distances for all peers when local position changes
+                RecalculateAllPeerDistances();
             }
         }
         catch (Exception ex)
@@ -1119,25 +1159,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 foreach (var peer in ConnectedPeers)
                 {
                     _webRtcService.SendPosition(peer.Id, mapId, x, y, name);
-                    
-                    // calculate distance using fresh position data
-                    if (mapId == peer.MapId) // Only calculate if on same map
-                    {
-                        var dx = x - peer.X;
-                        var dy = y - peer.Y;
-                        var distance = MathF.Sqrt(dx * dx + dy * dy);
-                        _debugLog.LogMain($"[DISTANCE_CALC] SendPositionUpdate for peer {peer.CharacterName}: {distance:F1} (me:{x},{y} them:{peer.X},{peer.Y})");
-                        // use new method that includes stereo panning based on position
-                        _audioService.UpdatePeerPosition(peer.Id, distance, x, y, peer.X, peer.Y);
-                        peer.Distance = distance;
-                    }
-                    else
-                    {
-                        // Different map, set max distance
-                        _audioService.UpdatePeerDistance(peer.Id, float.MaxValue);
-                        peer.Distance = float.MaxValue;
-                    }
                 }
+                
+                // recalculate distances for all peers when local position changes
+                RecalculateAllPeerDistances();
             }
         }
         catch (Exception ex)
@@ -1320,6 +1345,62 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         if (positionChanged)
         {
             _debugLog.LogMain($"[PEER_POS_UPDATE] Peer {positionData.PeerId} position updated to Map={positionData.MapId}, X={positionData.X}, Y={positionData.Y}");
+            
+            // recalculate distance when peer position changes
+            RecalculatePeerDistance(peerVm);
+        }
+    }
+
+    // centralized method to calculate and update peer distance
+    private void RecalculatePeerDistance(PeerViewModel peerVm)
+    {
+        // get current local position from the single source of truth
+        int localMapId;
+        int localX;
+        int localY;
+        
+        if (IsDebugModeEnabled)
+        {
+            localMapId = _debugMapId;
+            localX = _debugX;
+            localY = _debugY;
+        }
+        else
+        {
+            localMapId = _currentMapId;
+            localX = _currentX;
+            localY = _currentY;
+        }
+        
+        // calculate distance
+        if (localMapId == peerVm.MapId)
+        {
+            var dx = localX - peerVm.X;
+            var dy = localY - peerVm.Y;
+            var distance = MathF.Sqrt(dx * dx + dy * dy);
+            
+            _debugLog.LogMain($"[DISTANCE_CALC] RecalculatePeerDistance for peer {peerVm.CharacterName}: {distance:F1} (me:{localX},{localY} them:{peerVm.X},{peerVm.Y})");
+            
+            // update audio service with new position and distance
+            _audioService.UpdatePeerPosition(peerVm.Id, distance, localX, localY, peerVm.X, peerVm.Y);
+            
+            // update UI
+            peerVm.Distance = distance;
+        }
+        else
+        {
+            // different map, set max distance
+            _audioService.UpdatePeerDistance(peerVm.Id, float.MaxValue);
+            peerVm.Distance = float.MaxValue;
+        }
+    }
+
+    // recalculate distances for all peers (called when local position changes)
+    private void RecalculateAllPeerDistances()
+    {
+        foreach (var peer in ConnectedPeers)
+        {
+            RecalculatePeerDistance(peer);
         }
     }
 
@@ -1372,14 +1453,15 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                         // Apply persisted settings *after* adding and *after* CharacterName might be set
                         // The UpdatePeerViewModelProperties below will handle the initial name setting if needed.
                         UpdatePeerViewModelProperties(newPeerVmInstance, positionData); // Set initial properties
-                        // Note: Distance will be calculated on next position update from OnGameDataRead or SendPositionUpdate 
+                        // calculate initial distance for new peer
+                        RecalculatePeerDistance(newPeerVmInstance); 
                     }
                     else
                     {
                         _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {peerAlreadyAdded.Id}: CONCURRENTLY ADDED. Updating its properties instead.");
                         _debugLog.LogMain($"Peer {peerAlreadyAdded.Id} was concurrently added. Updating its properties instead of adding new.");
                         UpdatePeerViewModelProperties(peerAlreadyAdded, positionData);
-                        // Note: Distance will be calculated on next position update from OnGameDataRead or SendPositionUpdate
+                        // distance will be calculated in UpdatePeerViewModelProperties if position changed
                     }
                 }
             });
@@ -1392,7 +1474,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 _debugLog.LogMain($"[UI_TIMING] HandlePeerPosition for {existingPeerVm.Id} ({existingPeerVm.CharacterName}): UPDATING existing peer in ConnectedPeers.");
                 UpdatePeerViewModelProperties(existingPeerVm, positionData);
-                // Note: Distance will be calculated on next position update from OnGameDataRead or SendPositionUpdate
+                // distance will be calculated in UpdatePeerViewModelProperties if position changed
             });
         }
     }

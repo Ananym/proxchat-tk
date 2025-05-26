@@ -6,6 +6,7 @@
 #include <iomanip> // For formatting JSON output if needed
 #include <algorithm> // For std::find_if and std::remove
 #include <cctype>    // For std::isspace
+#include <chrono>    // For timestamp generation
 
 // Forward declaration of LogToFile from dllmain.cpp
 // WARNING: This assumes LogToFile is accessible. If memreader.cpp is compiled
@@ -169,10 +170,23 @@ std::string ReadMemoryValuesToJson() {
         previousCallSucceeded = success;
     }
 
+    // generate iso timestamp
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    
+    std::tm utc_tm;
+    gmtime_s(&utc_tm, &time_t);
+    
+    std::ostringstream timestampStream;
+    timestampStream << std::put_time(&utc_tm, "%Y-%m-%dT%H:%M:%S")
+                   << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
+    std::string timestamp = timestampStream.str();
+
     // construct JSON response
     std::ostringstream jsonStream;
     if (success) {
-        jsonStream << R"({"success": true, "data": {)";
+        jsonStream << R"({"success": true, "timestamp": ")" << timestamp << R"(", "data": {)";
         jsonStream << R"("x": )" << x << ", ";
         jsonStream << R"("y": )" << y << ", ";
         jsonStream << R"("mapId": )" << mapId << ", ";
@@ -181,7 +195,7 @@ std::string ReadMemoryValuesToJson() {
         jsonStream << R"(}})";
         return jsonStream.str();
     } else {
-        jsonStream << R"({"success": false, "error": ")" << errorMessage << R"("})";
+        jsonStream << R"({"success": false, "timestamp": ")" << timestamp << R"(", "error": ")" << errorMessage << R"("})";
         return jsonStream.str();
     }
 } 
