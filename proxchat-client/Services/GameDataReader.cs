@@ -5,6 +5,7 @@ using System.IO.MemoryMappedFiles;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization; // For attributes if needed
+using System.Threading;
 
 namespace ProxChatClient.Services;
 
@@ -47,13 +48,45 @@ public class GameDataReader : IDisposable // Renamed class
     private MemoryMappedFile? _mmf;
     private MemoryMappedViewAccessor? _accessor;
     private bool _disposed = false; // To detect redundant calls
+    private Timer? _readTimer;
+    private readonly TimeSpan _readInterval = TimeSpan.FromMilliseconds(100); // Read every 100ms
 
     // Add event for new game data
     public event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName)>? GameDataRead;
 
     public GameDataReader() // Renamed constructor
     {
-        // Constructor is intentionally kept light. Opening MMF is deferred.
+        // start the read timer immediately
+        _readTimer = new Timer(ReadTimerCallback, null, TimeSpan.Zero, _readInterval);
+    }
+
+    private void ReadTimerCallback(object? state)
+    {
+        if (_disposed) return;
+        
+        try
+        {
+            // call the existing read method which will fire the event
+            var result = ReadPositionAndName();
+            
+            // add some debug logging to see what's happening
+            if (result.Success)
+            {
+                Debug.WriteLine($"GameDataReader: Successfully read data - Map:{result.MapId}, X:{result.X}, Y:{result.Y}, Name:'{result.CharacterName}'");
+            }
+            else
+            {
+                // only log occasionally to avoid spam
+                if (DateTime.UtcNow.Second % 10 == 0) // log every 10 seconds
+                {
+                    Debug.WriteLine($"GameDataReader: Failed to read data - MMF might not be available");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error in GameDataReader timer callback: {ex.Message}");
+        }
     }
 
     // Ensures the MMF is open and the accessor is created.
@@ -249,6 +282,7 @@ public class GameDataReader : IDisposable // Renamed class
             if (disposing)
             {
                 // Dispose managed state (managed objects).
+                _readTimer?.Dispose();
                 _accessor?.Dispose();
                 _mmf?.Dispose();
                  Debug.WriteLine($"Disposed MMF resources for: {MMF_NAME}");
@@ -256,6 +290,7 @@ public class GameDataReader : IDisposable // Renamed class
 
             // Free unmanaged resources (unmanaged objects) and override a finalizer below.
             // Set large fields to null.
+            _readTimer = null;
             _accessor = null;
             _mmf = null;
             _disposed = true;

@@ -40,7 +40,6 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private float _inputVolumeScale; // Will be initialized from config
     private float _minBroadcastThreshold; // Will be initialized from config
     private Timer? _positionSendTimer; // Renamed from _positionTimer for clarity
-    private Timer? _uiUpdateTimer; // New timer for UI updates
     private bool _isMemoryReaderInitialized = false; // Flag for memory reader status
 
     // Debug Mode Fields
@@ -59,14 +58,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _lastSentY; // Changed to int
     private DateTime _lastSentTime = DateTime.MinValue;
     private readonly TimeSpan _forceSendInterval = TimeSpan.FromSeconds(5); // Changed from 10s to 5s
-    private readonly TimeSpan _uiUpdateInterval = TimeSpan.FromMilliseconds(100); // Interval for UI updates (e.g., 10 times/sec)
 
-    // New properties for UI binding
-    private int _currentMapId = 0; // Changed to int, default 0
-    private string _currentMapName = "N/A"; // Added for map name display
-    private int _currentX = 0; // Changed to int
-    private int _currentY = 0; // Changed to int
-    private string _currentCharacterName = "Player"; // Add current character name field
+    // Source of truth for current game state - updated by OnGameDataRead
+    private int _gameMapId = 0;
+    private string _gameMapName = "N/A";
+    private int _gameX = 0;
+    private int _gameY = 0;
+    private string _gameCharacterName = "Player";
 
     private readonly string _peerSettingsFilePath; // Added for dedicated peer settings file
 
@@ -115,9 +113,15 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 }
                 else
                 {
-                    // If turning off debug mode, re-initialize or re-read from game
-                    // For now, just trigger an update which will attempt to read from memory
-                    UpdateUiPosition(null);
+                    // when turning off debug mode, trigger property change notifications for current position
+                    OnPropertyChanged(nameof(CurrentMapId));
+                    OnPropertyChanged(nameof(CurrentMapName));
+                    OnPropertyChanged(nameof(CurrentMapDisplay));
+                    OnPropertyChanged(nameof(CurrentX));
+                    OnPropertyChanged(nameof(CurrentY));
+                    OnPropertyChanged(nameof(CurrentCharacterName));
+                    // recalculate distances since we switched from debug to real position
+                    if (IsRunning) RecalculateAllPeerDistances();
                 }
             }
         }
@@ -339,64 +343,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand EditMuteSelfCommand { get; }
     public ICommand RefreshPeersCommand { get; }
 
-    // Updated property type to int
-    public int CurrentMapId
-    {
-        get => IsDebugModeEnabled ? _debugMapId : _currentMapId;
-        set 
-        {
-            if (IsDebugModeEnabled) DebugMapId = value;
-            else _currentMapId = value; 
-            OnPropertyChanged(); 
-            OnPropertyChanged(nameof(CurrentMapDisplay)); 
-        }
-    }
-    // Added property for map name
-    public string CurrentMapName
-    {
-        get => IsDebugModeEnabled ? "DebugMap" : _currentMapName; // Remove the brackets from debug mode here
-        set 
-        { 
-            // Assuming map name isn't directly settable in debug mode, or linked to DebugMapId
-            if (!IsDebugModeEnabled) _currentMapName = value; 
-            OnPropertyChanged(); 
-            OnPropertyChanged(nameof(CurrentMapDisplay)); 
-        }
-    }
-
-    // Combined display property - always show map ID in brackets
+    // UI properties that bind directly to source of truth
+    public int CurrentMapId => IsDebugModeEnabled ? _debugMapId : _gameMapId;
+    public string CurrentMapName => IsDebugModeEnabled ? "DebugMap" : _gameMapName;
     public string CurrentMapDisplay => IsRunning || _isMemoryReaderInitialized ? $"{CurrentMapName} ({CurrentMapId})" : "Waiting...";
-
-    public int CurrentX // Changed to int
-    {
-        get => IsDebugModeEnabled ? _debugX : _currentX;
-        set 
-        {
-            if (IsDebugModeEnabled) DebugX = value;
-            else _currentX = value; 
-            OnPropertyChanged(); 
-        }
-    }
-    public int CurrentY // Changed to int
-    {
-        get => IsDebugModeEnabled ? _debugY : _currentY;
-        set 
-        {
-            if (IsDebugModeEnabled) DebugY = value;
-            else _currentY = value; 
-            OnPropertyChanged(); 
-        }
-    }
-    public string CurrentCharacterName
-    {
-        get => IsDebugModeEnabled ? _debugCharacterName : _currentCharacterName;
-        set 
-        { 
-            if (IsDebugModeEnabled) DebugCharacterName = value;
-            else _currentCharacterName = value; 
-            OnPropertyChanged(); 
-        }
-    }
+    public int CurrentX => IsDebugModeEnabled ? _debugX : _gameX;
+    public int CurrentY => IsDebugModeEnabled ? _debugY : _gameY;
+    public string CurrentCharacterName => IsDebugModeEnabled ? _debugCharacterName : _gameCharacterName;
 
     public bool UseWavInput
     {
@@ -633,7 +586,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         RefreshDevicesCommand.Execute(null);
 
         _positionSendTimer = new Timer(SendPositionUpdate, null, Timeout.Infinite, Timeout.Infinite);
-        _uiUpdateTimer = new Timer(UpdateUiPosition, null, TimeSpan.Zero, _uiUpdateInterval);
+        
+        // initialize memory reader status
+        InitializeMemoryReader();
     }
 
     private void LoadPeerSettings()
@@ -757,142 +712,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private void InitializeMemoryReader()
     {
         StatusMessage = "Attempting to establish connection with game data provider...";
-        // _isMemoryReaderInitialized = _memoryReader.Initialize(); // Removed - Initialization is now implicit
-        // Check initial state by attempting a read
-        // We don't set _isMemoryReaderInitialized here directly, 
-        // it gets set effectively by the success/failure of the first read in UpdateUiPosition
-        UpdateUiPosition(null); // Attempt initial read to check status and get initial position
-        
-        // Status message will be updated based on the result of UpdateUiPosition
-        // If UpdateUiPosition fails to open the MMF, it will return defaults and log an error.
-        // If it succeeds, it updates the UI.
+        // memory reader initialization is now handled by the OnGameDataRead event
+        // when the first successful read occurs, _isMemoryReaderInitialized will be set to true
     }
 
-    // New method for UI Timer callback
-    private void UpdateUiPosition(object? state)
-    {
-        if (IsDebugModeEnabled)
-        {
-            // In debug mode, UI is driven by debug properties directly.
-            StatusMessage = "Debug Mode Active. Game data is being overridden.";
-            return;
-        }
 
-        try
-        {
-            // Assuming ReadPosition now returns name as well
-            // Tuple now returns (bool Success, int MapId, string MapName, ...)
-            var (success, mapId, mapName, x, y, name) = _memoryReader.ReadPositionAndName();
-
-            // Use the success flag from the game data
-            bool currentReadSuccess = success;
-
-            if (currentReadSuccess)
-            {
-                _lastSuccessfulReadTime = DateTime.UtcNow; // Update last successful read time
-                _consecutiveReadFailures = 0; // reset failure counter on success
-                
-                if (!_isMemoryReaderInitialized)
-                {
-                    // First successful read
-                    _isMemoryReaderInitialized = true;
-                    StatusMessage = "Game data connection established. Ready.";
-                    Debug.WriteLine("GameMemoryReader successfully connected to MMF.");
-                    ((RelayCommand)StartCommand).RaiseCanExecuteChanged(); // update start button state
-                }
-            }
-            else if (!currentReadSuccess && _isMemoryReaderInitialized && !IsDebugModeEnabled)
-            {
-                _consecutiveReadFailures++;
-                
-                // auto-disconnect if running and too many consecutive failures
-                if (IsRunning && _consecutiveReadFailures >= MAX_CONSECUTIVE_FAILURES)
-                {
-                    _debugLog.LogMain($"Auto-disconnecting after {_consecutiveReadFailures} consecutive read failures");
-                    _ = Task.Run(async () => await StopAsync());
-                    return; // exit early to avoid further processing
-                }
-                
-                // Lost connection after it was previously established
-                // Only update _isMemoryReaderInitialized if not in debug mode
-                _isMemoryReaderInitialized = false;
-                StatusMessage = "Lost connection to game data provider. Waiting...";
-                Debug.WriteLine("GameMemoryReader lost connection to MMF.");
-                ((RelayCommand)StartCommand).RaiseCanExecuteChanged(); // update start button state
-                
-                // clear all connected peers when data reading fails
-                ClearAllConnectedPeers();
-                
-                // reset character name tracking
-                _lastKnownCharacterName = null;
-            }
-
-            // Check for timeout and auto-disconnect if conditions are met
-            // Only check timeout if not in debug mode and we're running
-            if (IsRunning && !IsDebugModeEnabled && _lastSuccessfulReadTime != DateTime.MinValue)
-            {
-                var timeSinceLastRead = DateTime.UtcNow - _lastSuccessfulReadTime;
-                if (timeSinceLastRead > _gameDataTimeout)
-                {
-                    Debug.WriteLine($"Game data timeout exceeded ({timeSinceLastRead.TotalSeconds:F1}s). Auto-disconnecting...");
-                    _ = Task.Run(async () => await StopAsync()); // Call stop asynchronously to avoid blocking the timer
-                    return; // Exit early, no need to update UI
-                }
-            }
-            
-            // check for character name changes before updating ui
-            if (currentReadSuccess && !string.IsNullOrEmpty(name) && name != "Player")
-            {
-                // check if character name has changed to a new non-null/non-empty value
-                if (_lastKnownCharacterName != null && _lastKnownCharacterName != name)
-                {
-                    _debugLog.LogMain($"Character name change detected: '{_lastKnownCharacterName}' -> '{name}'");
-                    // handle character name change asynchronously
-                    _ = Task.Run(async () => await HandleCharacterNameChange(name));
-                }
-                else if (_lastKnownCharacterName == null)
-                {
-                    // first time we've seen a character name
-                    _lastKnownCharacterName = name;
-                    _debugLog.LogMain($"Initial character name detected: '{name}'");
-                }
-            }
-            
-            // Update UI properties regardless of connection status (show defaults/error on failure)
-            App.Current.Dispatcher.Invoke(() =>
-            {
-                CurrentMapId = currentReadSuccess ? mapId : 0; // Set int MapId
-                CurrentMapName = currentReadSuccess ? mapName : "N/A"; // Set MapName
-                CurrentX = x;
-                CurrentY = y;
-                CurrentCharacterName = currentReadSuccess ? name : "Player"; 
-            });
-        }
-        catch (Exception ex)
-        {
-            // Log error or update status if reading fails persistently
-            Debug.WriteLine($"Error reading game position for UI: {ex.Message}");
-            // Indicate error state in UI
-            if (!IsDebugModeEnabled)
-            {
-                _isMemoryReaderInitialized = false; // Only update if not in debug mode
-                
-                // clear all connected peers when data reading fails with exception
-                ClearAllConnectedPeers();
-                
-                // reset character name tracking
-                _lastKnownCharacterName = null;
-            }
-            App.Current.Dispatcher.Invoke(() =>
-            {
-                StatusMessage = "Error reading game data.";
-                CurrentMapId = 0;
-                CurrentX = 0; // Set int X
-                CurrentY = 0; // Set int Y
-                CurrentCharacterName = "Player";
-            });
-        }
-    }
 
     private void UpdateUiWithDebugValues()
     {
@@ -1068,10 +892,84 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async void OnGameDataRead(object? sender, (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) data)
     {
-        if (!IsRunning) return;
-
+        // add debug logging to see if this method is being called
+        _debugLog.LogMain($"OnGameDataRead called: Success={data.Success}, Map={data.MapId}, X={data.X}, Y={data.Y}, Name='{data.CharacterName}', IsRunning={IsRunning}");
+        
         try
         {
+            // handle memory reader initialization status (this should happen regardless of IsRunning)
+            if (data.Success)
+            {
+                _lastSuccessfulReadTime = DateTime.UtcNow;
+                _consecutiveReadFailures = 0;
+                
+                if (!_isMemoryReaderInitialized)
+                {
+                    _isMemoryReaderInitialized = true;
+                    StatusMessage = "Game data connection established. Ready.";
+                    Debug.WriteLine("GameMemoryReader successfully connected to MMF.");
+                    ((RelayCommand)StartCommand).RaiseCanExecuteChanged();
+                }
+            }
+            else if (!data.Success && _isMemoryReaderInitialized && !IsDebugModeEnabled)
+            {
+                _consecutiveReadFailures++;
+                
+                if (IsRunning && _consecutiveReadFailures >= MAX_CONSECUTIVE_FAILURES)
+                {
+                    _debugLog.LogMain($"Auto-disconnecting after {_consecutiveReadFailures} consecutive read failures");
+                    _ = Task.Run(async () => await StopAsync());
+                    return;
+                }
+                
+                _isMemoryReaderInitialized = false;
+                StatusMessage = "Lost connection to game data provider. Waiting...";
+                Debug.WriteLine("GameMemoryReader lost connection to MMF.");
+                ((RelayCommand)StartCommand).RaiseCanExecuteChanged();
+                
+                ClearAllConnectedPeers();
+                _lastKnownCharacterName = null;
+            }
+
+            // update source of truth fields and trigger UI updates (this should happen regardless of IsRunning)
+            bool positionChanged = false;
+            if (data.Success)
+            {
+                if (_gameMapId != data.MapId)
+                {
+                    _gameMapId = data.MapId;
+                    positionChanged = true;
+                    OnPropertyChanged(nameof(CurrentMapId));
+                    OnPropertyChanged(nameof(CurrentMapDisplay));
+                }
+                if (_gameMapName != data.MapName)
+                {
+                    _gameMapName = data.MapName;
+                    OnPropertyChanged(nameof(CurrentMapName));
+                    OnPropertyChanged(nameof(CurrentMapDisplay));
+                }
+                if (_gameX != data.X)
+                {
+                    _gameX = data.X;
+                    positionChanged = true;
+                    OnPropertyChanged(nameof(CurrentX));
+                }
+                if (_gameY != data.Y)
+                {
+                    _gameY = data.Y;
+                    positionChanged = true;
+                    OnPropertyChanged(nameof(CurrentY));
+                }
+                if (_gameCharacterName != data.CharacterName)
+                {
+                    _gameCharacterName = data.CharacterName;
+                    OnPropertyChanged(nameof(CurrentCharacterName));
+                }
+            }
+
+            // early return if not running - position sending and peer logic only happens when running
+            if (!IsRunning) return;
+
             // check for character name changes in game data read
             if (data.Success && !string.IsNullOrEmpty(data.CharacterName) && data.CharacterName != "Player")
             {
@@ -1090,12 +988,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     _debugLog.LogMain($"Initial character name detected in game data: '{data.CharacterName}'");
                 }
             }
+            
             var now = DateTime.UtcNow;
             bool mapChanged = data.MapId != _lastSentMapId;
-            bool positionChanged = data.X != _lastSentX || data.Y != _lastSentY;
+            bool positionChangedForSending = data.X != _lastSentX || data.Y != _lastSentY;
             bool forceSend = (now - _lastSentTime) >= _forceSendInterval;
 
-            if ((mapChanged || positionChanged || forceSend) && _signalingService.IsConnected)
+            if ((mapChanged || positionChangedForSending || forceSend) && _signalingService.IsConnected)
             {
                 await _signalingService.UpdatePosition(data.MapId, data.X, data.Y, _config.Channel);
                 _lastSentMapId = data.MapId;
@@ -1107,8 +1006,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 {
                     _webRtcService.SendPosition(peer.Id, data.MapId, data.X, data.Y, data.CharacterName);
                 }
-                
-                // recalculate distances for all peers when local position changes
+            }
+            
+            // recalculate distances for all peers when local position changes
+            if (positionChanged)
+            {
                 RecalculateAllPeerDistances();
             }
         }
@@ -1367,9 +1269,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         else
         {
-            localMapId = _currentMapId;
-            localX = _currentX;
-            localY = _currentY;
+            localMapId = _gameMapId;
+            localX = _gameX;
+            localY = _gameY;
         }
         
         // calculate distance
@@ -1560,7 +1462,6 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public void Dispose()
     {
         _positionSendTimer?.Dispose();
-        _uiUpdateTimer?.Dispose();
         _memoryReader.GameDataRead -= OnGameDataRead; // Unsubscribe from event
         _signalingService.Dispose();
         _webRtcService.Dispose();
