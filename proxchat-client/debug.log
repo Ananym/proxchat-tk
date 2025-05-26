@@ -10,3 +10,10 @@
 [21:00:35.446] [T1] [WEBRTC] Started audio endpoint
 [21:00:35.449] [T1] [MAIN] Hotkeys updated: PTT: Shift+M, Mute: Alt+F11
 [21:00:35.452] [T1] [MAIN] Global hotkey hook installed successfully. PTT: Shift+M, Mute: Alt+F11
+[14:45:54.100] [T1] === Debug Log Started [26/05/2025 14:45:54] ===
+[14:45:54.939] [T1] [WEBRTC] Created WindowsAudioEndPoint with MuLaw encoder
+[14:45:54.944] [T1] [WEBRTC] Created audio track with format: PCMU, status: SendRecv
+[14:45:54.986] [T1] [WEBRTC] Started audio endpoint
+[14:45:54.988] [T1] [MAIN] Hotkeys updated: PTT: F12, Mute: F11
+[14:45:54.991] [T1] [MAIN] Global hotkey hook installed successfully. PTT: F12, Mute: F11
+[14:48:00.234] [T3] [MAIN] Clearing all connected peers

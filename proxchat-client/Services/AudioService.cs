@@ -5,6 +5,7 @@ using System.Diagnostics;
 using ProxChatClient.Models;
 using System.IO;
 using NAudio.Utils; // For CircularBuffer
+using NAudio.MediaFoundation; // For MP3 support
 
 namespace ProxChatClient.Services;
 
@@ -35,7 +36,8 @@ public class AudioService : IDisposable
     private bool _isPushToTalkActive;
     private readonly Config _config;
     private bool _useAudioFileInput;
-    private const string AUDIO_FILE_PATH = "test.wav"; // Should be MuLaw encoded for simplicity with _rawMuLawStream
+    private const string AUDIO_FILE_PATH = "test.wav"; // Default fallback file
+    private string? _customAudioFilePath; // User-selected audio file path
 
     // PCMU/MuLaw specific settings for WebRTC transmission
     internal const int PCMU_SAMPLE_RATE = 8000;
@@ -57,6 +59,19 @@ public class AudioService : IDisposable
     private DateTime _lastAudioLevelUpdate = DateTime.UtcNow;
     private Timer? _audioLevelResetTimer;
 
+    // Static constructor to initialize MediaFoundation for MP3 support
+    static AudioService()
+    {
+        try
+        {
+            MediaFoundationApi.Startup();
+        }
+        catch (Exception ex)
+        {
+            // MediaFoundation might not be available on all systems
+            Debug.WriteLine($"Warning: MediaFoundation initialization failed: {ex.Message}");
+        }
+    }
 
     public ObservableCollection<string> InputDevices { get; } = new();
     public event EventHandler<EncodedAudioPacketEventArgs>? EncodedAudioPacketAvailable;
@@ -108,6 +123,29 @@ public class AudioService : IDisposable
             }
         }
     }
+
+    public string? CustomAudioFilePath
+    {
+        get => _customAudioFilePath;
+        set
+        {
+            if (_customAudioFilePath != value)
+            {
+                _customAudioFilePath = value;
+                _debugLog.LogAudio($"CustomAudioFilePath changed to: {value ?? "null"}");
+                
+                // If currently using file input, restart with new file
+                if (_useAudioFileInput && (_waveIn != null || _audioFilePlaybackTimer != null))
+                {
+                    _debugLog.LogAudio("Restarting audio file capture with new file path");
+                    StopCapture();
+                    StartCapture();
+                }
+            }
+        }
+    }
+
+    public string CurrentAudioFilePath => _customAudioFilePath ?? AUDIO_FILE_PATH;
 
     public float MinBroadcastThreshold
     {
@@ -221,47 +259,82 @@ public class AudioService : IDisposable
     {
         try
         {
-            string fullPath = Path.GetFullPath(AUDIO_FILE_PATH);
+            string audioFilePath = CurrentAudioFilePath;
+            string fullPath = Path.GetFullPath(audioFilePath);
             
-            if (!File.Exists(AUDIO_FILE_PATH))
+            if (!File.Exists(audioFilePath))
             {
-                throw new FileNotFoundException($"Audio file not found: {AUDIO_FILE_PATH}");
+                throw new FileNotFoundException($"Audio file not found: {audioFilePath}");
             }
 
-            // open file and check header for MuLaw format
-            var reader = new WaveFileReader(AUDIO_FILE_PATH);
-            var waveFormat = reader.WaveFormat;
+            _debugLog.LogAudio($"Starting audio file capture from: {audioFilePath}");
 
-            if (waveFormat.Encoding == WaveFormatEncoding.MuLaw && waveFormat.SampleRate == PCMU_SAMPLE_RATE && waveFormat.Channels == PCMU_CHANNELS)
-            {
-                // use raw stream for MuLaw if it matches our target PCMU format
-                _debugLog.LogAudio($"Using raw MuLaw stream for {AUDIO_FILE_PATH} as it matches target format.");
-                _rawMuLawStream = File.OpenRead(AUDIO_FILE_PATH);
-                // skip WAV header (usually 44 bytes for PCM, may vary for MuLaw files not strictly PCM wav)
-                // A proper MuLaw .wav file will have a format chunk indicating MuLaw.
-                // If it's a raw MuLaw file without a header, position should be 0.
-                // For .wav files, NAudio's WaveFileReader.Position handles the data chunk start.
-                // Let's assume WaveFileReader correctly positions us at the start of data if it's a valid WAV.
-                // If we bypass WaveFileReader for MuLaw, we might need to handle headers manually or use raw .ulaw files.
-                // For now, if WaveFileReader says it's MuLaw, we'll use its stream.
-                _audioFileStream = reader; // Use the reader to benefit from its parsing.
-                _rawMuLawStream = null; // Don't use the separate raw stream for now.
-                                        // We'll read from _audioFileStream and it should give us MuLaw bytes.
-            }
-            else if (waveFormat.Encoding == WaveFormatEncoding.Pcm || waveFormat.Encoding == WaveFormatEncoding.IeeeFloat)
-            {
-                // If it's PCM or Float, we'll need to convert it.
-                _debugLog.LogAudio($"Audio file {AUDIO_FILE_PATH} is PCM/Float ({waveFormat}). Will convert to PCMU.");
-                _audioFileStream = reader; // We'll read PCM and convert
-                _rawMuLawStream = null;
-            }
-            else
-            {
-                reader.Dispose();
-                throw new InvalidDataException($"Audio file {AUDIO_FILE_PATH} has unsupported format: {waveFormat.Encoding}. Only MuLaw or PCM are supported for file input.");
-            }
+            // Determine file type and create appropriate reader
+            string extension = Path.GetExtension(audioFilePath).ToLowerInvariant();
+            WaveStream? reader = null;
 
-            _audioFilePlaybackTimer = new Timer(AudioFilePlaybackCallback, null, 0, TARGET_PACKET_DURATION_MS);
+            try
+            {
+                if (extension == ".mp3")
+                {
+                    // Use MediaFoundationReader for MP3 files
+                    reader = new MediaFoundationReader(audioFilePath);
+                    _debugLog.LogAudio($"Using MediaFoundationReader for MP3 file: {audioFilePath}");
+                }
+                else if (extension == ".wav")
+                {
+                    // Use WaveFileReader for WAV files
+                    reader = new WaveFileReader(audioFilePath);
+                    _debugLog.LogAudio($"Using WaveFileReader for WAV file: {audioFilePath}");
+                }
+                else
+                {
+                    // Try MediaFoundationReader for other formats (it supports many formats)
+                    try
+                    {
+                        reader = new MediaFoundationReader(audioFilePath);
+                        _debugLog.LogAudio($"Using MediaFoundationReader for file: {audioFilePath}");
+                    }
+                    catch
+                    {
+                        // Fallback to WaveFileReader
+                        reader = new WaveFileReader(audioFilePath);
+                        _debugLog.LogAudio($"Using WaveFileReader as fallback for file: {audioFilePath}");
+                    }
+                }
+
+                if (reader == null)
+                {
+                    throw new InvalidOperationException("Failed to create audio reader");
+                }
+
+                var waveFormat = reader.WaveFormat;
+                _debugLog.LogAudio($"Audio file format: {waveFormat.Encoding}, {waveFormat.SampleRate}Hz, {waveFormat.Channels} channels, {waveFormat.BitsPerSample} bits");
+
+                // Check if it's already in target MuLaw format
+                if (waveFormat.Encoding == WaveFormatEncoding.MuLaw && 
+                    waveFormat.SampleRate == PCMU_SAMPLE_RATE && 
+                    waveFormat.Channels == PCMU_CHANNELS)
+                {
+                    _debugLog.LogAudio($"Audio file is already in target MuLaw format");
+                    _audioFileStream = reader;
+                    _rawMuLawStream = null;
+                }
+                else
+                {
+                    // Any other format (PCM, Float, MP3, etc.) - will be converted in real-time
+                    _debugLog.LogAudio($"Audio file will be converted from {waveFormat.Encoding} to PCMU in real-time");
+                    _audioFileStream = reader;
+                    _rawMuLawStream = null;
+                }
+
+                _audioFilePlaybackTimer = new Timer(AudioFilePlaybackCallback, null, 0, TARGET_PACKET_DURATION_MS);
+            }
+            catch (Exception ex)
+            {
+                reader?.Dispose();
+                throw new InvalidDataException($"Failed to read audio file {audioFilePath}: {ex.Message}", ex);
+            }
         }
         catch (Exception ex)
         {
@@ -622,10 +695,9 @@ public class AudioService : IDisposable
                         Array.Fill(finalAudioData, (byte)0xFF);
                     }
                 }
-                else if (_audioFileStream.WaveFormat.Encoding == WaveFormatEncoding.Pcm)
+                else
                 {
-                    // PCM format - need to convert to MuLaw
-                    // Calculate how much source data we need for one packet
+                    // Any other format (PCM, Float, MP3, etc.) - convert to MuLaw
                     var sourceFormat = _audioFileStream.WaveFormat;
                     int sourceBytesNeeded = (PCMU_PACKET_SIZE_BYTES * sourceFormat.SampleRate / PCMU_SAMPLE_RATE) * 
                                           (sourceFormat.BitsPerSample / 8) * sourceFormat.Channels;
@@ -641,7 +713,7 @@ public class AudioService : IDisposable
                     
                     if (bytesRead > 0)
                     {
-                        // Convert PCM to MuLaw and calculate level
+                        // Convert to MuLaw and calculate level
                         (finalAudioData, calculatedLevel) = ConvertPcmToMuLawAndCalculateLevel(sourcePcmData, bytesRead, sourceFormat);
                         hasValidAudio = true;
                     }
@@ -650,12 +722,6 @@ public class AudioService : IDisposable
                         // Empty file - fill with silence  
                         Array.Fill(finalAudioData, (byte)0xFF);
                     }
-                }
-                else
-                {
-                    // Unsupported format - send silence
-                    _debugLog.LogAudio($"[WARNING] Unsupported audio file format: {_audioFileStream.WaveFormat.Encoding}. Sending silence.");
-                    Array.Fill(finalAudioData, (byte)0xFF);
                 }
             }
             else if (_rawMuLawStream != null)
@@ -1159,6 +1225,24 @@ public class AudioService : IDisposable
             // don't call ApplyVolumeSettings here as it will be called by distance updates
             _debugLog.LogAudio($"Synced volume for peer {peerId}: {uiVolume:F2}");
         }
+    }
+
+    public void SetCustomAudioFile(string? filePath)
+    {
+        CustomAudioFilePath = filePath;
+    }
+
+    public bool IsValidAudioFile(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            return false;
+
+        string extension = Path.GetExtension(filePath).ToLowerInvariant();
+        
+        // Supported formats
+        var supportedExtensions = new[] { ".wav", ".mp3", ".m4a", ".aac", ".wma", ".flac" };
+        
+        return supportedExtensions.Contains(extension);
     }
 
     public void Dispose()

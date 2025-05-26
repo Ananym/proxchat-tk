@@ -13,6 +13,7 @@ using System.Windows; // For Application.Current
 using System.IO; // For Path
 using System.Text.Json; // For JSON serialization if not already used
 using System.Collections.Concurrent; // Added for ConcurrentDictionary
+using Microsoft.Win32; // For OpenFileDialog
 // Ensure RelayCommand namespace is covered - assuming it's within ViewModels or a sub-namespace
 // using ProxChatClient.Commands; // Example if it were in a ProxChatClient.Commands namespace
 
@@ -49,6 +50,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _debugY = 206; // Changed to int
     private int _debugMapId = 0;
     private bool _useWavInput; // Debug-only, not persisted
+    private string? _selectedAudioFile; // Path to selected audio file
+    private string _audioFileDisplayName = "No file selected"; // Display name for UI
 
     // Fields to track last sent position for conditional updates
     private int? _lastSentMapId;
@@ -171,6 +174,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand DecrementDebugXCommand { get; }
     public ICommand IncrementDebugYCommand { get; }
     public ICommand DecrementDebugYCommand { get; }
+    public ICommand BrowseAudioFileCommand { get; }
 
     public string? SelectedInputDevice
     {
@@ -375,6 +379,45 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public string? SelectedAudioFile
+    {
+        get => _selectedAudioFile;
+        set
+        {
+            if (_selectedAudioFile != value)
+            {
+                _selectedAudioFile = value;
+                _audioService.SetCustomAudioFile(value);
+                
+                // Update display name
+                if (string.IsNullOrEmpty(value))
+                {
+                    AudioFileDisplayName = "No file selected";
+                }
+                else
+                {
+                    AudioFileDisplayName = Path.GetFileName(value);
+                }
+                
+                OnPropertyChanged();
+                _debugLog.LogMain($"Selected audio file: {value ?? "none"}");
+            }
+        }
+    }
+
+    public string AudioFileDisplayName
+    {
+        get => _audioFileDisplayName;
+        set
+        {
+            if (_audioFileDisplayName != value)
+            {
+                _audioFileDisplayName = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public float MinBroadcastThreshold
     {
         get => _minBroadcastThreshold;
@@ -520,6 +563,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         DecrementDebugXCommand = new RelayCommand(() => DebugX--);
         IncrementDebugYCommand = new RelayCommand(() => DebugY++);
         DecrementDebugYCommand = new RelayCommand(() => DebugY--);
+        BrowseAudioFileCommand = new RelayCommand(BrowseAudioFile);
 
         _signalingService.NearbyClientsReceived += HandleNearbyClients;
         _signalingService.ConnectionStatusChanged += HandleSignalingConnectionStatus;
@@ -1634,6 +1678,58 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             _debugLog.LogMain($"Error handling character name change: {ex.Message}");
             StatusMessage = $"Error reconnecting after character change: {ex.Message}";
+        }
+    }
+
+    private void BrowseAudioFile()
+    {
+        try
+        {
+            var openFileDialog = new OpenFileDialog
+            {
+                Title = "Select Audio File",
+                Filter = "Audio Files|*.wav;*.mp3;*.m4a;*.aac;*.wma;*.flac|" +
+                        "WAV Files|*.wav|" +
+                        "MP3 Files|*.mp3|" +
+                        "M4A Files|*.m4a|" +
+                        "AAC Files|*.aac|" +
+                        "WMA Files|*.wma|" +
+                        "FLAC Files|*.flac|" +
+                        "All Files|*.*",
+                FilterIndex = 1,
+                CheckFileExists = true,
+                CheckPathExists = true
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                string selectedFile = openFileDialog.FileName;
+                
+                // Validate the selected file
+                if (_audioService.IsValidAudioFile(selectedFile))
+                {
+                    SelectedAudioFile = selectedFile;
+                    _debugLog.LogMain($"Audio file selected: {selectedFile}");
+                }
+                else
+                {
+                    MessageBox.Show(
+                        "The selected file is not a supported audio format or cannot be accessed.",
+                        "Invalid Audio File",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    _debugLog.LogMain($"Invalid audio file selected: {selectedFile}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogMain($"Error browsing for audio file: {ex.Message}");
+            MessageBox.Show(
+                $"Error selecting audio file: {ex.Message}",
+                "File Selection Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 } 
