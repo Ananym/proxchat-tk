@@ -92,12 +92,12 @@ public class WebRtcService : IDisposable
                 _audioEndPoint = null;
             }
 
-            // Create audio endpoint with MuLaw encoder
+            // Create audio endpoint with Opus encoder
             _audioEndPoint = new WindowsAudioEndPoint(new AudioEncoder());
-            _debugLog.LogWebRtc("Created WindowsAudioEndPoint with MuLaw encoder");
+            _debugLog.LogWebRtc("Created WindowsAudioEndPoint with Opus encoder");
             
-            // Create media track with MuLaw format (PCMU)
-            var audioFormat = new AudioFormat(AudioCodecsEnum.PCMU, 0);
+            // Create media track with Opus format
+            var audioFormat = new AudioFormat(AudioCodecsEnum.OPUS, 111); // 111 is common Opus payload type
             _audioTrack = new MediaStreamTrack(audioFormat, MediaStreamStatusEnum.SendRecv);
             _debugLog.LogWebRtc($"Created audio track with format: {audioFormat.Codec}, status: {MediaStreamStatusEnum.SendRecv}");
 
@@ -185,7 +185,8 @@ public class WebRtcService : IDisposable
                             bool hasAudio = false;
                             if (rtpPacket.Payload.Length > 0)
                             {
-                                hasAudio = rtpPacket.Payload.Any(b => b != 0xFF); // MuLaw silence is 0xFF
+                                // For Opus, check if packet is not empty (Opus silence is typically very small packets or DTX)
+                                hasAudio = rtpPacket.Payload.Length > 2; // Opus silence/DTX packets are usually 1-2 bytes
                             }
 
                             // Removed verbose RTP logging to focus on core issues
@@ -577,8 +578,8 @@ public class WebRtcService : IDisposable
             bool hasAudio = false;
             if (audioData.Length > 0)
             {
-                // For MuLaw (PCMU), 0xFF is silence, so check if any byte is different
-                hasAudio = audioData.Any(b => b != 0xFF);
+                // For Opus, check if packet is not empty (Opus silence is typically very small packets or DTX)
+                hasAudio = audioData.Length > 2; // Opus silence/DTX packets are usually 1-2 bytes
             }
 
             // Removed verbose audio packet logging to focus on core issues
