@@ -1369,6 +1369,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                         _debugLog.LogMain($"New peer {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}) added to UI collection.");
                         UpdatePeerViewModelProperties(newPeerVmInstance, positionData); // set initial properties
                         RecalculatePeerDistance(newPeerVmInstance); // calculate initial distance for new peer
+                        
+                        // Initialize transmission state for new peer in case audio packets arrived before position data
+                        bool currentTransmissionState = _audioService.GetPeerTransmissionState(newPeerVmInstance.Id);
+                        newPeerVmInstance.IsTransmitting = currentTransmissionState;
                     }
                     else
                     {

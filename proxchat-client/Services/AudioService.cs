@@ -20,6 +20,8 @@ public class AudioService : IDisposable
     private readonly ConcurrentDictionary<string, PeerPlayback> _peerPlaybackStreams = new();
     // Track last received audio time for each peer to implement transmission indicators
     private readonly ConcurrentDictionary<string, DateTime> _lastAudioReceived = new();
+    // Track current transmission state for each peer (separate from packet timing)
+    private readonly ConcurrentDictionary<string, bool> _peerTransmissionStates = new();
     private readonly TimeSpan _transmissionTimeout = TimeSpan.FromMilliseconds(300); // Consider peer not transmitting after 300ms of silence
     private Timer? _transmissionCheckTimer;
     // Playback format for incoming audio from peers (what WebRTC will give us, likely PCMU, then decoded)
@@ -811,6 +813,11 @@ public class AudioService : IDisposable
             return; 
         }
 
+        // Always update last received time for any packet (including silence)
+        // This ensures the timeout mechanism works correctly
+        var now = DateTime.UtcNow;
+        _lastAudioReceived[peerId] = now;
+
         // Decode the Opus packet first to analyze the actual audio content
         bool hasAudio = false;
         short[] pcmSamples = new short[0];
@@ -848,16 +855,19 @@ public class AudioService : IDisposable
         }
 
         // Track transmission status based on actual audio content
-        if (hasAudio)
+        // We need to track the current transmission state separately from packet reception
+        bool isCurrentlyTransmitting = hasAudio;
+        
+        // Check if transmission state has changed
+        bool wasTransmitting = _peerTransmissionStates.GetValueOrDefault(peerId, false);
+        if (isCurrentlyTransmitting != wasTransmitting)
         {
-            var now = DateTime.UtcNow;
-            bool wasTransmitting = _lastAudioReceived.ContainsKey(peerId);
-            _lastAudioReceived[peerId] = now;
+            _peerTransmissionStates[peerId] = isCurrentlyTransmitting;
+            PeerTransmissionChanged?.Invoke(this, (peerId, isCurrentlyTransmitting));
             
-            // If peer wasn't transmitting before, notify of transmission start
-            if (!wasTransmitting)
+            if (_random.NextDouble() < LOG_PROBABILITY)
             {
-                PeerTransmissionChanged?.Invoke(this, (peerId, true));
+                _debugLog.LogAudio($"Peer {peerId} transmission state changed: {wasTransmitting} -> {isCurrentlyTransmitting}");
             }
         }
 
@@ -935,6 +945,7 @@ public class AudioService : IDisposable
         
         // Clean up transmission tracking
         _lastAudioReceived.TryRemove(peerId, out _);
+        _peerTransmissionStates.TryRemove(peerId, out _);
         
         // Notify that peer stopped transmitting
         PeerTransmissionChanged?.Invoke(this, (peerId, false));
@@ -1214,7 +1225,7 @@ public class AudioService : IDisposable
         var now = DateTime.UtcNow;
         var peersToUpdate = new List<string>();
         
-        // Check for peers that have stopped transmitting
+        // Check for peers that have stopped sending packets entirely
         foreach (var kvp in _lastAudioReceived.ToList())
         {
             var peerId = kvp.Key;
@@ -1222,12 +1233,18 @@ public class AudioService : IDisposable
             
             if ((now - lastReceived) > _transmissionTimeout)
             {
-                peersToUpdate.Add(peerId);
-                _lastAudioReceived.TryRemove(peerId, out _); // Remove from tracking
+                // Peer hasn't sent any packets (including silence) for the timeout period
+                // This means they're likely disconnected, so turn off transmission indicator
+                if (_peerTransmissionStates.GetValueOrDefault(peerId, false))
+                {
+                    peersToUpdate.Add(peerId);
+                }
+                _lastAudioReceived.TryRemove(peerId, out _);
+                _peerTransmissionStates.TryRemove(peerId, out _);
             }
         }
         
-        // Notify of transmission status changes
+        // Notify of transmission status changes for timed-out peers
         foreach (var peerId in peersToUpdate)
         {
             PeerTransmissionChanged?.Invoke(this, (peerId, false));
@@ -1529,6 +1546,11 @@ public class AudioService : IDisposable
         
         // clamp final result to valid range
         return Math.Clamp(maxSample, 0.0f, 1.0f);
+    }
+
+    public bool GetPeerTransmissionState(string peerId)
+    {
+        return _peerTransmissionStates.GetValueOrDefault(peerId, false);
     }
 }
 
