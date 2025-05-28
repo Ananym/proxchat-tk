@@ -519,7 +519,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _debugLog = debugLog;
         
         // Use hardcoded max distance for consistency across all users
-        const float HARDCODED_MAX_DISTANCE = 20.0f; // Extended range for more realistic audio falloff
+        const float HARDCODED_MAX_DISTANCE = 15.0f; // Extended range for more realistic audio falloff
         _audioService = new AudioService(HARDCODED_MAX_DISTANCE, config, debugLog);
         _signalingService = new SignalingService(config.WebSocketServer, debugLog);
         _webRtcService = new WebRtcService(_audioService, _signalingService, HARDCODED_MAX_DISTANCE, debugLog);

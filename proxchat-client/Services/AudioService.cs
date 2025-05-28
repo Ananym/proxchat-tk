@@ -53,6 +53,7 @@ public class AudioService : IDisposable
 
     private readonly DebugLogService _debugLog;
     private readonly OpusCodecService _opusCodec;
+    private readonly VolumeTransitionService _volumeTransitionService;
 
     // Buffer for microphone data before encoding
     private CircularBuffer? _microphoneCircularBuffer;
@@ -177,6 +178,9 @@ public class AudioService : IDisposable
         
         // Initialize Opus codec service
         _opusCodec = new OpusCodecService(_debugLog);
+        
+        // Initialize volume transition service
+        _volumeTransitionService = new VolumeTransitionService(_debugLog);
         
         RefreshInputDevices();
         
@@ -943,6 +947,9 @@ public class AudioService : IDisposable
             playback.WaveOut?.Dispose();
         }
         
+        // Clean up volume transition tracking
+        _volumeTransitionService.RemovePeer(peerId);
+        
         // Clean up transmission tracking
         _lastAudioReceived.TryRemove(peerId, out _);
         _peerTransmissionStates.TryRemove(peerId, out _);
@@ -1049,9 +1056,8 @@ public class AudioService : IDisposable
 
         try
         {
-            playback.WaveOut.Volume = finalVolume;
-            
-            // Removed verbose volume logging to focus on core issues
+            // use smooth volume transition instead of immediate change
+            _volumeTransitionService.SetTargetVolume(playback.PeerId ?? "unknown", playback.WaveOut, finalVolume);
         }
         catch (Exception ex)
         {
@@ -1078,13 +1084,11 @@ public class AudioService : IDisposable
 
         try
         {
-            // apply volume
-            playback.WaveOut.Volume = finalVolume;
+            // use smooth volume transition instead of immediate change
+            _volumeTransitionService.SetTargetVolume(playback.PeerId ?? "unknown", playback.WaveOut, finalVolume);
             
             // store panning factor for use during audio processing
             playback.PanningFactor = panningFactor;
-            
-            // Removed verbose audio logging to focus on core issues
         }
         catch (Exception ex)
         {
@@ -1099,7 +1103,17 @@ public class AudioService : IDisposable
             if (playback.IsMuted != isMuted) // Only act if state is different
             {
                 playback.IsMuted = isMuted;
-                ApplyVolumeSettings(playback);
+                
+                // for muting/unmuting, use immediate volume change for instant feedback
+                if (isMuted)
+                {
+                    _volumeTransitionService.SetVolumeImmediate(peerId, playback.WaveOut, 0.0f);
+                }
+                else
+                {
+                    // when unmuting, apply normal volume settings with smooth transition
+                    ApplyVolumeSettings(playback);
+                }
             }
         }
     }
@@ -1119,6 +1133,26 @@ public class AudioService : IDisposable
         {
             playback.UiVolumeSetting = Math.Clamp(uiVolume, 0.0f, 1.0f);
             ApplyVolumeSettings(playback);
+        }
+    }
+
+    /// <summary>
+    /// sets peer volume immediately without smooth transition
+    /// useful for cases where instant feedback is needed
+    /// </summary>
+    public void SetPeerUiVolumeImmediate(string peerId, float uiVolume)
+    {
+        if (_peerPlaybackStreams.TryGetValue(peerId, out var playback))
+        {
+            playback.UiVolumeSetting = Math.Clamp(uiVolume, 0.0f, 1.0f);
+            
+            // calculate final volume and apply immediately
+            float finalVolume = playback.IsMuted 
+                                ? 0.0f 
+                                : playback.UiVolumeSetting * _volumeScale;
+            finalVolume = Math.Clamp(finalVolume, 0.0f, 1.0f);
+            
+            _volumeTransitionService.SetVolumeImmediate(peerId, playback.WaveOut, finalVolume);
         }
     }
 
@@ -1223,6 +1257,7 @@ public class AudioService : IDisposable
         _transmissionCheckTimer?.Dispose(); // Dispose transmission timer
         _audioLevelResetTimer?.Dispose(); // Dispose audio level reset timer
         _opusCodec?.Dispose(); // Dispose Opus codec service
+        _volumeTransitionService?.Dispose(); // Dispose volume transition service
         GC.SuppressFinalize(this);
     }
 
