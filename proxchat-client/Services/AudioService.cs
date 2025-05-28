@@ -974,9 +974,9 @@ public class AudioService : IDisposable
 
     private float CalculateStereoPanning(float distance, float xOffset)
     {
-        // quadratic panning curve - gets stronger as distance increases
+        // cubic panning curve - gets stronger as distance increases
         float normalizedDistance = Math.Clamp(distance / _maxDistance, 0.0f, 1.0f);
-        float panningStrength = normalizedDistance * normalizedDistance; // quadratic curve
+        float panningStrength = normalizedDistance * normalizedDistance * normalizedDistance; // cubic curve
         
         // determine direction: negative = left, positive = right
         float direction = Math.Sign(xOffset);
@@ -989,36 +989,42 @@ public class AudioService : IDisposable
 
     private float CalculateDistanceFactor(float distance)
     {
-        // piecewise distance curve for more gradual falloff:
-        // distance 0: 100%
-        // distance 3: 90%
-        // distance 14: 1%
-        // distance 19: 0.1%
-        // distance 20+: 0% (silence)
+        // normalize distance to 0-1 range
+        float normalizedDistance = Math.Clamp(distance / _maxDistance, 0.0f, 1.0f);
         
-        if (distance >= 20.0f)
+        // define our zones
+        const float conversationZone = 0.2f; // first 20% of range has minimal falloff
+        const float midZone = 0.5f; // 50% distance point
+        const float exitZone = 0.8f; // 80% distance point
+        
+        float attenuationDB;
+        if (normalizedDistance <= conversationZone)
         {
-            return 0.0f; // complete silence beyond 20 units
+            // linear from 0dB to -3dB in conversation zone
+            attenuationDB = -3.0f * (normalizedDistance / conversationZone);
         }
-        else if (distance <= 3.0f)
+        else if (normalizedDistance <= midZone)
         {
-            // linear interpolation from 100% at distance 0 to 90% at distance 3
-            return 1.0f - (distance / 3.0f) * 0.1f; // 1.0 to 0.9
+            // linear from -3dB to -9dB between conversation and mid zone
+            float progress = (normalizedDistance - conversationZone) / (midZone - conversationZone);
+            attenuationDB = -3.0f + (-9.0f - (-3.0f)) * progress;
         }
-        else if (distance <= 14.0f)
+        else if (normalizedDistance <= exitZone)
         {
-            // exponential curve from 90% at distance 3 to 1% at distance 14
-            // using exponential interpolation: 0.9 * (0.01/0.9)^((distance-3)/(14-3))
-            float t = (distance - 3.0f) / (14.0f - 3.0f); // normalize to 0-1 range
-            return 0.9f * (float)Math.Pow(0.01f / 0.9f, t);
-        }
-        else // distance between 14 and 20
+            // linear from -9dB to -21dB between mid zone and exit zone
+            float progress = (normalizedDistance - midZone) / (exitZone - midZone);
+            attenuationDB = -9.0f + (-21.0f - (-9.0f)) * progress;
+        } else
         {
-            // exponential curve from 1% at distance 14 to 0.1% at distance 19
-            // using exponential interpolation: 0.01 * (0.001/0.01)^((distance-14)/(19-14))
-            float t = (distance - 14.0f) / (19.0f - 14.0f); // normalize to 0-1 range
-            return 0.01f * (float)Math.Pow(0.001f / 0.01f, t);
+            // linear from -21dB to -50dB from exit zone to max distance
+            float progress = (normalizedDistance - exitZone) / (1.0f - exitZone);
+            attenuationDB = -21.0f + (-50.0f - (-21.0f)) * progress;
         }
+        
+        // convert dB to linear
+        float volumeScale = (float)Math.Pow(10.0, attenuationDB / 20.0);
+        
+        return Math.Clamp(volumeScale, 0.0f, 1.0f);
     }
 
     private void ApplyVolumeSettings(PeerPlayback playback, float? distance = null)
