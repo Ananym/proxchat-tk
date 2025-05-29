@@ -1,0 +1,53 @@
+#include <windows.h>
+
+// use same version defines as code, with fallbacks
+#ifndef DLL_VERSION_MAJOR
+#define DLL_VERSION_MAJOR 1
+#endif
+#ifndef DLL_VERSION_MINOR
+#define DLL_VERSION_MINOR 0
+#endif
+#ifndef DLL_VERSION_BUILD
+#define DLL_VERSION_BUILD 0
+#endif
+#ifndef DLL_VERSION_REVISION
+#define DLL_VERSION_REVISION 1
+#endif
+
+// stringify macro helper
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
+#define VER_FILEVERSION             DLL_VERSION_MAJOR,DLL_VERSION_MINOR,DLL_VERSION_BUILD,DLL_VERSION_REVISION
+#define VER_FILEVERSION_STR         TOSTRING(DLL_VERSION_MAJOR) "." TOSTRING(DLL_VERSION_MINOR) "." TOSTRING(DLL_VERSION_BUILD) "." TOSTRING(DLL_VERSION_REVISION) "\0"
+#define VER_PRODUCTVERSION          DLL_VERSION_MAJOR,DLL_VERSION_MINOR,DLL_VERSION_BUILD,DLL_VERSION_REVISION
+#define VER_PRODUCTVERSION_STR      TOSTRING(DLL_VERSION_MAJOR) "." TOSTRING(DLL_VERSION_MINOR) "." TOSTRING(DLL_VERSION_BUILD) "." TOSTRING(DLL_VERSION_REVISION) "\0"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     VER_FILEVERSION
+PRODUCTVERSION  VER_PRODUCTVERSION
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0x0L
+FILEOS          VOS__WINDOWS32
+FILETYPE        VFT_DLL
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"  // english us, unicode
+        BEGIN
+            VALUE "CompanyName",        "ProxChat Memory Reader\0"
+            VALUE "FileDescription",   "Memory reading DLL for game data extraction (VERSION.dll proxy)\0"
+            VALUE "FileVersion",       VER_FILEVERSION_STR
+            VALUE "InternalName",      "memoryreadingdll\0"
+            VALUE "LegalCopyright",    "Copyright (C) 2024\0"
+            VALUE "OriginalFilename",  "VERSION.dll\0"
+            VALUE "ProductName",       "ProxChat Memory Reader\0"
+            VALUE "ProductVersion",    VER_PRODUCTVERSION_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200  // english us, unicode
+    END
+END 

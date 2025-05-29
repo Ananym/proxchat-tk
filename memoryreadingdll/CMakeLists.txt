@@ -12,6 +12,7 @@ set(CMAKE_GENERATOR_PLATFORM Win32)
 add_library(memoryreadingdll SHARED
     dllmain.cpp
     memreader.cpp
+    version.rc
 )
 
 # Link necessary Windows libraries
