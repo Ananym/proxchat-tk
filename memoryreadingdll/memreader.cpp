@@ -2,28 +2,22 @@
 #include <windows.h>
 #include <string>
 #include <vector>
-#include <sstream> // For building the JSON string
-#include <iomanip> // For formatting JSON output if needed
-#include <algorithm> // For std::find_if and std::remove
-#include <cctype>    // For std::isspace
-#include <chrono>    // For timestamp generation
+#include <algorithm> // for std::find_if and std::remove
+#include <cctype>    // for std::isspace
+#include <chrono>    // for timestamp generation
 
-// Forward declaration of LogToFile from dllmain.cpp
-// WARNING: This assumes LogToFile is accessible. If memreader.cpp is compiled
-// separately without access to dllmain's implementation, this will fail linking.
-// A better approach would be to pass a logging function pointer or use a shared logging header.
-// For now, we'll assume it's accessible for debugging.
+// forward declaration of LogToFile from dllmain.cpp
 extern void LogToFile(const std::string& message);
 
-// Helper function to trim trailing whitespace/nulls and remove internal nulls
+// helper function to trim trailing whitespace/nulls and remove internal nulls
 std::string TrimStringData(const char* buffer, size_t length) {
     if (!buffer || length == 0) {
         return "";
     }
 
-    // Find the first double-null terminator (two consecutive null bytes)
-    // This marks the actual end of the double-width string
-    size_t stringLength = length; // Default to entire buffer if no terminator found
+    // find the first double-null terminator (two consecutive null bytes)
+    // this marks the actual end of the double-width string
+    size_t stringLength = length; // default to entire buffer if no terminator found
     for (size_t i = 0; i < length - 1; i++) {
         if (buffer[i] == '\0' && buffer[i + 1] == '\0') {
             stringLength = i;
@@ -31,7 +25,7 @@ std::string TrimStringData(const char* buffer, size_t length) {
         }
     }
 
-    // Extract every other byte starting from index 0 (the actual character bytes)
+    // extract every other byte starting from index 0 (the actual character bytes)
     // up to the string terminator, skipping the null bytes between characters
     std::string result;
     for (size_t i = 0; i < stringLength; i += 2) {
@@ -49,21 +43,29 @@ std::string TrimStringData(const char* buffer, size_t length) {
     return result;
 }
 
-
-// Helper function to safely read memory
+// helper function to safely read memory
 bool SafeReadProcessMemory(LPCVOID lpBaseAddress, LPVOID lpBuffer, SIZE_T nSize, SIZE_T* lpNumberOfBytesRead) {
-    // Since we are injected into the target process, we can read directly.
-    // However, using ReadProcessMemory might still be safer for handling potential page faults,
+    // since we are injected into the target process, we can read directly.
+    // however, using ReadProcessMemory might still be safer for handling potential page faults,
     // although direct pointer access is usually faster if stability is guaranteed.
-    // For robustness, let's stick with ReadProcessMemory using the current process handle.
-    // Note: GetCurrentProcess() returns a pseudo-handle, which is fine for ReadProcessMemory
+    // for robustness, let's stick with ReadProcessMemory using the current process handle.
+    // note: GetCurrentProcess() returns a pseudo-handle, which is fine for ReadProcessMemory
     // when reading the current process's memory.
     return ReadProcessMemory(GetCurrentProcess(), lpBaseAddress, lpBuffer, nSize, lpNumberOfBytesRead);
 }
 
-
-std::string ReadMemoryValuesToJson() {
-    static bool previousCallSucceeded = true; // track state across calls
+GameDataMessage CreateGameDataMessage() {
+    static bool previousCallSucceeded = true;
+    static uint32_t sequenceNumber = 0;
+    
+    GameDataMessage msg = {}; // zero-initialize
+    msg.messageType = MSG_TYPE_GAME_DATA;
+    msg.sequenceNumber = ++sequenceNumber;
+    
+    // get current timestamp in milliseconds
+    auto now = std::chrono::system_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
+    msg.timestampMs = static_cast<uint64_t>(ms.count());
     
     uintptr_t baseAddress = reinterpret_cast<uintptr_t>(GetModuleHandle(NULL));
     if (baseAddress == 0) {
@@ -71,16 +73,12 @@ std::string ReadMemoryValuesToJson() {
             LogToFile("Memory reading failed: Unable to get module handle");
             previousCallSucceeded = false;
         }
-        return R"({"success": false, "error": "Failed to get module handle"})";
+        msg.messageType = MSG_TYPE_ERROR;
+        msg.flags = 0; // no success flag
+        return msg;
     }
 
-    int x = 0;
-    int y = 0;
-    uint16_t mapId = 0;
-    std::string mapName = "";
-    std::string characterName = "";
     bool success = true;
-    std::string errorMessage = "";
     SIZE_T bytesRead = 0;
 
     // read X coordinate
@@ -88,13 +86,11 @@ std::string ReadMemoryValuesToJson() {
     uintptr_t xBasePtr = 0;
     if (success && SafeReadProcessMemory(reinterpret_cast<LPCVOID>(xPtrAddr), &xBasePtr, sizeof(xBasePtr), &bytesRead) && bytesRead == sizeof(xBasePtr)) {
         uintptr_t xAddr = xBasePtr + 0xFC;
-        if (!SafeReadProcessMemory(reinterpret_cast<LPCVOID>(xAddr), &x, sizeof(x), &bytesRead) || bytesRead != sizeof(x)) {
+        if (!SafeReadProcessMemory(reinterpret_cast<LPCVOID>(xAddr), &msg.x, sizeof(msg.x), &bytesRead) || bytesRead != sizeof(msg.x)) {
             success = false;
-            errorMessage = "Failed to read X coordinate value";
         }
-    } else if (success) {
+    } else {
         success = false;
-        errorMessage = "Failed to read X coordinate base pointer";
     }
 
     // read Y coordinate
@@ -102,13 +98,11 @@ std::string ReadMemoryValuesToJson() {
     uintptr_t yBasePtr = 0;
     if (success && SafeReadProcessMemory(reinterpret_cast<LPCVOID>(yPtrAddr), &yBasePtr, sizeof(yBasePtr), &bytesRead) && bytesRead == sizeof(yBasePtr)) {
         uintptr_t yAddr = yBasePtr + 0x108;
-        if (!SafeReadProcessMemory(reinterpret_cast<LPCVOID>(yAddr), &y, sizeof(y), &bytesRead) || bytesRead != sizeof(y)) {
+        if (!SafeReadProcessMemory(reinterpret_cast<LPCVOID>(yAddr), &msg.y, sizeof(msg.y), &bytesRead) || bytesRead != sizeof(msg.y)) {
             success = false;
-            errorMessage = "Failed to read Y coordinate value";
         }
-    } else if (success) {
+    } else {
         success = false;
-        errorMessage = "Failed to read Y coordinate base pointer";
     }
 
     // read map ID
@@ -116,16 +110,14 @@ std::string ReadMemoryValuesToJson() {
     uintptr_t mapIdBasePtr = 0;
     if (success && SafeReadProcessMemory(reinterpret_cast<LPCVOID>(mapIdPtrAddr), &mapIdBasePtr, sizeof(mapIdBasePtr), &bytesRead) && bytesRead == sizeof(mapIdBasePtr)) {
         uintptr_t mapIdAddr = mapIdBasePtr + 0x3F2;
-        if (!SafeReadProcessMemory(reinterpret_cast<LPCVOID>(mapIdAddr), &mapId, sizeof(mapId), &bytesRead) || bytesRead != sizeof(mapId)) {
+        if (!SafeReadProcessMemory(reinterpret_cast<LPCVOID>(mapIdAddr), &msg.mapId, sizeof(msg.mapId), &bytesRead) || bytesRead != sizeof(msg.mapId)) {
             success = false;
-            errorMessage = "Failed to read map ID value";
         }
-    } else if (success) {
+    } else {
         success = false;
-        errorMessage = "Failed to read map ID base pointer";
     }
 
-    // read map name (21 chars * 2 bytes/char = 42 bytes)
+    // read map name
     const size_t mapNameBufferSize = 42;
     std::vector<char> mapNameBuffer(mapNameBufferSize);
     uintptr_t mapNamePtrAddr = baseAddress + 0x0029B4B4;
@@ -133,31 +125,41 @@ std::string ReadMemoryValuesToJson() {
     if (success && SafeReadProcessMemory(reinterpret_cast<LPCVOID>(mapNamePtrAddr), &mapNameBasePtr, sizeof(mapNameBasePtr), &bytesRead) && bytesRead == sizeof(mapNameBasePtr)) {
         uintptr_t mapNameAddr = mapNameBasePtr + 0xF8;
         if (SafeReadProcessMemory(reinterpret_cast<LPCVOID>(mapNameAddr), mapNameBuffer.data(), mapNameBufferSize, &bytesRead)) {
-            mapName = TrimStringData(mapNameBuffer.data(), bytesRead);
+            std::string mapName = TrimStringData(mapNameBuffer.data(), bytesRead);
+            // copy to fixed-size buffer, ensuring null termination
+            strncpy_s(msg.mapName, sizeof(msg.mapName), mapName.c_str(), sizeof(msg.mapName) - 1);
+            msg.mapName[sizeof(msg.mapName) - 1] = '\0';
         } else {
             success = false;
-            errorMessage = "Failed to read map name value";
         }
-    } else if (success) {
+    } else {
         success = false;
-        errorMessage = "Failed to read map name base pointer";
     }
 
-    // read character name (12 chars * 2 bytes/char = 24 bytes)
+    // read character name
     const size_t charNameBufferSize = 24;
     std::vector<char> charNameBuffer(charNameBufferSize);
     uintptr_t charNamePtrAddr = baseAddress + 0x001A2DA4;
     uintptr_t charNameAddr = 0;
     if (success && SafeReadProcessMemory(reinterpret_cast<LPCVOID>(charNamePtrAddr), &charNameAddr, sizeof(charNameAddr), &bytesRead) && bytesRead == sizeof(charNameAddr)) {
         if (SafeReadProcessMemory(reinterpret_cast<LPCVOID>(charNameAddr), charNameBuffer.data(), charNameBufferSize, &bytesRead)) {
-            characterName = TrimStringData(charNameBuffer.data(), bytesRead);
+            std::string characterName = TrimStringData(charNameBuffer.data(), bytesRead);
+            // copy to fixed-size buffer, ensuring null termination
+            strncpy_s(msg.characterName, sizeof(msg.characterName), characterName.c_str(), sizeof(msg.characterName) - 1);
+            msg.characterName[sizeof(msg.characterName) - 1] = '\0';
         } else {
             success = false;
-            errorMessage = "Failed to read character name value";
         }
-    } else if (success) {
+    } else {
         success = false;
-        errorMessage = "Failed to read character name pointer";
+    }
+
+    // set flags based on success
+    if (success) {
+        msg.flags |= FLAG_SUCCESS | FLAG_POSITION_VALID;
+    } else {
+        msg.messageType = MSG_TYPE_ERROR;
+        msg.flags = 0;
     }
 
     // log state transitions
@@ -165,37 +167,10 @@ std::string ReadMemoryValuesToJson() {
         if (success) {
             LogToFile("Memory reading recovered: All data read successfully");
         } else {
-            LogToFile("Memory reading failed: " + errorMessage);
+            LogToFile("Memory reading failed");
         }
         previousCallSucceeded = success;
     }
 
-    // generate iso timestamp
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-    
-    std::tm utc_tm;
-    gmtime_s(&utc_tm, &time_t);
-    
-    std::ostringstream timestampStream;
-    timestampStream << std::put_time(&utc_tm, "%Y-%m-%dT%H:%M:%S")
-                   << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
-    std::string timestamp = timestampStream.str();
-
-    // construct JSON response
-    std::ostringstream jsonStream;
-    if (success) {
-        jsonStream << R"({"success": true, "timestamp": ")" << timestamp << R"(", "data": {)";
-        jsonStream << R"("x": )" << x << ", ";
-        jsonStream << R"("y": )" << y << ", ";
-        jsonStream << R"("mapId": )" << mapId << ", ";
-        jsonStream << R"("mapName": ")" << mapName << R"(", )";
-        jsonStream << R"("characterName": ")" << characterName << R"(")";
-        jsonStream << R"(}})";
-        return jsonStream.str();
-    } else {
-        jsonStream << R"({"success": false, "timestamp": ")" << timestamp << R"(", "error": ")" << errorMessage << R"("})";
-        return jsonStream.str();
-    }
+    return msg;
 } 

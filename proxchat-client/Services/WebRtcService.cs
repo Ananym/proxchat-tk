@@ -13,6 +13,7 @@ using SIPSorcery.Net;
 using SIPSorceryMedia.Abstractions;
 using SIPSorceryMedia.Windows;
 using System.IO; // For file logging
+using System.Text.Json;
 
 namespace ProxChatClient.Services;
 
@@ -524,10 +525,10 @@ public class WebRtcService : IDisposable
             try
             {
                 var positionData = new PositionData { MapId = mapId, X = x, Y = y, CharacterName = characterName };
-                string message = JsonConvert.SerializeObject(positionData);
-                // Removed verbose position sending logging
-                state.DataChannel.send(Encoding.UTF8.GetBytes(message));
-                _debugLog.LogWebRtc($"Sent position update to {peerId}: MapId={mapId}, X={x}, Y={y}");
+                var json = System.Text.Json.JsonSerializer.Serialize(positionData);
+                state.DataChannel.send(json);
+                
+                // removed excessive position send logging - only log errors
             }
             catch (Exception ex)
             {
@@ -543,7 +544,7 @@ public class WebRtcService : IDisposable
     // Send position update to all connected peers
     public void SendPositionToAllPeers(int mapId, int x, int y, string characterName)
     {
-        _debugLog.LogWebRtc($"Sending position update to all peers: MapId={mapId}, X={x}, Y={y}, Name={characterName}");
+        // removed excessive position update logging
         foreach (var peerId in _peerConnections.Keys)
         {
             SendPosition(peerId, mapId, x, y, characterName);

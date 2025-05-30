@@ -16,6 +16,7 @@ namespace ProxChatClient.ViewModels
         private int _x;
         private int _y;
         private bool _isTransmitting = false; // Track if peer is actively transmitting audio
+        public bool HasLoggedFirstTransmission { get; set; } = false;
 
         public string Id
         {

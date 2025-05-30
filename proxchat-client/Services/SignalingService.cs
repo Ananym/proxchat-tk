@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
+using System.Text.Json;
 
 namespace ProxChatClient.Services;
 
@@ -108,7 +109,6 @@ public class SignalingService : IDisposable
                 }
 
                 var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                _debugLog.LogSignaling($"Received message: {message}");
                 HandleMessage(message);
             }
         }
@@ -231,7 +231,7 @@ public class SignalingService : IDisposable
                     break;
             }
         }
-        catch (JsonException ex)
+        catch (System.Text.Json.JsonException ex)
         {
             _debugLog.LogSignaling($"Failed to parse incoming signaling message: {ex.Message}, Raw: {messageText}");
         }
@@ -296,7 +296,7 @@ public class SignalingService : IDisposable
 
     private async Task SendMessageAsync(ClientMessage message)
     {
-        if (!IsConnected) 
+        if (_webSocket?.State != WebSocketState.Open)
         {
             _debugLog.LogSignaling($"Attempted to send signaling message while disconnected. Type: {message.Type}");
             return;
@@ -304,15 +304,15 @@ public class SignalingService : IDisposable
 
         try
         {
-            var jsonMessage = JsonConvert.SerializeObject(message);
-            var bytes = Encoding.UTF8.GetBytes(jsonMessage);
-            await _webSocket!.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
-            _debugLog.LogSignaling($"Sent message of type {message.Type}");
+            var json = System.Text.Json.JsonSerializer.Serialize(message);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            await _webSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            
+            // removed excessive "sent message" logging - only log errors now
         }
         catch (Exception ex)
         {
             _debugLog.LogSignaling($"Failed to send signaling message (Type: {message.Type}): {ex.Message}");
-            await HandleDisconnect();
         }
     }
 

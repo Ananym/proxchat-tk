@@ -4,7 +4,6 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
-#include <vector>
 #include <mutex>
 #include <fstream>
 #include <sstream>
@@ -12,14 +11,12 @@
 #include <ctime>
 
 #include "memreader.h"
+#include "NamedPipeServer.h"
 
 // --- Logging Setup ---
 std::ofstream logFile;
 std::mutex logMutex;
 const char* logFileName = "memoryreadingdll_log.txt";
-
-// Control whether the JSON data itself is logged each second
-static const bool logJsonData = false;
 
 void LogToFile(const std::string& message) {
     std::lock_guard<std::mutex> lock(logMutex);
@@ -37,39 +34,24 @@ void LogToFile(const std::string& message) {
     }
 }
 
-// Global variables
-HANDLE hMapFile = NULL;
-LPVOID pBuf = NULL;
-const char* szMapFileName = "NexusTKMemoryData";
-const SIZE_T MMF_SIZE = 1024; // 1KB Max size
+// global variables for named pipe
+std::unique_ptr<NamedPipeServer> pipeServer;
+const std::string PIPE_NAME = "NexusTKGameData";
+
 std::atomic<bool> keepRunning(true);
 std::thread memoryPollingThread;
-std::string latestJsonData = R"({"success": false, "error": "Initializing..."})";
-std::mutex dataMutex;
 
-// Background thread function for polling memory
+// background thread function for polling memory
 void MemoryPollingLoop() {
     LogToFile("Memory polling thread started.");
     while (keepRunning) {
-        std::string jsonData = ReadMemoryValuesToJson();
-
-        if (logJsonData) {
-            LogToFile(std::string("JSON Data: ") + jsonData);
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(dataMutex);
-            latestJsonData = jsonData;
-            if (pBuf) {
-                ZeroMemory(pBuf, MMF_SIZE);
-                if (latestJsonData.length() < MMF_SIZE) {
-                    strncpy_s(static_cast<char*>(pBuf), MMF_SIZE, latestJsonData.c_str(), latestJsonData.length());
-                } else {
-                    strncpy_s(static_cast<char*>(pBuf), MMF_SIZE, latestJsonData.c_str(), MMF_SIZE - 1);
-                    LogToFile("Warning: JSON data truncated to fit MMF size.");
-                }
-            } else {
-                LogToFile("Error: Attempted to write to MMF, but pBuf is NULL.");
+        // create structured message
+        GameDataMessage gameMsg = CreateGameDataMessage();
+        
+        // send via named pipe if client connected
+        if (pipeServer && pipeServer->IsClientConnected()) {
+            if (!pipeServer->SendMessage(gameMsg)) {
+                // client disconnected or send failed - this is normal when no client connected
             }
         }
 
@@ -78,81 +60,33 @@ void MemoryPollingLoop() {
     LogToFile("Memory polling thread stopping.");
 }
 
-// Setup Memory Mapped File
-bool SetupMMF() {
-    LogToFile("Attempting to setup Memory Mapped File...");
-    LogToFile(std::string("MMF Name: ") + szMapFileName);
-    LogToFile(std::string("MMF Size: ") + std::to_string(MMF_SIZE));
-
-    hMapFile = CreateFileMappingA(
-        INVALID_HANDLE_VALUE,
-        NULL,
-        PAGE_READWRITE,
-        0,
-        MMF_SIZE,
-        szMapFileName);
-
-    if (hMapFile == NULL) {
-        DWORD error = GetLastError();
-        std::ostringstream oss;
-        oss << "Failed to create file mapping object. Error code: " << error;
-        LogToFile(oss.str());
+// setup named pipe server
+bool SetupNamedPipe() {
+    LogToFile("Setting up Named Pipe server...");
+    LogToFile("Pipe name: " + PIPE_NAME);
+    
+    try {
+        pipeServer = std::make_unique<NamedPipeServer>(PIPE_NAME);
+        if (!pipeServer->Start()) {
+            LogToFile("Failed to start named pipe server");
         return false;
     }
-    LogToFile("CreateFileMappingA succeeded.");
-
-    pBuf = MapViewOfFile(
-        hMapFile,
-        FILE_MAP_ALL_ACCESS,
-        0,
-        0,
-        MMF_SIZE);
-
-    if (pBuf == NULL) {
-        DWORD error = GetLastError();
-        std::ostringstream oss;
-        oss << "Failed to map view of file. Error code: " << error;
-        LogToFile(oss.str());
-        CloseHandle(hMapFile);
-        hMapFile = NULL;
+        LogToFile("Named pipe server started successfully");
+        return true;
+    } catch (const std::exception& e) {
+        LogToFile("Exception setting up named pipe: " + std::string(e.what()));
         return false;
     }
-    LogToFile("MapViewOfFile succeeded.");
-
-    LogToFile("Performing initial write to MMF...");
-    {
-        std::lock_guard<std::mutex> lock(dataMutex);
-        if (pBuf) {
-            ZeroMemory(pBuf, MMF_SIZE);
-            if (latestJsonData.length() < MMF_SIZE) {
-                strncpy_s(static_cast<char*>(pBuf), MMF_SIZE, latestJsonData.c_str(), latestJsonData.length());
-            } else {
-                strncpy_s(static_cast<char*>(pBuf), MMF_SIZE, latestJsonData.c_str(), MMF_SIZE - 1);
-            }
-            LogToFile("Initial write completed.");
-        } else {
-            LogToFile("Error: pBuf became NULL before initial write.");
-        }
-    }
-
-    LogToFile("MMF setup completed successfully.");
-    return true;
 }
 
-// Cleanup Memory Mapped File
-void CleanupMMF() {
-    LogToFile("Cleaning up MMF...");
-    if (pBuf) {
-        LogToFile("Unmapping view of file.");
-        UnmapViewOfFile(pBuf);
-        pBuf = NULL;
+// cleanup named pipe
+void CleanupNamedPipe() {
+    LogToFile("Cleaning up named pipe...");
+    if (pipeServer) {
+        pipeServer->Stop();
+        pipeServer.reset();
     }
-    if (hMapFile) {
-        LogToFile("Closing file mapping handle.");
-        CloseHandle(hMapFile);
-        hMapFile = NULL;
-    }
-    LogToFile("MMF cleanup finished.");
+    LogToFile("Named pipe cleanup finished.");
 }
 
 // --- DLL Entry Point ---
@@ -168,8 +102,8 @@ BOOL APIENTRY DllMain(HMODULE hModule,
             LogToFile("--- DLL_PROCESS_ATTACH ---");
             DisableThreadLibraryCalls(hModule);
 
-            if (!SetupMMF()) {
-                LogToFile("SetupMMF failed. Detaching.");
+            if (!SetupNamedPipe()) {
+                LogToFile("SetupNamedPipe failed. Detaching.");
                 {
                     std::lock_guard<std::mutex> lock(logMutex);
                     if (logFile.is_open()) {
@@ -194,7 +128,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
                 memoryPollingThread.join();
                 LogToFile("Polling thread joined.");
             }
-            CleanupMMF();
+            CleanupNamedPipe();
             LogToFile("DLL_PROCESS_DETACH finished.");
             {
                 std::lock_guard<std::mutex> lock(logMutex);

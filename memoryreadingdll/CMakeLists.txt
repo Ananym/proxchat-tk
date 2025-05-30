@@ -12,6 +12,7 @@ set(CMAKE_GENERATOR_PLATFORM Win32)
 add_library(memoryreadingdll SHARED
     dllmain.cpp
     memreader.cpp
+    NamedPipeServer.cpp
     version.rc
 )
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 
@@ -10,6 +11,10 @@ public class DebugLogService : IDisposable
     private readonly object _logLock = new object();
     private readonly string _logFilePath;
     private bool _disposed = false;
+    
+    // much more aggressive deduplication
+    private readonly ConcurrentDictionary<string, DateTime> _lastLoggedTimes = new();
+    private readonly TimeSpan _minLogInterval = TimeSpan.FromSeconds(10); // don't repeat same message for 10 seconds
 
     public DebugLogService(string? logFileName = null)
     {
@@ -34,7 +39,8 @@ public class DebugLogService : IDisposable
         
         try
         {
-            _logWriter = new StreamWriter(_logFilePath, append: true) { AutoFlush = true };
+            // clear existing log file on startup
+            _logWriter = new StreamWriter(_logFilePath, append: false) { AutoFlush = true };
             Log($"=== Debug Log Started [{DateTime.Now}] ===");
         }
         catch (Exception ex)
@@ -43,17 +49,28 @@ public class DebugLogService : IDisposable
         }
     }
 
+    private bool ShouldLog(string key)
+    {
+        var now = DateTime.UtcNow;
+        if (_lastLoggedTimes.TryGetValue(key, out var lastTime))
+        {
+            if (now - lastTime < _minLogInterval)
+            {
+                return false; // too soon to log this again
+            }
+        }
+        
+        _lastLoggedTimes[key] = now;
+        return true;
+    }
+
     public void Log(string message, string? category = null)
     {
         if (_disposed || _logWriter == null) return;
 
         var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
-        var threadId = Thread.CurrentThread.ManagedThreadId;
         var categoryPrefix = !string.IsNullOrEmpty(category) ? $"[{category}] " : "";
-        var logMessage = $"[{timestamp}] [T{threadId}] {categoryPrefix}{message}";
-        
-        // Always write to debug output
-        System.Diagnostics.Debug.WriteLine(logMessage);
+        var logMessage = $"[{timestamp}] {categoryPrefix}{message}";
         
         lock (_logLock)
         {
@@ -61,31 +78,122 @@ public class DebugLogService : IDisposable
             {
                 if (_logWriter == null)
                 {
-                    // Try to reinitialize the writer if it's null
                     _logWriter = new StreamWriter(_logFilePath, append: true) { AutoFlush = true };
                 }
                 
                 _logWriter.WriteLine(logMessage);
-                _logWriter.Flush(); // Force immediate write
+                _logWriter.Flush();
             }
             catch (Exception ex)
             {
-                // Log the error to debug output
                 System.Diagnostics.Debug.WriteLine($"Error writing to log file: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Log file path: {_logFilePath}");
-                System.Diagnostics.Debug.WriteLine($"Failed to write message: {logMessage}");
-                
-                // Try to reinitialize the writer on next attempt
                 try { _logWriter?.Dispose(); } catch { }
                 _logWriter = null;
             }
         }
     }
 
-    public void LogWebRtc(string message) => Log(message, "WEBRTC");
-    public void LogSignaling(string message) => Log(message, "SIGNALING");
-    public void LogAudio(string message) => Log(message, "AUDIO");
-    public void LogMain(string message) => Log(message, "MAIN");
+    // only log truly critical WebRTC events
+    public void LogWebRtc(string message, string? peerId = null)
+    {
+        // only log connection state changes and critical errors
+        if (message.Contains("connection state changed") || 
+            message.Contains("established") || 
+            message.Contains("failed") || 
+            message.Contains("ERROR") ||
+            message.Contains("Created new peer connection") ||
+            message.Contains("Cleaned up peer connection"))
+        {
+            string key = $"WEBRTC_{message.Substring(0, Math.Min(30, message.Length))}";
+            if (ShouldLog(key))
+            {
+                Log(message, "WEBRTC");
+            }
+        }
+    }
+
+    // only log signaling connection events and errors
+    public void LogSignaling(string message, string? connectionId = null)
+    {
+        if (message.Contains("connected") || 
+            message.Contains("disconnected") || 
+            message.Contains("failed") || 
+            message.Contains("ERROR") ||
+            message.Contains("Regenerating client ID"))
+        {
+            string key = $"SIGNALING_{message.Substring(0, Math.Min(30, message.Length))}";
+            if (ShouldLog(key))
+            {
+                Log(message, "SIGNALING");
+            }
+        }
+    }
+
+    // only log audio device changes and critical errors
+    public void LogAudio(string message, string? deviceId = null)
+    {
+        if (message.Contains("Created") ||
+            message.Contains("device") ||
+            message.Contains("ERROR") ||
+            message.Contains("Failed"))
+        {
+            string key = $"AUDIO_{message.Substring(0, Math.Min(30, message.Length))}";
+            if (ShouldLog(key))
+            {
+                Log(message, "AUDIO");
+            }
+        }
+    }
+
+    // main events - only log important state changes
+    public void LogMain(string message)
+    {
+        // only log important main events
+        if (message.Contains("character name change") ||
+            message.Contains("connection") ||
+            message.Contains("failed") ||
+            message.Contains("ERROR") ||
+            message.Contains("established") ||
+            message.Contains("Auto-disconnecting") ||
+            message.Contains("Debug") ||
+            message.Contains("Adding peer") ||
+            message.Contains("Distance calc") ||
+            message.Contains("Peer") && message.Contains("transmission") ||
+            message.Contains("OnGameDataRead") ||
+            message.Contains("NamedPipe") ||
+            message.Contains("GameData") ||
+            message.Contains("MMF") ||
+            message.Contains("memory") ||
+            message.Contains("pipe") ||
+            message.Contains("Success recovered") ||
+            message.Contains("First failure"))
+        {
+            string key = $"MAIN_{message.Substring(0, Math.Min(40, message.Length))}";
+            if (ShouldLog(key))
+            {
+                Log(message, "MAIN");
+            }
+        }
+    }
+
+    // method to reset deduplication for new connections
+    public void ResetForNewConnection(string connectionId)
+    {
+        Log($"=== New Connection Session: {connectionId} ===", "SESSION");
+    }
+
+    // method to clear all deduplication (for major state changes)
+    public void ClearDeduplication()
+    {
+        _lastLoggedTimes.Clear();
+        Log("=== Deduplication Reset ===", "SESSION");
+    }
+
+    // add specific method for named pipe logging that's not filtered
+    public void LogNamedPipe(string message)
+    {
+        Log(message, "NAMEDPIPE");
+    }
 
     public void Dispose()
     {

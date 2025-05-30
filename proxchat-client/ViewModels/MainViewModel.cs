@@ -21,7 +21,7 @@ namespace ProxChatClient.ViewModels;
 
 public class MainViewModel : INotifyPropertyChanged, IDisposable
 {
-    private readonly GameDataReader _memoryReader;
+    private readonly NamedPipeGameDataReader _memoryReader;
     private readonly SignalingService _signalingService;
     private readonly WebRtcService _webRtcService;
     private readonly AudioService _audioService;
@@ -85,6 +85,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     // track consecutive read failures for auto-disconnect
     private int _consecutiveReadFailures = 0;
     private const int MAX_CONSECUTIVE_FAILURES = 3;
+
+    // add fields for logging state tracking
+    private bool _shouldLogRead = false;
 
     public ObservableCollection<PeerViewModel> ConnectedPeers { get; } = new();
     public ObservableCollection<string> InputDevices => _audioService.InputDevices;
@@ -501,8 +504,6 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _peerSettingsFilePath = Path.Combine(AppContext.BaseDirectory, "PeerSettings.json");
         LoadPeerSettings(); // Load settings on startup
 
-        _memoryReader = new GameDataReader();
-        
         // Get log file name from command line args
         string? logFileName = null;
         var args = Environment.GetCommandLineArgs();
@@ -517,6 +518,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         
         var debugLog = new DebugLogService(logFileName);
         _debugLog = debugLog;
+
+        _memoryReader = new NamedPipeGameDataReader(_debugLog);
         
         // Use hardcoded max distance for consistency across all users
         const float HARDCODED_MAX_DISTANCE = 15.0f; // Extended range for more realistic audio falloff
@@ -892,9 +895,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async void OnGameDataRead(object? sender, (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) data)
     {
-        // only log game data reads when not running to avoid spam
-        if (!IsRunning)
-            _debugLog.LogMain($"OnGameDataRead: Success={data.Success}, Map={data.MapId}, X={data.X}, Y={data.Y}, Name='{data.CharacterName}'");
+        // only log game data reads when critical state changes occur
+        if (!data.Success && !_shouldLogRead)
+        {
+            _debugLog.LogMain($"OnGameDataRead: First failure detected");
+            _shouldLogRead = true;
+        }
+        else if (data.Success && _shouldLogRead)
+        {
+            _debugLog.LogMain($"OnGameDataRead: Success recovered - Map={data.MapId}, X={data.X}, Y={data.Y}, Name='{data.CharacterName}'");
+            _shouldLogRead = false;
+        }
         
         try
         {
@@ -998,10 +1009,25 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if ((mapChanged || positionChangedForSending || forceSend) && _signalingService.IsConnected)
             {
                 // use debug values if debug mode is enabled, otherwise use game data
-                int mapId = IsDebugModeEnabled ? _debugMapId : data.MapId;
-                int x = IsDebugModeEnabled ? _debugX : data.X;
-                int y = IsDebugModeEnabled ? _debugY : data.Y;
-                string characterName = IsDebugModeEnabled ? _debugCharacterName : data.CharacterName;
+                int mapId;
+                int x;
+                int y;
+                string name;
+
+                if (IsDebugModeEnabled)
+                {
+                    mapId = _debugMapId;
+                    x = _debugX;
+                    y = _debugY;
+                    name = _debugCharacterName;
+                }
+                else
+                {
+                    mapId = _gameMapId;
+                    x = _gameX;
+                    y = _gameY;
+                    name = _gameCharacterName;
+                }
 
                 await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
                 _lastSentMapId = mapId;
@@ -1011,7 +1037,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
                 foreach (var peer in ConnectedPeers)
                 {
-                    _webRtcService.SendPosition(peer.Id, mapId, x, y, characterName);
+                    _webRtcService.SendPosition(peer.Id, mapId, x, y, name);
                 }
             }
             
@@ -1051,11 +1077,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 }
                 else
                 {
-                    var gameData = _memoryReader.ReadPositionAndName();
-                    mapId = gameData.MapId;
-                    x = gameData.X;
-                    y = gameData.Y;
-                    name = gameData.CharacterName;
+                    mapId = _gameMapId;
+                    x = _gameX;
+                    y = _gameY;
+                    name = _gameCharacterName;
                 }
 
                 await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
@@ -1098,7 +1123,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
-            Debug.WriteLine($"Nearby update: MyId={myClientId}, Current={string.Join(",", currentPeerIds)}, Pending={string.Join(",", pendingPeerIds)}, Nearby={string.Join(",", nearbyClients)}, Add={string.Join(",", toAddIds)}, Remove={string.Join(",", toRemoveIds)}");
+            // only log when there are actual changes
+            if (toAddIds.Any() || toRemoveIds.Any())
+            {
+                Debug.WriteLine($"Nearby update: Add={string.Join(",", toAddIds)}, Remove={string.Join(",", toRemoveIds)}");
+            }
 
             // check if our own client ID is in the nearby list
             if (nearbyClients.Contains(myClientId))
@@ -1140,7 +1169,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     bool amInitiator = string.CompareOrdinal(myClientId, peerId) > 0;
                     Debug.WriteLine($"Adding new pending peer {peerId}, Initiator: {amInitiator}");
                     
-                    // log current map info when adding peers for debugging
+                    // only log map info when adding peers if it's interesting
                     var currentMapId = IsDebugModeEnabled ? _debugMapId : _gameMapId;
                     _debugLog.LogMain($"Adding peer {peerId} while on MapId={currentMapId}. Initiator: {amInitiator}");
                     
@@ -1205,11 +1234,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             }
             else
             {
-                var gameData = _memoryReader.ReadPositionAndName(); 
-                mapId = gameData.MapId;
-                x = gameData.X;
-                y = gameData.Y;
-                name = gameData.CharacterName;
+                mapId = _gameMapId;
+                x = _gameX;
+                y = _gameY;
+                name = _gameCharacterName;
             }
 
             _webRtcService.SendPosition(peerId, mapId, x, y, name);
@@ -1258,7 +1286,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         
         if (positionChanged)
         {
-            _debugLog.LogMain($"[PEER_POS_UPDATE] Peer {positionData.PeerId} position updated to Map={positionData.MapId}, X={positionData.X}, Y={positionData.Y}");
+            // only log map changes (removed regular position change logging)
+            if (peerVm.MapId != positionData.MapId)
+            {
+                _debugLog.LogMain($"Peer {positionData.PeerId} map change: Map={positionData.MapId}");
+            }
             
             // recalculate distance when peer position changes
             RecalculatePeerDistance(peerVm);
@@ -1293,7 +1325,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             var dy = localY - peerVm.Y;
             var distance = MathF.Sqrt(dx * dx + dy * dy);
             
-            _debugLog.LogMain($"[DISTANCE_CALC] RecalculatePeerDistance for peer {peerVm.CharacterName}: {distance:F1} (me:{localX},{localY} them:{peerVm.X},{peerVm.Y})");
+            // only log distance calculations for debugging if needed (removed regular logging)
             
             // update audio service with new position and distance
             _audioService.UpdatePeerPosition(peerVm.Id, distance, localX, localY, peerVm.X, peerVm.Y);
@@ -1304,7 +1336,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         else
         {
             // different map, set max distance but display as "Different Map"
-            _debugLog.LogMain($"[DISTANCE_CALC] Peer {peerVm.CharacterName} on different map: MyMapId={localMapId}, PeerMapId={peerVm.MapId} - setting max distance");
+            _debugLog.LogMain($"Peer {peerVm.CharacterName} on different map: MyMapId={localMapId}, PeerMapId={peerVm.MapId}");
             _audioService.UpdatePeerDistance(peerVm.Id, float.MaxValue);
             
             // use a special value that the UI can recognize and display as "Different Map"
@@ -1366,7 +1398,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     if (peerAlreadyAdded == null)
                     {
                         ConnectedPeers.Add(newPeerVmInstance);
-                        _debugLog.LogMain($"New peer {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}) added to UI collection.");
+                        _debugLog.LogMain($"New peer {newPeerVmInstance.Id} ({newPeerVmInstance.CharacterName}) added to UI collection");
                         UpdatePeerViewModelProperties(newPeerVmInstance, positionData); // set initial properties
                         RecalculatePeerDistance(newPeerVmInstance); // calculate initial distance for new peer
                         
@@ -1376,7 +1408,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     }
                     else
                     {
-                        _debugLog.LogMain($"Peer {peerAlreadyAdded.Id} was concurrently added. Updating its properties instead of adding new.");
+                        _debugLog.LogMain($"Peer {peerAlreadyAdded.Id} was concurrently added. Updating its properties instead of adding new");
                         UpdatePeerViewModelProperties(peerAlreadyAdded, positionData);
                     }
                 }
@@ -1417,11 +1449,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                      }
                      else
                      {
-                         var gameData = _memoryReader.ReadPositionAndName();
-                         mapId = gameData.MapId;
-                         x = gameData.X;
-                         y = gameData.Y;
-                         name = gameData.CharacterName;
+                         mapId = _gameMapId;
+                         x = _gameX;
+                         y = _gameY;
+                         name = _gameCharacterName;
                      }
 
                      await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
@@ -1542,11 +1573,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             }
             else
             {
-                var gameData = _memoryReader.ReadPositionAndName();
-                mapId = gameData.MapId;
-                x = gameData.X;
-                y = gameData.Y;
-                name = gameData.CharacterName;
+                mapId = _gameMapId;
+                x = _gameX;
+                y = _gameY;
+                name = _gameCharacterName;
             }
 
             // Check if position has changed or if it's been 5 seconds
@@ -1582,7 +1612,12 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (peerVm != null)
             {
                 peerVm.IsTransmitting = isTransmitting;
-                _debugLog.LogMain($"Peer {peerVm.CharacterName} ({peerId}) transmission status: {isTransmitting}");
+                // only log first transmission start for each peer, not every change
+                if (isTransmitting && !peerVm.HasLoggedFirstTransmission)
+                {
+                    _debugLog.LogMain($"Peer {peerVm.CharacterName} ({peerId}) first transmission detected");
+                    peerVm.HasLoggedFirstTransmission = true;
+                }
             }
         });
     }
