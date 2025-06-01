@@ -67,6 +67,7 @@ public static class MessageType
     public const uint GameData = 0;
     public const uint Error = 1;
     public const uint Heartbeat = 2;
+    public const uint Handshake = 3;  // connection verification
 }
 
 // flag constants

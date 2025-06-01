@@ -44,14 +44,32 @@ std::thread memoryPollingThread;
 // background thread function for polling memory
 void MemoryPollingLoop() {
     LogToFile("Memory polling thread started.");
+    auto lastHeartbeat = std::chrono::steady_clock::now();
+    const auto heartbeatInterval = std::chrono::seconds(5);  // send heartbeat every 5 seconds
+    
     while (keepRunning) {
         // create structured message
         GameDataMessage gameMsg = CreateGameDataMessage();
         
         // send via named pipe if client connected
         if (pipeServer && pipeServer->IsClientConnected()) {
-            if (!pipeServer->SendMessage(gameMsg)) {
-                // client disconnected or send failed - this is normal when no client connected
+            bool messageSent = pipeServer->SendMessage(gameMsg);
+            
+            // if game data send failed or it's time for heartbeat, send a heartbeat
+            auto now = std::chrono::steady_clock::now();
+            if (!messageSent || (now - lastHeartbeat) >= heartbeatInterval) {
+                // create heartbeat message
+                GameDataMessage heartbeat = {};
+                heartbeat.messageType = MSG_TYPE_HEARTBEAT;
+                heartbeat.sequenceNumber = 0;  // heartbeats don't need sequence numbers
+                heartbeat.timestampMs = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count());
+                heartbeat.flags = FLAG_SUCCESS;
+                
+                if (pipeServer->SendMessage(heartbeat)) {
+                    lastHeartbeat = now;
+                }
             }
         }
 

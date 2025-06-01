@@ -5,6 +5,20 @@
 #include <mutex>
 #include "GameDataMessage.h"
 
+// active challenge-response handshake structures for phantom connection detection
+#pragma pack(push, 1)
+struct ConnectionHandshake {
+    uint32_t magic;           // 0xDEADBEEF
+    uint64_t timestamp;       // milliseconds since epoch  
+    uint32_t connectionId;    // unique ID for this connection attempt
+};
+
+struct HandshakeResponse {
+    uint32_t magic;           // 0xBEEFDEAD
+    uint32_t connectionId;    // echo back the connection ID
+};
+#pragma pack(pop)
+
 class NamedPipeServer {
 public:
     NamedPipeServer(const std::string& pipeName);
@@ -20,6 +34,7 @@ private:
     bool CreatePipeInstance();
     void HandleClientConnection();
     void CleanupPipe();
+    GameDataMessage CreateHandshakeMessage();  // create handshake for connection verification
 
     std::string _pipeName;
     HANDLE _hPipe;

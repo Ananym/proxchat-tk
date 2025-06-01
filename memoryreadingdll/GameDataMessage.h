@@ -6,7 +6,7 @@
 #pragma pack(push, 1)
 struct GameDataMessage {
     // message header (8 bytes)
-    uint32_t messageType;     // 0 = game data, 1 = error, 2 = heartbeat
+    uint32_t messageType;     // 0 = game data, 1 = error, 2 = heartbeat, 3 = handshake
     uint32_t sequenceNumber;  // incrementing counter for message ordering
     
     // timestamp (8 bytes)
@@ -32,6 +32,7 @@ struct GameDataMessage {
 constexpr uint32_t MSG_TYPE_GAME_DATA = 0;
 constexpr uint32_t MSG_TYPE_ERROR = 1;
 constexpr uint32_t MSG_TYPE_HEARTBEAT = 2;
+constexpr uint32_t MSG_TYPE_HANDSHAKE = 3;  // connection verification
 
 // flag definitions
 constexpr uint32_t FLAG_SUCCESS = 0x01;

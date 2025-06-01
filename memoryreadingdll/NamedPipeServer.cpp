@@ -123,6 +123,7 @@ void NamedPipeServer::ServerThread() {
         
         // wait for client to connect
         BOOL connected = ConnectNamedPipe(_hPipe, nullptr);
+        
         if (!connected && GetLastError() != ERROR_PIPE_CONNECTED) {
             DWORD error = GetLastError();
             if (error != ERROR_OPERATION_ABORTED) { // ignore if we're shutting down
@@ -133,11 +134,17 @@ void NamedPipeServer::ServerThread() {
         }
 
         LogToFile("NamedPipeServer: Client connected");
+        
         _clientConnected = true;
         
         HandleClientConnection();
         
-        LogToFile("NamedPipeServer: Client disconnected");
+        // check if client disconnected due to phantom connection detection
+        if (!_clientConnected.load()) {
+            LogToFile("NamedPipeServer: Phantom connection detected, immediately retrying");
+        } else {
+            LogToFile("NamedPipeServer: Client disconnected");
+        }
         _clientConnected = false;
         CleanupPipe();
     }
@@ -150,13 +157,13 @@ bool NamedPipeServer::CreatePipeInstance() {
     
     _hPipe = CreateNamedPipeA(
         fullPipeName.c_str(),
-        PIPE_ACCESS_OUTBOUND,           // server writes to client
+        PIPE_ACCESS_DUPLEX,             // bidirectional for heartbeat validation
         PIPE_TYPE_MESSAGE |             // message-type pipe
         PIPE_READMODE_MESSAGE |         // message-read mode
         PIPE_WAIT,                      // blocking mode
         1,                              // max instances (single consumer)
         PIPE_BUFFER_SIZE,               // output buffer size
-        0,                              // input buffer size (not used)
+        PIPE_BUFFER_SIZE,               // input buffer size for heartbeats
         PIPE_TIMEOUT_MS,                // default timeout
         CreatePipeSecurityAttributes()
     );
@@ -167,21 +174,104 @@ bool NamedPipeServer::CreatePipeInstance() {
         return false;
     }
 
+    LogToFile("NamedPipeServer: Pipe created successfully");
+    
     return true;
 }
 
 void NamedPipeServer::HandleClientConnection() {
-    // simply wait for client to disconnect or shutdown
-    // no need to actively check connection status with writes
-    while (_running.load() && _clientConnected.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    LogToFile("NamedPipeServer: Client connected, starting handshake...");
+    
+    // set timeouts for reads and writes
+    DWORD timeout = 2000; // 2 seconds
+    SetNamedPipeHandleState(_hPipe, nullptr, nullptr, &timeout);
+    
+    // generate unique connection ID for this session
+    uint32_t expectedConnectionId = GetTickCount();
+    
+    // STEP 1: Send challenge to client
+    ConnectionHandshake challenge;
+    challenge.magic = 0xDEADBEEF;
+    challenge.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    challenge.connectionId = expectedConnectionId;
+    
+    DWORD bytesWritten;
+    if (!WriteFile(_hPipe, &challenge, sizeof(challenge), &bytesWritten, nullptr) || 
+        bytesWritten != sizeof(challenge)) {
+        LogToFile("NamedPipeServer: Failed to send challenge - phantom connection");
+        _clientConnected = false;
+        return;
     }
+    
+    LogToFile("NamedPipeServer: Sent challenge with ID: " + std::to_string(expectedConnectionId));
+    
+    // STEP 2: Wait for response
+    HandshakeResponse response;
+    DWORD bytesRead;
+    if (!ReadFile(_hPipe, &response, sizeof(response), &bytesRead, nullptr) || 
+        bytesRead != sizeof(response)) {
+        DWORD error = GetLastError();
+        LogToFile("NamedPipeServer: No response received (error: " + std::to_string(error) + ") - phantom connection");
+        _clientConnected = false;
+        return;
+    }
+    
+    // STEP 3: Validate response
+    if (response.magic != 0xBEEFDEAD || response.connectionId != expectedConnectionId) {
+        LogToFile("NamedPipeServer: Invalid response (magic: 0x" + std::to_string(response.magic) + 
+                  ", ID: " + std::to_string(response.connectionId) + ") - phantom connection");
+        _clientConnected = false;
+        return;
+    }
+    
+    LogToFile("NamedPipeServer: Valid response received - real client confirmed");
+    
+    // continue with verified connection
+    auto lastActivity = std::chrono::steady_clock::now();
+    
+    while (_running.load() && _clientConnected.load()) {
+        // check for any client data (heartbeats or responses)
+        DWORD bytesAvailable = 0;
+        if (PeekNamedPipe(_hPipe, nullptr, 0, nullptr, &bytesAvailable, nullptr) && bytesAvailable > 0) {
+            BYTE buffer[256];
+            DWORD read = 0;
+            if (ReadFile(_hPipe, buffer, min(bytesAvailable, 256), &read, nullptr)) {
+                lastActivity = std::chrono::steady_clock::now();
+            }
+        }
+        
+        // timeout if no activity
+        auto now = std::chrono::steady_clock::now();
+        if (now - lastActivity > std::chrono::seconds(10)) {
+            LogToFile("NamedPipeServer: Client timeout");
+            _clientConnected = false;
+            break;
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
+
+GameDataMessage NamedPipeServer::CreateHandshakeMessage() {
+    GameDataMessage msg = {};
+    msg.messageType = MSG_TYPE_HANDSHAKE;
+    msg.sequenceNumber = ++_sequenceNumber;
+    msg.timestampMs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+    msg.flags = FLAG_SUCCESS;
+    return msg;
 }
 
 void NamedPipeServer::CleanupPipe() {
     if (_hPipe != INVALID_HANDLE_VALUE) {
+        FlushFileBuffers(_hPipe);  // force any pending data out
         DisconnectNamedPipe(_hPipe);
         CloseHandle(_hPipe);
         _hPipe = INVALID_HANDLE_VALUE;
+        
+        // give Windows time to fully release the pipe
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 } 

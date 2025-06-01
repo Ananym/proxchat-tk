@@ -919,8 +919,14 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 {
                     _isMemoryReaderInitialized = true;
                     StatusMessage = "Game data connection established. Ready.";
+                    _debugLog.LogMain($"Memory reader initialized - status set to Ready");
                     Debug.WriteLine("GameMemoryReader successfully connected to MMF.");
                     ((RelayCommand)StartCommand).RaiseCanExecuteChanged();
+                }
+                else
+                {
+                    // Debug: log why status message isn't being updated
+                    _debugLog.LogMain($"OnGameDataRead: Success but _isMemoryReaderInitialized already true, status not updated");
                 }
             }
             else if (!data.Success && _isMemoryReaderInitialized && !IsDebugModeEnabled)

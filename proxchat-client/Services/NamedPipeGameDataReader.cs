@@ -8,6 +8,22 @@ using System.Threading.Tasks;
 
 namespace ProxChatClient.Services;
 
+// active challenge-response handshake structures for phantom connection detection
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+struct ConnectionHandshake
+{
+    public uint Magic;           // 0xDEADBEEF
+    public ulong Timestamp;      // milliseconds since epoch
+    public uint ConnectionId;    // unique ID for this connection
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+struct HandshakeResponse
+{
+    public uint Magic;           // 0xBEEFDEAD
+    public uint ConnectionId;    // echo back the connection ID
+}
+
 public class NamedPipeGameDataReader : IDisposable
 {
     private const string PIPE_NAME = "NexusTKGameData";
@@ -16,16 +32,12 @@ public class NamedPipeGameDataReader : IDisposable
     private NamedPipeClientStream? _pipeClient;
     private bool _disposed = false;
     private readonly object _connectionLock = new object();
-    private bool _isConnected = false;
     private uint _lastSequenceNumber = 0;
     private Thread? _readThread;
     private volatile bool _shouldStop = false;
+    private Thread? _heartbeatThread;
+    private volatile bool _shouldSendHeartbeats = false;
     private readonly DebugLogService? _debugLog;
-    
-    // connection state tracking for logging
-    private bool _hasLoggedInitialConnection = false;
-    private DateTime _lastConnectionAttempt = DateTime.MinValue;
-    private int _consecutiveConnectionFailures = 0;
     
     // add event for new game data
     public event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName)>? GameDataRead;
@@ -43,6 +55,14 @@ public class NamedPipeGameDataReader : IDisposable
         };
         _readThread.Start();
         _debugLog?.LogNamedPipe("Started named pipe reader thread");
+        
+        _heartbeatThread = new Thread(HeartbeatThreadLoop)
+        {
+            IsBackground = true,
+            Name = "NamedPipeHeartbeat"
+        };
+        _heartbeatThread.Start();
+        _debugLog?.LogNamedPipe("Started named pipe heartbeat thread");
     }
 
     private void ReadThreadLoop()
@@ -51,139 +71,152 @@ public class NamedPipeGameDataReader : IDisposable
         {
             try
             {
-                EnsureConnected();
-                
-                if (_isConnected && _pipeClient != null)
+                // Try to read a message
+                var result = ReadMessage();
+                if (result.HasValue)
                 {
-                    var result = ReadMessage();
-                    if (result.HasValue)
+                    var msg = result.Value;
+                    _debugLog?.LogNamedPipe($"Received message type {msg.MessageType}, sequence {msg.SequenceNumber}");
+                    
+                    // check for duplicate messages
+                    if (msg.SequenceNumber <= _lastSequenceNumber && _lastSequenceNumber != 0)
                     {
-                        var msg = result.Value;
-                        
-                        // check for duplicate messages
-                        if (msg.SequenceNumber <= _lastSequenceNumber && _lastSequenceNumber != 0)
-                        {
-                            continue; // skip duplicate or out-of-order message
-                        }
-                        _lastSequenceNumber = msg.SequenceNumber;
-                        
-                        // validate timestamp (must be within 10 seconds)
-                        var age = DateTime.UtcNow - msg.Timestamp;
-                        if (age.TotalSeconds > 10.0)
-                        {
-                            continue;
-                        }
-                        
-                        if (msg.MessageType == MessageType.GameData && msg.IsSuccess && msg.IsPositionValid)
-                        {
-                            // fire event with game data
-                            GameDataRead?.Invoke(this, (true, msg.MapId, msg.MapName, msg.X, msg.Y, msg.CharacterName));
-                        }
-                        else
-                        {
-                            // fire event indicating failure
-                            GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
-                        }
+                        continue; // skip duplicate or out-of-order message
+                    }
+                    _lastSequenceNumber = msg.SequenceNumber;
+                    
+                    // validate timestamp (must be within 10 seconds)
+                    var age = DateTime.UtcNow - msg.Timestamp;
+                    if (age.TotalSeconds > 10.0)
+                    {
+                        continue;
+                    }
+                    
+                    if (msg.MessageType == MessageType.GameData && msg.IsSuccess && msg.IsPositionValid)
+                    {
+                        // fire event with game data
+                        GameDataRead?.Invoke(this, (true, msg.MapId, msg.MapName, msg.X, msg.Y, msg.CharacterName));
+                    }
+                    else
+                    {
+                        // fire event indicating failure
+                        GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
                     }
                 }
                 else
                 {
-                    // not connected, wait and retry
-                    Thread.Sleep(1000);
-                    
-                    // fire failure event occasionally to keep UI updated
-                    GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
+                    // no message available - this is normal, don't reconnect
+                    // only reconnect if the connection is actually broken
+                    if (_pipeClient == null || !_pipeClient.IsConnected)
+                    {
+                        _debugLog?.LogNamedPipe("Connection lost, attempting to reconnect...");
+                        GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
+                        TryConnect();
+                        Thread.Sleep(1000);
+                    }
+                    else
+                    {
+                        // connection is fine, just no data - wait briefly
+                        Thread.Sleep(100);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _debugLog?.LogNamedPipe($"NamedPipeGameDataReader read thread error: {ex.Message}");
-                HandleDisconnection();
+                _debugLog?.LogNamedPipe($"Read thread error: {ex.Message}");
+                TryConnect(); // Try to reconnect
                 Thread.Sleep(1000);
             }
         }
     }
 
-    private void EnsureConnected()
+    private void HeartbeatThreadLoop()
     {
-        lock (_connectionLock)
+        byte[] heartbeat = new byte[] { 0xFF }; // simple keepalive byte
+        
+        while (!_shouldStop && !_disposed)
         {
-            if (_isConnected && _pipeClient?.IsConnected == true)
-            {
-                return; // already connected
-            }
-
-            var now = DateTime.UtcNow;
-            
-            // cleanup existing connection
-            if (_pipeClient != null)
+            if (_shouldSendHeartbeats && _pipeClient != null && _pipeClient.IsConnected)
             {
                 try
                 {
-                    _pipeClient.Close();
-                    _pipeClient.Dispose();
+                    _pipeClient.Write(heartbeat, 0, 1);
+                    _pipeClient.Flush();
+                    _debugLog?.LogNamedPipe("Heartbeat sent");
                 }
-                catch { }
-                _pipeClient = null;
-                _isConnected = false;
-            }
-
-            // throttle connection attempts - only try every 5 seconds
-            if (now - _lastConnectionAttempt < TimeSpan.FromSeconds(5))
-            {
-                return;
-            }
-            _lastConnectionAttempt = now;
-
-            try
-            {
-                _debugLog?.LogNamedPipe($"Attempting to connect to named pipe '{PIPE_NAME}'...");
-                
-                // Use PipeAccessRights constructor to get ReadData + WriteAttributes access needed for setting ReadMode
-                _pipeClient = new NamedPipeClientStream(".", PIPE_NAME, 
-                    System.IO.Pipes.PipeAccessRights.ReadData | System.IO.Pipes.PipeAccessRights.WriteAttributes,
-                    PipeOptions.None, 
-                    System.Security.Principal.TokenImpersonationLevel.None, 
-                    HandleInheritability.None);
-                _debugLog?.LogNamedPipe($"Created pipe client with ReadData+WriteAttributes access, attempting to connect...");
-                
-                _pipeClient.Connect(5000);
-                _debugLog?.LogNamedPipe($"Connected to pipe successfully, setting read mode to Message...");
-                
-                // Now we can set ReadMode because we have WriteAttributes access right
-                _pipeClient.ReadMode = PipeTransmissionMode.Message;
-                _debugLog?.LogNamedPipe($"Successfully set pipe read mode to Message");
-                
-                _isConnected = true;
-                _consecutiveConnectionFailures = 0;
-                
-                if (!_hasLoggedInitialConnection)
+                catch (Exception ex)
                 {
-                    _debugLog?.LogNamedPipe($"Successfully connected to named pipe '{PIPE_NAME}'");
-                    _hasLoggedInitialConnection = true;
+                    _debugLog?.LogNamedPipe($"Heartbeat failed: {ex.Message}");
+                    _shouldSendHeartbeats = false;
                 }
             }
-            catch (TimeoutException)
+            
+            Thread.Sleep(5000); // every 5 seconds is enough
+        }
+    }
+
+    private void TryConnect()
+    {
+        // clean up existing connection
+        _shouldSendHeartbeats = false;
+        if (_pipeClient != null)
+        {
+            try { _pipeClient.Dispose(); } catch { }
+            _pipeClient = null;
+        }
+
+        try
+        {
+            _debugLog?.LogNamedPipe($"Attempting to connect to '{PIPE_NAME}'...");
+            _pipeClient = new NamedPipeClientStream(".", PIPE_NAME, PipeDirection.InOut, PipeOptions.None);
+            _pipeClient.Connect(500);
+            _debugLog?.LogNamedPipe($"Connected, waiting for server challenge...");
+            
+            // STEP 1: Read challenge from server
+            byte[] challengeBuffer = new byte[16]; // sizeof(ConnectionHandshake)
+            int bytesRead = _pipeClient.Read(challengeBuffer, 0, 16);
+            
+            if (bytesRead != 16)
             {
-                // server not available, this is expected
-                _consecutiveConnectionFailures++;
-                if (_consecutiveConnectionFailures == 1 || _consecutiveConnectionFailures % 12 == 0) // log first attempt and every minute
-                {
-                    _debugLog?.LogNamedPipe($"Named pipe '{PIPE_NAME}' connection timeout - server not available (attempt {_consecutiveConnectionFailures})");
-                }
-                
-                _pipeClient?.Dispose();
-                _pipeClient = null;
-                _isConnected = false;
+                throw new Exception($"Invalid challenge size: {bytesRead}");
             }
-            catch (Exception ex)
+            
+            // parse challenge
+            uint magic = BitConverter.ToUInt32(challengeBuffer, 0);
+            ulong timestamp = BitConverter.ToUInt64(challengeBuffer, 4);
+            uint connectionId = BitConverter.ToUInt32(challengeBuffer, 12);
+            
+            if (magic != 0xDEADBEEF)
             {
-                _consecutiveConnectionFailures++;
-                _debugLog?.LogNamedPipe($"Named pipe connection failed: {ex.Message} (attempt {_consecutiveConnectionFailures})");
-                
-                _pipeClient?.Dispose();
+                throw new Exception($"Invalid challenge magic: 0x{magic:X}");
+            }
+            
+            _debugLog?.LogNamedPipe($"Received challenge with ID: {connectionId}");
+            
+            // STEP 2: Send response
+            var response = new HandshakeResponse
+            {
+                Magic = 0xBEEFDEAD,
+                ConnectionId = connectionId
+            };
+            
+            byte[] responseBuffer = new byte[8];
+            BitConverter.GetBytes(response.Magic).CopyTo(responseBuffer, 0);
+            BitConverter.GetBytes(response.ConnectionId).CopyTo(responseBuffer, 4);
+            
+            _pipeClient.Write(responseBuffer, 0, responseBuffer.Length);
+            _pipeClient.Flush();
+            
+            _debugLog?.LogNamedPipe($"Sent response, connection established");
+            _shouldSendHeartbeats = true;
+        }
+        catch (Exception ex)
+        {
+            _debugLog?.LogNamedPipe($"Connection failed: {ex.Message}");
+            if (_pipeClient != null)
+            {
+                try { _pipeClient.Dispose(); } catch { }
                 _pipeClient = null;
-                _isConnected = false;
             }
         }
     }
@@ -196,73 +229,43 @@ public class NamedPipeGameDataReader : IDisposable
         }
 
         try
-        {
-            _debugLog?.LogNamedPipe($"Starting to read message from pipe in message mode");
-            
-            // for message mode pipes, read the entire message in one call
-            // the server sends exactly MESSAGE_SIZE bytes per message
+        {            
             byte[] buffer = new byte[MESSAGE_SIZE];
-            
             int bytesRead = _pipeClient.Read(buffer, 0, MESSAGE_SIZE);
+            
             if (bytesRead == 0)
             {
-                _debugLog?.LogNamedPipe($"Pipe read returned 0 bytes - pipe closed");
+                // no data available right now - this is normal for named pipes
                 return null;
             }
             
             if (bytesRead != MESSAGE_SIZE)
             {
-                _debugLog?.LogNamedPipe($"Message mode read returned {bytesRead} bytes, expected {MESSAGE_SIZE}");
-                // in message mode, we should get the complete message or nothing
+                _debugLog?.LogNamedPipe($"Partial read: {bytesRead} bytes (expected {MESSAGE_SIZE})");
                 return null;
             }
             
-            _debugLog?.LogNamedPipe($"Successfully read complete message ({bytesRead} bytes), parsing...");
-            
-            // manually parse the struct to avoid marshalling issues
+            // parse the message
             var msg = new GameDataMessage();
-            
-            // parse header (8 bytes)
             msg.MessageType = BitConverter.ToUInt32(buffer, 0);
             msg.SequenceNumber = BitConverter.ToUInt32(buffer, 4);
-            _debugLog?.LogNamedPipe($"Parsed header: MessageType={msg.MessageType}, SequenceNumber={msg.SequenceNumber}");
-            
-            // parse timestamp (8 bytes)
             msg.TimestampMs = BitConverter.ToUInt64(buffer, 8);
-            _debugLog?.LogNamedPipe($"Parsed timestamp: {msg.TimestampMs}");
-            
-            // parse game data (40 bytes)
             msg.X = BitConverter.ToInt32(buffer, 16);
             msg.Y = BitConverter.ToInt32(buffer, 20);
             msg.MapId = BitConverter.ToUInt16(buffer, 24);
             msg.Reserved1 = BitConverter.ToUInt16(buffer, 26);
-            _debugLog?.LogNamedPipe($"Parsed game data: X={msg.X}, Y={msg.Y}, MapId={msg.MapId}");
-            
-            // parse strings (28 bytes)
             msg.MapNameBytes = new byte[16];
             msg.CharacterNameBytes = new byte[12];
             Array.Copy(buffer, 28, msg.MapNameBytes, 0, 16);
             Array.Copy(buffer, 44, msg.CharacterNameBytes, 0, 12);
-            _debugLog?.LogNamedPipe($"Parsed strings: MapName='{msg.MapName}', CharacterName='{msg.CharacterName}'");
-            
-            // parse flags (8 bytes)
             msg.Flags = BitConverter.ToUInt32(buffer, 56);
             msg.Reserved2 = BitConverter.ToUInt32(buffer, 60);
-            _debugLog?.LogNamedPipe($"Parsed flags: Flags=0x{msg.Flags:X8}, Reserved2=0x{msg.Reserved2:X8}");
             
-            _debugLog?.LogNamedPipe($"Message parsing completed successfully");
             return msg;
-        }
-        catch (IOException ex) when (ex.Message.Contains("pipe has been ended"))
-        {
-            _debugLog?.LogNamedPipe($"Pipe ended during read: {ex.Message}");
-            HandleDisconnection();
-            return null;
         }
         catch (Exception ex)
         {
-            _debugLog?.LogNamedPipe($"NamedPipeGameDataReader: Read error: {ex.Message}");
-            HandleDisconnection();
+            _debugLog?.LogNamedPipe($"ReadMessage error: {ex.Message}");
             return null;
         }
     }
@@ -271,7 +274,6 @@ public class NamedPipeGameDataReader : IDisposable
     {
         lock (_connectionLock)
         {
-            _isConnected = false;
             if (_pipeClient != null)
             {
                 try
@@ -307,7 +309,9 @@ public class NamedPipeGameDataReader : IDisposable
             if (disposing)
             {
                 _shouldStop = true;
+                _shouldSendHeartbeats = false;
                 _readThread?.Join();
+                _heartbeatThread?.Join();
                 HandleDisconnection();
             }
 
