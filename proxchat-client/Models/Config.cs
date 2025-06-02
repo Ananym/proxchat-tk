@@ -13,6 +13,7 @@ public class Config
 {
     public WebSocketServerConfig WebSocketServer { get; set; } = new();
     public int Channel { get; set; } = 0;
+    public string GameDataIpcChannel { get; set; } = "game-data-channel";
     public AudioConfig AudioSettings { get; set; } = new();
     public Dictionary<string, PeerPersistentState> PeerSettings { get; set; } = new Dictionary<string, PeerPersistentState>();
 }

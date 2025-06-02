@@ -21,7 +21,7 @@ namespace ProxChatClient.ViewModels;
 
 public class MainViewModel : INotifyPropertyChanged, IDisposable
 {
-    private readonly NamedPipeGameDataReader _memoryReader;
+    private readonly ZeroMQGameDataReader _memoryReader;
     private readonly SignalingService _signalingService;
     private readonly WebRtcService _webRtcService;
     private readonly AudioService _audioService;
@@ -519,7 +519,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var debugLog = new DebugLogService(logFileName);
         _debugLog = debugLog;
 
-        _memoryReader = new NamedPipeGameDataReader(_debugLog);
+        _memoryReader = new ZeroMQGameDataReader(_config.GameDataIpcChannel, _debugLog);
         
         // Use hardcoded max distance for consistency across all users
         const float HARDCODED_MAX_DISTANCE = 15.0f; // Extended range for more realistic audio falloff

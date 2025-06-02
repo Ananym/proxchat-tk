@@ -3,6 +3,7 @@
     "Host": "prox-chat-tk.fly.dev"
   },
   "Channel": 0,
+  "GameDataIpcChannel": "game-data-channel",
   "AudioSettings": {
     "VolumeScale": 0.5,
     "InputVolumeScale": 1.0,

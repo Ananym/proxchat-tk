@@ -11,9 +11,9 @@
 #include <ctime>
 
 #include "memreader.h"
-#include "NamedPipeServer.h"
+#include "ZeroMQPublisher.h"
 
-// --- Logging Setup ---
+// --- logging setup ---
 std::ofstream logFile;
 std::mutex logMutex;
 const char* logFileName = "memoryreadingdll_log.txt";
@@ -34,9 +34,9 @@ void LogToFile(const std::string& message) {
     }
 }
 
-// global variables for named pipe
-std::unique_ptr<NamedPipeServer> pipeServer;
-const std::string PIPE_NAME = "NexusTKGameData";
+// global variables for zeromq
+std::unique_ptr<ZeroMQPublisher> zmqPublisher;
+const std::string ZMQ_ENDPOINT = "tcp://127.0.0.1:5555";
 
 std::atomic<bool> keepRunning(true);
 std::thread memoryPollingThread;
@@ -44,70 +44,67 @@ std::thread memoryPollingThread;
 // background thread function for polling memory
 void MemoryPollingLoop() {
     LogToFile("Memory polling thread started.");
-    auto lastHeartbeat = std::chrono::steady_clock::now();
-    const auto heartbeatInterval = std::chrono::seconds(5);  // send heartbeat every 5 seconds
+    int messageCount = 0;
+    int successCount = 0;
     
     while (keepRunning) {
         // create structured message
         GameDataMessage gameMsg = CreateGameDataMessage();
         
-        // send via named pipe if client connected
-        if (pipeServer && pipeServer->IsClientConnected()) {
-            bool messageSent = pipeServer->SendMessage(gameMsg);
+        // publish via zeromq - no need to check for connected clients
+        if (zmqPublisher && zmqPublisher->IsRunning()) {
+            bool success = zmqPublisher->PublishMessage(gameMsg);
+            messageCount++;
+            if (success) successCount++;
             
-            // if game data send failed or it's time for heartbeat, send a heartbeat
-            auto now = std::chrono::steady_clock::now();
-            if (!messageSent || (now - lastHeartbeat) >= heartbeatInterval) {
-                // create heartbeat message
-                GameDataMessage heartbeat = {};
-                heartbeat.messageType = MSG_TYPE_HEARTBEAT;
-                heartbeat.sequenceNumber = 0;  // heartbeats don't need sequence numbers
-                heartbeat.timestampMs = static_cast<uint64_t>(
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::system_clock::now().time_since_epoch()).count());
-                heartbeat.flags = FLAG_SUCCESS;
-                
-                if (pipeServer->SendMessage(heartbeat)) {
-                    lastHeartbeat = now;
-                }
+            // log every 50 attempts to avoid spam
+            if (messageCount % 50 == 0) {
+                LogToFile("Published " + std::to_string(messageCount) + " messages, " + 
+                         std::to_string(successCount) + " successful");
             }
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    LogToFile("Memory polling thread stopping.");
+    LogToFile("Memory polling thread stopping. Total: " + std::to_string(messageCount) + 
+             " messages, " + std::to_string(successCount) + " successful");
 }
 
-// setup named pipe server
-bool SetupNamedPipe() {
-    LogToFile("Setting up Named Pipe server...");
-    LogToFile("Pipe name: " + PIPE_NAME);
+// setup zeromq publisher
+bool SetupZeroMQ() {
+    LogToFile("Setting up ZeroMQ publisher...");
+    LogToFile("ZMQ endpoint: " + ZMQ_ENDPOINT);
     
     try {
-        pipeServer = std::make_unique<NamedPipeServer>(PIPE_NAME);
-        if (!pipeServer->Start()) {
-            LogToFile("Failed to start named pipe server");
+        zmqPublisher = std::make_unique<ZeroMQPublisher>(ZMQ_ENDPOINT);
+        if (!zmqPublisher->Start()) {
+            LogToFile("Failed to start ZeroMQ publisher");
         return false;
     }
-        LogToFile("Named pipe server started successfully");
+        LogToFile("ZeroMQ publisher started successfully");
+        
+        // small delay to allow subscribers to connect
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        LogToFile("Ready to send messages after subscriber connect delay");
+        
         return true;
     } catch (const std::exception& e) {
-        LogToFile("Exception setting up named pipe: " + std::string(e.what()));
+        LogToFile("Exception setting up ZeroMQ: " + std::string(e.what()));
         return false;
     }
 }
 
-// cleanup named pipe
-void CleanupNamedPipe() {
-    LogToFile("Cleaning up named pipe...");
-    if (pipeServer) {
-        pipeServer->Stop();
-        pipeServer.reset();
+// cleanup zeromq
+void CleanupZeroMQ() {
+    LogToFile("Cleaning up ZeroMQ...");
+    if (zmqPublisher) {
+        zmqPublisher->Stop();
+        zmqPublisher.reset();
     }
-    LogToFile("Named pipe cleanup finished.");
+    LogToFile("ZeroMQ cleanup finished.");
 }
 
-// --- DLL Entry Point ---
+// --- dll entry point ---
 BOOL APIENTRY DllMain(HMODULE hModule,
                       DWORD  ul_reason_for_call,
                       LPVOID lpReserved) {
@@ -120,8 +117,8 @@ BOOL APIENTRY DllMain(HMODULE hModule,
             LogToFile("--- DLL_PROCESS_ATTACH ---");
             DisableThreadLibraryCalls(hModule);
 
-            if (!SetupNamedPipe()) {
-                LogToFile("SetupNamedPipe failed. Detaching.");
+            if (!SetupZeroMQ()) {
+                LogToFile("SetupZeroMQ failed. Detaching.");
                 {
                     std::lock_guard<std::mutex> lock(logMutex);
                     if (logFile.is_open()) {
@@ -146,7 +143,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
                 memoryPollingThread.join();
                 LogToFile("Polling thread joined.");
             }
-            CleanupNamedPipe();
+            CleanupZeroMQ();
             LogToFile("DLL_PROCESS_DETACH finished.");
             {
                 std::lock_guard<std::mutex> lock(logMutex);

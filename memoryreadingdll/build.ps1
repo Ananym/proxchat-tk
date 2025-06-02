@@ -27,11 +27,19 @@ Write-Host "Creating build directory: $BuildDir"
 New-Item -Path $BuildDir -ItemType Directory -Force | Out-Null
 
 # --- Run CMake configuration --- 
-Write-Host "Running CMake configuration (Generator: VS 17 2022, Platform: Win32)..."
+Write-Host "Running CMake configuration (Generator: VS 17 2022, Platform: Win32, with vcpkg)..."
 Push-Location -Path $BuildDir
-# Specify the generator and architecture (Win32 = x86)
-# Let the generator handle available configurations (like Release, Debug)
-cmake .. -G "Visual Studio 17 2022" -A Win32 
+
+# check if vcpkg toolchain exists
+$VcpkgToolchain = Join-Path -Path $ScriptDir -ChildPath "..\vcpkg\scripts\buildsystems\vcpkg.cmake"
+if (Test-Path -Path $VcpkgToolchain) {
+    Write-Host "Using vcpkg toolchain: $VcpkgToolchain"
+    cmake .. -G "Visual Studio 17 2022" -A Win32 -DCMAKE_TOOLCHAIN_FILE="$VcpkgToolchain"
+} else {
+    Write-Warning "vcpkg toolchain not found at $VcpkgToolchain - building without vcpkg"
+    cmake .. -G "Visual Studio 17 2022" -A Win32 
+}
+
 $CMakeConfigResult = $?
 Pop-Location
 
