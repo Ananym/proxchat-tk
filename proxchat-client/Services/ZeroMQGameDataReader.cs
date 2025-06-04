@@ -24,7 +24,7 @@ public class ZeroMQGameDataReader : IDisposable
 
     public ZeroMQGameDataReader(string ipcChannelName = "game-data-channel", DebugLogService? debugLog = null)
     {
-        _zmqEndpoint = "ipc://./pipe/proxchat-gamedata";
+        _zmqEndpoint = "ipc://proxchat-gamedata";
         _debugLog = debugLog;
         _debugLog?.LogNamedPipe($"Initializing ZeroMQGameDataReader for endpoint '{_zmqEndpoint}'");
         
