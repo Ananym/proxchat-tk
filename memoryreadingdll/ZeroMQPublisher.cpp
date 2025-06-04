@@ -45,16 +45,21 @@ bool ZeroMQPublisher::Start() {
         return false;
     }
     
-    // set socket options for faster reconnection
+    // optimal socket options for local ipc real-time game data
     int linger = 0; // immediate close, don't wait for pending messages
     zmq_setsockopt(_publisher, ZMQ_LINGER, &linger, sizeof(linger));
     
+    // for real-time game data, drop messages if no subscribers rather than queue
     int immediate = 1; // don't queue messages when no peers connected
     zmq_setsockopt(_publisher, ZMQ_IMMEDIATE, &immediate, sizeof(immediate));
     
-    // set high water mark to prevent memory buildup if no subscribers
-    int hwm = 50; // lower for ipc since it's faster
+    // low hwm for real-time data - we want recent data, not old queued data
+    int hwm = 10; // very small queue for real-time game data
     zmq_setsockopt(_publisher, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    
+    // send timeout to prevent blocking on send
+    int send_timeout = 0; // non-blocking sends for real-time data
+    zmq_setsockopt(_publisher, ZMQ_SNDTIMEO, &send_timeout, sizeof(send_timeout));
     
     // bind to endpoint
     int rc = zmq_bind(_publisher, _endpoint.c_str());
@@ -102,32 +107,45 @@ bool ZeroMQPublisher::PublishMessage(const GameDataMessage& message) {
     
     std::lock_guard<std::mutex> lock(_publishMutex);
     
+    // static counters for monitoring
+    static int lastLoggedError = -1;
+    static int errorCount = 0;
+    static int consecutiveEagain = 0;
+    static int successCount = 0;
+    
     // send with DONTWAIT to avoid blocking - if no subscribers or network issues, just drop the message
     int rc = zmq_send(_publisher, &message, sizeof(GameDataMessage), ZMQ_DONTWAIT);
     
     if (rc == -1) {
         int err = zmq_errno();
-        static int lastLoggedError = -1;
-        static int errorCount = 0;
         
-        if (err != EAGAIN) { // EAGAIN is normal when no subscribers, don't log it
-            if (err != lastLoggedError || errorCount++ % 20 == 0) { // log new errors or every 20th repeat
-                LogToFile("ZeroMQPublisher: Send failed, error: " + std::to_string(err));
-                lastLoggedError = err;
+        if (err == EAGAIN) {
+            consecutiveEagain++;
+            // only log if this is a new issue
+            if (consecutiveEagain == 1) {
+                LogToFile("ZeroMQPublisher: No subscribers connected (will not log further EAGAIN)");
+            } else if (consecutiveEagain > 100) { // ~10 seconds of failed sends
+                LogToFile("ZeroMQPublisher: Extended period without subscribers");
+                consecutiveEagain = 0; // reset counter
             }
         } else {
-            static int eagainCount = 0;
-            if (++eagainCount <= 5) { // log first few EAGAIN errors to see if subscriber connects
-                LogToFile("ZeroMQPublisher: No subscribers connected (EAGAIN)");
+            consecutiveEagain = 0; // reset on non-EAGAIN errors
+            if (err != lastLoggedError) { // only log new error types
+                LogToFile("ZeroMQPublisher: Send failed, error: " + std::to_string(err));
+                lastLoggedError = err;
+                errorCount = 0;
             }
         }
         return false;
     }
     
-    // log successful sends occasionally
-    static int successCount = 0;
-    if (++successCount <= 5 || successCount % 100 == 0) {
-        LogToFile("ZeroMQPublisher: Successfully sent message #" + std::to_string(successCount));
+    // successful send - reset counters
+    consecutiveEagain = 0;
+    successCount++;
+    
+    // only log first successful message
+    if (successCount == 1) {
+        LogToFile("ZeroMQPublisher: Started sending messages successfully");
     }
     
     return true;

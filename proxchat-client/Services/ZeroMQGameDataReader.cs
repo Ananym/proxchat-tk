@@ -24,7 +24,7 @@ public class ZeroMQGameDataReader : IDisposable
 
     public ZeroMQGameDataReader(string ipcChannelName = "game-data-channel", DebugLogService? debugLog = null)
     {
-        _zmqEndpoint = "ipc://proxchat-gamedata";
+        _zmqEndpoint = "ipc://proxchat";
         _debugLog = debugLog;
         _debugLog?.LogNamedPipe($"Initializing ZeroMQGameDataReader for endpoint '{_zmqEndpoint}'");
         
@@ -47,6 +47,8 @@ public class ZeroMQGameDataReader : IDisposable
         int consecutiveTimeouts = 0;
         bool wasConnected = false;
         
+        _debugLog?.LogNamedPipe("ZeroMQ reader thread started");
+        
         while (!_shouldStop && !_disposed)
         {
             try
@@ -55,36 +57,39 @@ public class ZeroMQGameDataReader : IDisposable
                 
                 if (_subscriber != null)
                 {
-                    // try to receive with shorter timeout for more responsive reconnection
-                    if (_subscriber.TryReceiveFrameBytes(TimeSpan.FromMilliseconds(100), out byte[]? frameBytes))
+                    // poll with timeout appropriate for real-time game data
+                    if (_subscriber.TryReceiveFrameBytes(TimeSpan.FromMilliseconds(50), out var messageBytes))
                     {
-                        frameReceiveCount++;
-                        consecutiveTimeouts = 0; // reset timeout counter on successful receive
+                        // got message - reset timeout tracking
+                        consecutiveTimeouts = 0;
+                        timeoutCount = 0;
                         
-                        if (!wasConnected)
+                        if (!wasConnected) 
                         {
-                            _debugLog?.LogNamedPipe("Publisher reconnected - receiving frames again");
+                            _debugLog?.LogNamedPipe("Connected to publisher and receiving data");
                             wasConnected = true;
                         }
                         
-                        // log first few received frames
-                        if (frameReceiveCount <= 5 || frameReceiveCount % 100 == 0)
+                        frameReceiveCount++;
+                        
+                        // log only first message and every 100th
+                        if (frameReceiveCount == 1 || frameReceiveCount % 100 == 0)
                         {
-                            _debugLog?.LogNamedPipe($"Received frame #{frameReceiveCount}, size: {frameBytes?.Length ?? 0} bytes");
+                            _debugLog?.LogNamedPipe($"Received {frameReceiveCount} messages");
                         }
                         
-                        if (frameBytes != null && frameBytes.Length == MESSAGE_SIZE)
+                        if (messageBytes != null && messageBytes.Length == MESSAGE_SIZE)
                         {
-                            var result = ParseMessage(frameBytes);
+                            var result = ParseMessage(messageBytes);
                             if (result.HasValue)
                             {
                                 validMessageCount++;
                                 var msg = result.Value;
                                 
-                                // log first few valid messages  
-                                if (validMessageCount <= 5)
+                                // log only first valid message
+                                if (validMessageCount == 1)
                                 {
-                                    _debugLog?.LogNamedPipe($"Valid message #{validMessageCount}: SeqNum={msg.SequenceNumber}, Type={msg.MessageType}, Success={msg.IsSuccess}");
+                                    _debugLog?.LogNamedPipe($"First valid message: SeqNum={msg.SequenceNumber}, Type={msg.MessageType}");
                                 }
                                 
                                 // check for duplicate messages
@@ -98,19 +103,15 @@ public class ZeroMQGameDataReader : IDisposable
                                 var age = DateTime.UtcNow - msg.Timestamp;
                                 if (age.TotalSeconds > 10.0)
                                 {
-                                    if (eventFireCount < 3) // log first few timestamp rejections
-                                    {
-                                        _debugLog?.LogNamedPipe($"Message rejected: timestamp too old ({age.TotalSeconds:F1}s)");
-                                    }
-                                    continue;
+                                    continue; // silently skip old messages
                                 }
                                 
                                 if (msg.MessageType == MessageType.GameData && msg.IsSuccess && msg.IsPositionValid)
                                 {
                                     eventFireCount++;
-                                    if (eventFireCount <= 5)
+                                    if (eventFireCount == 1)
                                     {
-                                        _debugLog?.LogNamedPipe($"Firing GameDataRead event #{eventFireCount}: Map={msg.MapId}, Pos=({msg.X},{msg.Y}), Name='{msg.CharacterName}'");
+                                        _debugLog?.LogNamedPipe($"Game data events started: Map={msg.MapId}, Pos=({msg.X},{msg.Y})");
                                     }
                                     
                                     // fire event with game data
@@ -118,28 +119,13 @@ public class ZeroMQGameDataReader : IDisposable
                                 }
                                 else
                                 {
-                                    if (eventFireCount < 3) // log first few failures
+                                    // fire event indicating failure (only log first few)
+                                    if (eventFireCount < 3)
                                     {
-                                        _debugLog?.LogNamedPipe($"Message validation failed: Type={msg.MessageType}, Success={msg.IsSuccess}, PosValid={msg.IsPositionValid}");
+                                        _debugLog?.LogNamedPipe($"Invalid game data: Type={msg.MessageType}, Success={msg.IsSuccess}");
                                     }
-                                    
-                                    // fire event indicating failure
                                     GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
                                 }
-                            }
-                            else
-                            {
-                                if (validMessageCount < 3) // log first few parse failures
-                                {
-                                    _debugLog?.LogNamedPipe($"Failed to parse message frame (size: {frameBytes.Length})");
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (frameReceiveCount <= 5) // log first few size mismatches
-                            {
-                                _debugLog?.LogNamedPipe($"Frame size mismatch: got {frameBytes?.Length ?? 0}, expected {MESSAGE_SIZE}");
                             }
                         }
                     }
@@ -149,46 +135,43 @@ public class ZeroMQGameDataReader : IDisposable
                         timeoutCount++;
                         consecutiveTimeouts++;
                         
-                        // detect disconnection faster for ipc (10 timeouts = 1 second)
-                        if (consecutiveTimeouts == 10 && wasConnected)
+                        // much faster disconnect detection for local ipc (5 timeouts = 250ms)
+                        if (consecutiveTimeouts == 5 && wasConnected)
                         {
-                            _debugLog?.LogNamedPipe("Publisher appears to have disconnected (10+ consecutive timeouts)");
-                            _debugLog?.LogNamedPipe("Forcing socket recreation for faster reconnection...");
+                            _debugLog?.LogNamedPipe("Publisher disconnected, attempting reconnection...");
                             wasConnected = false;
-                            // fire failure event to update UI
                             GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
-                            // force socket recreation rather than relying on automatic reconnection
                             CleanupConnection();
                         }
-                        // rapid reconnection mode - if disconnected, force reconnection every 2 seconds for ipc
-                        else if (!wasConnected && consecutiveTimeouts % 20 == 0)
+                        // aggressive reconnection when disconnected
+                        else if (!wasConnected && consecutiveTimeouts % 10 == 0)
                         {
-                            _debugLog?.LogNamedPipe($"Still disconnected after {consecutiveTimeouts} timeouts - forcing socket recreation...");
+                            _debugLog?.LogNamedPipe($"Still disconnected after {consecutiveTimeouts} attempts");
                             CleanupConnection();
                         }
                         
-                        if (timeoutCount <= 10 || timeoutCount % 100 == 0)
+                        // log timeouts much less frequently
+                        if (timeoutCount == 1 || timeoutCount % 200 == 0)
                         {
-                            _debugLog?.LogNamedPipe($"No frame received (timeout #{timeoutCount}, consecutive: {consecutiveTimeouts})");
+                            _debugLog?.LogNamedPipe($"No data received (timeout #{timeoutCount})");
                         }
                     }
                 }
                 else
                 {
-                    // no connection, wait shorter period for faster reconnect attempts with ipc
-                    Thread.Sleep(25); // faster retry for local ipc
+                    // no connection, wait short period for reconnect
+                    Thread.Sleep(50);
                 }
             }
             catch (Exception ex)
             {
                 _debugLog?.LogNamedPipe($"Read thread error: {ex.Message}");
                 CleanupConnection();
-                // very short sleep on error for fastest recovery
                 Thread.Sleep(100);
             }
         }
         
-        _debugLog?.LogNamedPipe($"Read thread stopping. Frames received: {frameReceiveCount}, Valid messages: {validMessageCount}, Events fired: {eventFireCount}, Timeouts: {timeoutCount}");
+        _debugLog?.LogNamedPipe($"Reader stopped. Received: {frameReceiveCount}, Valid: {validMessageCount}, Events: {eventFireCount}");
     }
 
     private void EnsureConnection()
@@ -200,32 +183,30 @@ public class ZeroMQGameDataReader : IDisposable
                 _debugLog?.LogNamedPipe($"Connecting to ZeroMQ endpoint '{_zmqEndpoint}'...");
                 _subscriber = new SubscriberSocket();
                 
-                // aggressive socket options optimized for local ipc
-                _subscriber.Options.ReceiveHighWatermark = 50; // lower for ipc
+                // optimal socket options for local ipc real-time game data
+                _subscriber.Options.ReceiveHighWatermark = 5; // very small queue - we want latest data only
                 _subscriber.Options.Linger = TimeSpan.Zero; // immediate close, don't wait
-                _subscriber.Options.ReconnectInterval = TimeSpan.FromMilliseconds(10); // very fast reconnect for ipc
-                _subscriber.Options.ReconnectIntervalMax = TimeSpan.FromMilliseconds(100); // max backoff very low for local ipc
+                
+                // aggressive reconnection for local ipc
+                _subscriber.Options.ReconnectInterval = TimeSpan.FromMilliseconds(10); // start fast
+                _subscriber.Options.ReconnectIntervalMax = TimeSpan.FromMilliseconds(100); // low max for local ipc
+                
+                // connection attempts - more aggressive for local
+                _subscriber.Options.Backlog = 0; // no connection backlog queue needed for single publisher
                 
                 _subscriber.Connect(_zmqEndpoint);
-                _debugLog?.LogNamedPipe($"Socket connected to '{_zmqEndpoint}'");
                 
                 // subscribe to all messages (empty subscription = receive everything)
                 _subscriber.Subscribe("");
-                _debugLog?.LogNamedPipe("Subscribed to all messages");
                 
-                // minimal delay for ipc subscription establishment
-                Thread.Sleep(10); // much shorter for local ipc
+                // brief delay for subscription establishment
+                Thread.Sleep(10);
                 
-                _debugLog?.LogNamedPipe("Connected to ZeroMQ successfully");
+                _debugLog?.LogNamedPipe("ZeroMQ socket connected and subscribed");
             }
             catch (Exception ex)
             {
                 _debugLog?.LogNamedPipe($"Connection failed: {ex.Message}");
-                _debugLog?.LogNamedPipe($"Exception type: {ex.GetType().Name}");
-                if (ex.InnerException != null)
-                {
-                    _debugLog?.LogNamedPipe($"Inner exception: {ex.InnerException.Message}");
-                }
                 CleanupConnection();
             }
         }
@@ -237,10 +218,14 @@ public class ZeroMQGameDataReader : IDisposable
         {
             try 
             { 
-                _subscriber.Dispose(); 
+                _subscriber.Dispose();
+                _debugLog?.LogNamedPipe("Socket disposed for reconnection");
             } 
             catch { }
-            _subscriber = null;
+            finally
+            {
+                _subscriber = null;
+            }
         }
     }
 

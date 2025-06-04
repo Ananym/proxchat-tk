@@ -36,7 +36,7 @@ void LogToFile(const std::string& message) {
 
 // global variables for zeromq
 std::unique_ptr<ZeroMQPublisher> zmqPublisher;
-const std::string ZMQ_ENDPOINT = "ipc://proxchat-gamedata";
+const std::string ZMQ_ENDPOINT = "ipc://proxchat";
 
 std::atomic<bool> keepRunning(true);
 std::thread memoryPollingThread;
