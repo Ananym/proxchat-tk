@@ -24,7 +24,7 @@ public class ZeroMQGameDataReader : IDisposable
 
     public ZeroMQGameDataReader(string ipcChannelName = "game-data-channel", DebugLogService? debugLog = null)
     {
-        _zmqEndpoint = "tcp://127.0.0.1:5555";
+        _zmqEndpoint = "ipc://./pipe/proxchat-gamedata";
         _debugLog = debugLog;
         _debugLog?.LogNamedPipe($"Initializing ZeroMQGameDataReader for endpoint '{_zmqEndpoint}'");
         
@@ -149,10 +149,10 @@ public class ZeroMQGameDataReader : IDisposable
                         timeoutCount++;
                         consecutiveTimeouts++;
                         
-                        // detect disconnection much faster (20 timeouts = 2 seconds)
-                        if (consecutiveTimeouts == 20 && wasConnected)
+                        // detect disconnection faster for ipc (10 timeouts = 1 second)
+                        if (consecutiveTimeouts == 10 && wasConnected)
                         {
-                            _debugLog?.LogNamedPipe("Publisher appears to have disconnected (20+ consecutive timeouts)");
+                            _debugLog?.LogNamedPipe("Publisher appears to have disconnected (10+ consecutive timeouts)");
                             _debugLog?.LogNamedPipe("Forcing socket recreation for faster reconnection...");
                             wasConnected = false;
                             // fire failure event to update UI
@@ -160,8 +160,8 @@ public class ZeroMQGameDataReader : IDisposable
                             // force socket recreation rather than relying on automatic reconnection
                             CleanupConnection();
                         }
-                        // rapid reconnection mode - if disconnected, force reconnection every 5 seconds
-                        else if (!wasConnected && consecutiveTimeouts % 50 == 0)
+                        // rapid reconnection mode - if disconnected, force reconnection every 2 seconds for ipc
+                        else if (!wasConnected && consecutiveTimeouts % 20 == 0)
                         {
                             _debugLog?.LogNamedPipe($"Still disconnected after {consecutiveTimeouts} timeouts - forcing socket recreation...");
                             CleanupConnection();
@@ -175,8 +175,8 @@ public class ZeroMQGameDataReader : IDisposable
                 }
                 else
                 {
-                    // no connection, wait shorter period for faster reconnect attempts
-                    Thread.Sleep(50); // even faster retry when no socket
+                    // no connection, wait shorter period for faster reconnect attempts with ipc
+                    Thread.Sleep(25); // faster retry for local ipc
                 }
             }
             catch (Exception ex)
@@ -200,16 +200,11 @@ public class ZeroMQGameDataReader : IDisposable
                 _debugLog?.LogNamedPipe($"Connecting to ZeroMQ endpoint '{_zmqEndpoint}'...");
                 _subscriber = new SubscriberSocket();
                 
-                // extremely aggressive socket options for fastest possible reconnection
-                _subscriber.Options.ReceiveHighWatermark = 100;
+                // aggressive socket options optimized for local ipc
+                _subscriber.Options.ReceiveHighWatermark = 50; // lower for ipc
                 _subscriber.Options.Linger = TimeSpan.Zero; // immediate close, don't wait
-                _subscriber.Options.ReconnectInterval = TimeSpan.FromMilliseconds(25); // try reconnect every 25ms
-                _subscriber.Options.ReconnectIntervalMax = TimeSpan.FromMilliseconds(250); // max backoff of 250ms
-                
-                // tcp socket options for fastest possible recovery
-                _subscriber.Options.TcpKeepalive = true;
-                _subscriber.Options.TcpKeepaliveIdle = TimeSpan.FromMilliseconds(500); // detect dead connections in 500ms
-                _subscriber.Options.TcpKeepaliveInterval = TimeSpan.FromMilliseconds(500);
+                _subscriber.Options.ReconnectInterval = TimeSpan.FromMilliseconds(10); // very fast reconnect for ipc
+                _subscriber.Options.ReconnectIntervalMax = TimeSpan.FromMilliseconds(100); // max backoff very low for local ipc
                 
                 _subscriber.Connect(_zmqEndpoint);
                 _debugLog?.LogNamedPipe($"Socket connected to '{_zmqEndpoint}'");
@@ -218,8 +213,8 @@ public class ZeroMQGameDataReader : IDisposable
                 _subscriber.Subscribe("");
                 _debugLog?.LogNamedPipe("Subscribed to all messages");
                 
-                // minimal delay to ensure subscription is established
-                Thread.Sleep(25);
+                // minimal delay for ipc subscription establishment
+                Thread.Sleep(10); // much shorter for local ipc
                 
                 _debugLog?.LogNamedPipe("Connected to ZeroMQ successfully");
             }

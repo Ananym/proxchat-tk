@@ -53,7 +53,7 @@ bool ZeroMQPublisher::Start() {
     zmq_setsockopt(_publisher, ZMQ_IMMEDIATE, &immediate, sizeof(immediate));
     
     // set high water mark to prevent memory buildup if no subscribers
-    int hwm = 100;
+    int hwm = 50; // lower for ipc since it's faster
     zmq_setsockopt(_publisher, ZMQ_SNDHWM, &hwm, sizeof(hwm));
     
     // bind to endpoint
