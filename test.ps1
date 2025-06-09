@@ -1,5 +1,9 @@
 #!/usr/bin/env pwsh
 
+param(
+    [switch]$build = $false
+)
+
 # test script for zeromq ipc communication
 Write-Host "=== ProxChat ZeroMQ Test Script ===" -ForegroundColor Green
 
@@ -11,6 +15,43 @@ $sourceDll = "$projectRoot\memoryreadingdll\build\Release\VERSION.dll"
 $targetDll = "E:\NexusTK\VERSION.dll"
 $clientExe = "$projectRoot\proxchat-client\bin\Debug\net9.0-windows10.0.17763.0\win-x64\ProxChatClient.exe"
 $gameExe = "E:\NexusTK\NexusTK.exe"  # adjust this path if needed
+
+# build projects if requested
+if ($build) {
+    Write-Host "Building projects..." -ForegroundColor Yellow
+    
+    # save original directory
+    $originalDir = Get-Location
+    
+    try {
+        # build memory reading dll
+        Write-Host "  Building memory reading DLL..." -ForegroundColor Cyan
+        Set-Location "$projectRoot\memoryreadingdll"
+        & .\build.ps1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "    ERROR: Memory reading DLL build failed" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "    Memory reading DLL build completed" -ForegroundColor Green
+        
+        # build client
+        Write-Host "  Building client..." -ForegroundColor Cyan
+        Set-Location "$projectRoot\proxchat-client"
+        & dotnet build
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "    ERROR: Client build failed" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "    Client build completed" -ForegroundColor Green
+    }
+    finally {
+        # restore original directory
+        Set-Location $originalDir
+    }
+    
+    Write-Host "All builds completed successfully!" -ForegroundColor Green
+    Write-Host ""
+}
 
 Write-Host "Cleaning up old log files..." -ForegroundColor Yellow
 

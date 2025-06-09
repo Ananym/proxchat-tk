@@ -11,7 +11,6 @@
 #include <ctime>
 
 #include "memreader.h"
-#include "ZeroMQPublisher.h"
 
 // --- logging setup ---
 std::ofstream logFile;
@@ -34,10 +33,263 @@ void LogToFile(const std::string& message) {
     }
 }
 
-// global variables for zeromq
-std::unique_ptr<ZeroMQPublisher> zmqPublisher;
-const std::string ZMQ_ENDPOINT = "ipc://proxchat";
+// named pipe communication
+const std::string PIPE_NAME = "\\\\.\\pipe\\gamedata";
+const DWORD PIPE_BUFFER_SIZE = 1024;
+const DWORD HEARTBEAT_INTERVAL_MS = 3000;
 
+#pragma pack(push, 1)
+struct PipeMessage {
+    uint32_t messageType;  // 0=heartbeat, 1=game_data
+    uint32_t dataSize;
+    uint8_t data[64];      // max size for game data message
+};
+#pragma pack(pop)
+
+class NamedPipeServer {
+private:
+    HANDLE pipe;
+    std::atomic<bool> running;
+    std::atomic<bool> connected;
+    std::thread pipeThread;
+    std::thread heartbeatThread;
+    std::chrono::steady_clock::time_point lastHeartbeatReceived;
+    std::mutex pipeMutex;
+
+    void CreatePipe() {
+        pipe = CreateNamedPipeA(
+            PIPE_NAME.c_str(),
+            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+            1,  // max instances
+            PIPE_BUFFER_SIZE,
+            PIPE_BUFFER_SIZE,
+            0,  // default timeout
+            nullptr
+        );
+
+        if (pipe == INVALID_HANDLE_VALUE) {
+            LogToFile("Failed to create named pipe: " + std::to_string(GetLastError()));
+        } else {
+            LogToFile("Named pipe created successfully");
+        }
+    }
+
+    void PipeThreadFunction() {
+        LogToFile("Pipe thread started");
+        
+        while (running) {
+            if (pipe == INVALID_HANDLE_VALUE) {
+                CreatePipe();
+                if (pipe == INVALID_HANDLE_VALUE) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                    continue;
+                }
+            }
+
+            // wait for client connection
+            LogToFile("Waiting for client connection...");
+            OVERLAPPED connectOverlapped = {0};
+            connectOverlapped.hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+            
+            BOOL connectResult = ConnectNamedPipe(pipe, &connectOverlapped);
+            DWORD connectError = GetLastError();
+            
+            if (!connectResult && connectError == ERROR_IO_PENDING) {
+                // wait for connection with timeout
+                DWORD waitResult = WaitForSingleObject(connectOverlapped.hEvent, 1000);
+                if (waitResult != WAIT_OBJECT_0) {
+                    CloseHandle(connectOverlapped.hEvent);
+                    continue;
+                }
+            } else if (!connectResult && connectError != ERROR_PIPE_CONNECTED) {
+                LogToFile("ConnectNamedPipe failed: " + std::to_string(connectError));
+                CloseHandle(connectOverlapped.hEvent);
+                CleanupPipe();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                continue;
+            }
+            
+            CloseHandle(connectOverlapped.hEvent);
+            connected = true;
+            lastHeartbeatReceived = std::chrono::steady_clock::now();
+            LogToFile("Client connected to named pipe");
+
+            // handle client communication
+            HandleClientCommunication();
+        }
+        
+        LogToFile("Pipe thread stopping");
+    }
+
+    void HandleClientCommunication() {
+        PipeMessage incomingMsg;
+        DWORD bytesRead;
+        OVERLAPPED readOverlapped = {0};
+        readOverlapped.hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+
+        while (running && connected) {
+            // try to read a message with timeout
+            BOOL readResult = ReadFile(pipe, &incomingMsg, sizeof(PipeMessage), &bytesRead, &readOverlapped);
+            DWORD readError = GetLastError();
+
+            if (!readResult && readError == ERROR_IO_PENDING) {
+                DWORD waitResult = WaitForSingleObject(readOverlapped.hEvent, 500);
+                if (waitResult == WAIT_OBJECT_0) {
+                    GetOverlappedResult(pipe, &readOverlapped, &bytesRead, FALSE);
+                } else {
+                    // timeout or error
+                    CancelIo(pipe);
+                    continue;
+                }
+            } else if (!readResult) {
+                LogToFile("ReadFile failed: " + std::to_string(readError));
+                break;
+            }
+
+            if (bytesRead == sizeof(PipeMessage) && incomingMsg.messageType == 0) {
+                // received heartbeat
+                lastHeartbeatReceived = std::chrono::steady_clock::now();
+                
+                // send heartbeat response
+                SendHeartbeatResponse();
+            }
+        }
+
+        CloseHandle(readOverlapped.hEvent);
+        DisconnectClient();
+    }
+
+    void SendHeartbeatResponse() {
+        std::lock_guard<std::mutex> lock(pipeMutex);
+        if (!connected || pipe == INVALID_HANDLE_VALUE) return;
+
+        PipeMessage heartbeatMsg = {0};
+        heartbeatMsg.messageType = 0; // heartbeat
+        heartbeatMsg.dataSize = 0;
+
+        DWORD bytesWritten;
+        OVERLAPPED writeOverlapped = {0};
+        writeOverlapped.hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+
+        BOOL result = WriteFile(pipe, &heartbeatMsg, sizeof(PipeMessage), &bytesWritten, &writeOverlapped);
+        if (!result && GetLastError() == ERROR_IO_PENDING) {
+            WaitForSingleObject(writeOverlapped.hEvent, 1000);
+            GetOverlappedResult(pipe, &writeOverlapped, &bytesWritten, FALSE);
+        }
+
+        CloseHandle(writeOverlapped.hEvent);
+    }
+
+    void HeartbeatThreadFunction() {
+        LogToFile("Heartbeat monitor thread started");
+        
+        while (running) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(HEARTBEAT_INTERVAL_MS));
+            
+            if (connected) {
+                auto now = std::chrono::steady_clock::now();
+                auto timeSinceLastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - lastHeartbeatReceived);
+                
+                if (timeSinceLastHeartbeat.count() > HEARTBEAT_INTERVAL_MS * 2) {
+                    LogToFile("Heartbeat timeout - disconnecting client");
+                    DisconnectClient();
+                }
+            }
+        }
+        
+        LogToFile("Heartbeat monitor thread stopping");
+    }
+
+    void DisconnectClient() {
+        if (connected) {
+            LogToFile("Disconnecting client");
+            connected = false;
+            DisconnectNamedPipe(pipe);
+        }
+    }
+
+    void CleanupPipe() {
+        if (pipe != INVALID_HANDLE_VALUE) {
+            CloseHandle(pipe);
+            pipe = INVALID_HANDLE_VALUE;
+        }
+    }
+
+public:
+    NamedPipeServer() : pipe(INVALID_HANDLE_VALUE), running(false), connected(false) {}
+
+    bool Start() {
+        LogToFile("Starting named pipe server...");
+        running = true;
+        
+        pipeThread = std::thread(&NamedPipeServer::PipeThreadFunction, this);
+        heartbeatThread = std::thread(&NamedPipeServer::HeartbeatThreadFunction, this);
+        
+        return true;
+    }
+
+    void Stop() {
+        LogToFile("Stopping named pipe server...");
+        running = false;
+        DisconnectClient();
+        
+        if (pipeThread.joinable()) {
+            pipeThread.join();
+        }
+        if (heartbeatThread.joinable()) {
+            heartbeatThread.join();
+        }
+        
+        CleanupPipe();
+        LogToFile("Named pipe server stopped");
+    }
+
+    bool SendGameData(const GameDataMessage& gameMsg) {
+        std::lock_guard<std::mutex> lock(pipeMutex);
+        if (!connected || pipe == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+
+        PipeMessage pipeMsg = {0};
+        pipeMsg.messageType = 1; // game data
+        pipeMsg.dataSize = sizeof(GameDataMessage);
+        memcpy(pipeMsg.data, &gameMsg, sizeof(GameDataMessage));
+
+        DWORD bytesWritten;
+        OVERLAPPED writeOverlapped = {0};
+        writeOverlapped.hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+
+        BOOL result = WriteFile(pipe, &pipeMsg, sizeof(PipeMessage), &bytesWritten, &writeOverlapped);
+        DWORD error = GetLastError();
+        
+        if (!result && error == ERROR_IO_PENDING) {
+            DWORD waitResult = WaitForSingleObject(writeOverlapped.hEvent, 1000);
+            if (waitResult == WAIT_OBJECT_0) {
+                GetOverlappedResult(pipe, &writeOverlapped, &bytesWritten, FALSE);
+                result = TRUE;
+            }
+        }
+
+        CloseHandle(writeOverlapped.hEvent);
+        
+        if (!result) {
+            LogToFile("Failed to send game data: " + std::to_string(GetLastError()));
+            DisconnectClient();
+            return false;
+        }
+
+        return bytesWritten == sizeof(PipeMessage);
+    }
+
+    bool IsConnected() const {
+        return connected;
+    }
+};
+
+// global variables
+std::unique_ptr<NamedPipeServer> pipeServer;
 std::atomic<bool> keepRunning(true);
 std::thread memoryPollingThread;
 
@@ -51,15 +303,15 @@ void MemoryPollingLoop() {
         // create structured message
         GameDataMessage gameMsg = CreateGameDataMessage();
         
-        // publish via zeromq - no need to check for connected clients
-        if (zmqPublisher && zmqPublisher->IsRunning()) {
-            bool success = zmqPublisher->PublishMessage(gameMsg);
+        // send via named pipe
+        if (pipeServer && pipeServer->IsConnected()) {
+            bool success = pipeServer->SendGameData(gameMsg);
             messageCount++;
             if (success) successCount++;
             
             // log every 50 attempts to avoid spam
             if (messageCount % 50 == 0) {
-                LogToFile("Published " + std::to_string(messageCount) + " messages, " + 
+                LogToFile("Sent " + std::to_string(messageCount) + " messages, " + 
                          std::to_string(successCount) + " successful");
             }
         }
@@ -70,38 +322,32 @@ void MemoryPollingLoop() {
              " messages, " + std::to_string(successCount) + " successful");
 }
 
-// setup zeromq publisher
-bool SetupZeroMQ() {
-    LogToFile("Setting up ZeroMQ publisher...");
-    LogToFile("ZMQ endpoint: " + ZMQ_ENDPOINT);
+// setup named pipe server
+bool SetupNamedPipe() {
+    LogToFile("Setting up named pipe server...");
     
     try {
-        zmqPublisher = std::make_unique<ZeroMQPublisher>(ZMQ_ENDPOINT);
-        if (!zmqPublisher->Start()) {
-            LogToFile("Failed to start ZeroMQ publisher");
+        pipeServer = std::make_unique<NamedPipeServer>();
+        if (!pipeServer->Start()) {
+            LogToFile("Failed to start named pipe server");
         return false;
     }
-        LogToFile("ZeroMQ publisher started successfully");
-        
-        // small delay to allow subscribers to connect
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        LogToFile("Ready to send messages after subscriber connect delay");
-        
+        LogToFile("Named pipe server started successfully");
         return true;
     } catch (const std::exception& e) {
-        LogToFile("Exception setting up ZeroMQ: " + std::string(e.what()));
+        LogToFile("Exception setting up named pipe: " + std::string(e.what()));
         return false;
     }
 }
 
-// cleanup zeromq
-void CleanupZeroMQ() {
-    LogToFile("Cleaning up ZeroMQ...");
-    if (zmqPublisher) {
-        zmqPublisher->Stop();
-        zmqPublisher.reset();
+// cleanup named pipe
+void CleanupNamedPipe() {
+    LogToFile("Cleaning up named pipe...");
+    if (pipeServer) {
+        pipeServer->Stop();
+        pipeServer.reset();
     }
-    LogToFile("ZeroMQ cleanup finished.");
+    LogToFile("Named pipe cleanup finished.");
 }
 
 // --- dll entry point ---
@@ -117,8 +363,8 @@ BOOL APIENTRY DllMain(HMODULE hModule,
             LogToFile("--- DLL_PROCESS_ATTACH ---");
             DisableThreadLibraryCalls(hModule);
 
-            if (!SetupZeroMQ()) {
-                LogToFile("SetupZeroMQ failed. Detaching.");
+            if (!SetupNamedPipe()) {
+                LogToFile("SetupNamedPipe failed. Detaching.");
                 {
                     std::lock_guard<std::mutex> lock(logMutex);
                     if (logFile.is_open()) {
@@ -143,7 +389,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
                 memoryPollingThread.join();
                 LogToFile("Polling thread joined.");
             }
-            CleanupZeroMQ();
+            CleanupNamedPipe();
             LogToFile("DLL_PROCESS_DETACH finished.");
             {
                 std::lock_guard<std::mutex> lock(logMutex);

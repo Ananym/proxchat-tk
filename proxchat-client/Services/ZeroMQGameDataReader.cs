@@ -1,235 +1,397 @@
 using System;
+using System.IO;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using NetMQ;
-using NetMQ.Sockets;
 
 namespace ProxChatClient.Services;
 
-public class ZeroMQGameDataReader : IDisposable
+public class NamedPipeGameDataReader : IDisposable
 {
-    private readonly string _zmqEndpoint;
+    private const string PIPE_NAME = "gamedata";
     private const int MESSAGE_SIZE = 64; // sizeof(GameDataMessage)
+    private const int PIPE_MESSAGE_SIZE = 72; // sizeof(PipeMessage)
+    private const int HEARTBEAT_INTERVAL_MS = 3000;
+    private const int CONNECTION_TIMEOUT_MS = 2000;
     
-    private SubscriberSocket? _subscriber;
+    private NamedPipeClientStream? _pipeClient;
     private bool _disposed = false;
     private uint _lastSequenceNumber = 0;
     private Thread? _readThread;
+    private Thread? _heartbeatThread;
     private volatile bool _shouldStop = false;
+    private volatile bool _connected = false;
     private readonly DebugLogService? _debugLog;
+    private readonly object _pipeLock = new object();
+    private DateTime _lastHeartbeatSent = DateTime.MinValue;
+    private DateTime _lastDataReceived = DateTime.MinValue;
     
     // add event for new game data
     public event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName)>? GameDataRead;
 
-    public ZeroMQGameDataReader(string ipcChannelName = "game-data-channel", DebugLogService? debugLog = null)
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    struct PipeMessage
     {
-        _zmqEndpoint = "ipc://proxchat";
+        public uint MessageType;  // 0=heartbeat, 1=game_data
+        public uint DataSize;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 64)]
+        public byte[] Data;
+    }
+
+    public NamedPipeGameDataReader(string ipcChannelName = "game-data-channel", DebugLogService? debugLog = null)
+    {
         _debugLog = debugLog;
-        _debugLog?.LogNamedPipe($"Initializing ZeroMQGameDataReader for endpoint '{_zmqEndpoint}'");
+        _debugLog?.LogNamedPipe($"Initializing NamedPipeGameDataReader for pipe '{PIPE_NAME}'");
         
-        // start dedicated read thread
+        // start dedicated threads
         _readThread = new Thread(ReadThreadLoop)
         {
             IsBackground = true,
-            Name = "ZeroMQReader"
+            Name = "NamedPipeReader"
         };
         _readThread.Start();
-        _debugLog?.LogNamedPipe("Started ZeroMQ reader thread");
+        
+        _heartbeatThread = new Thread(HeartbeatThreadLoop)
+        {
+            IsBackground = true,
+            Name = "NamedPipeHeartbeat"
+        };
+        _heartbeatThread.Start();
+        
+        _debugLog?.LogNamedPipe("Started named pipe reader and heartbeat threads");
     }
 
     private void ReadThreadLoop()
     {
-        int frameReceiveCount = 0;
+        int messageCount = 0;
         int validMessageCount = 0;
         int eventFireCount = 0;
-        int timeoutCount = 0;
-        int consecutiveTimeouts = 0;
-        bool wasConnected = false;
+        int connectionAttempts = 0;
         
-        _debugLog?.LogNamedPipe("ZeroMQ reader thread started");
+        _debugLog?.LogNamedPipe("Named pipe reader thread started");
         
         while (!_shouldStop && !_disposed)
         {
             try
             {
-                EnsureConnection();
-                
-                if (_subscriber != null)
+                // ensure we have a connection
+                if (!_connected && !EnsureConnection())
                 {
-                    // poll with timeout appropriate for real-time game data
-                    if (_subscriber.TryReceiveFrameBytes(TimeSpan.FromMilliseconds(50), out var messageBytes))
+                    connectionAttempts++;
+                    if (connectionAttempts % 20 == 1) // log every 20 attempts (every ~10 seconds)
                     {
-                        // got message - reset timeout tracking
-                        consecutiveTimeouts = 0;
-                        timeoutCount = 0;
-                        
-                        if (!wasConnected) 
-                        {
-                            _debugLog?.LogNamedPipe("Connected to publisher and receiving data");
-                            wasConnected = true;
-                        }
-                        
-                        frameReceiveCount++;
+                        _debugLog?.LogNamedPipe($"Connection attempt #{connectionAttempts} failed");
+                    }
+                    Thread.Sleep(500);
+                    continue;
+                }
+                
+                if (connectionAttempts > 0)
+                {
+                    _debugLog?.LogNamedPipe($"Connected to server after {connectionAttempts} attempts");
+                    connectionAttempts = 0;
+                }
+
+                // read message from pipe
+                var messageBytes = ReadPipeMessage();
+                if (messageBytes != null)
+                {
+                    var pipeMsg = BytesToPipeMessage(messageBytes);
+                    
+                    if (pipeMsg.MessageType == 0)
+                    {
+                        // heartbeat received - connection is healthy
+                        _lastDataReceived = DateTime.UtcNow;
+                    }
+                    else if (pipeMsg.MessageType == 1 && pipeMsg.DataSize == MESSAGE_SIZE)
+                    {
+                        // game data message
+                        messageCount++;
+                        _lastDataReceived = DateTime.UtcNow;
                         
                         // log only first message and every 100th
-                        if (frameReceiveCount == 1 || frameReceiveCount % 100 == 0)
+                        if (messageCount == 1 || messageCount % 100 == 0)
                         {
-                            _debugLog?.LogNamedPipe($"Received {frameReceiveCount} messages");
+                            _debugLog?.LogNamedPipe($"Received {messageCount} game data messages");
                         }
                         
-                        if (messageBytes != null && messageBytes.Length == MESSAGE_SIZE)
+                        var result = ParseGameDataMessage(pipeMsg.Data);
+                        if (result.HasValue)
                         {
-                            var result = ParseMessage(messageBytes);
-                            if (result.HasValue)
+                            validMessageCount++;
+                            var msg = result.Value;
+                            
+                            // log only first valid message
+                            if (validMessageCount == 1)
                             {
-                                validMessageCount++;
-                                var msg = result.Value;
-                                
-                                // log only first valid message
-                                if (validMessageCount == 1)
-                                {
-                                    _debugLog?.LogNamedPipe($"First valid message: SeqNum={msg.SequenceNumber}, Type={msg.MessageType}");
-                                }
-                                
-                                // check for duplicate messages
-                                if (msg.SequenceNumber <= _lastSequenceNumber && _lastSequenceNumber != 0)
-                                {
-                                    continue; // skip duplicate or out-of-order message
-                                }
-                                _lastSequenceNumber = msg.SequenceNumber;
-                                
-                                // validate timestamp (must be within 10 seconds)
-                                var age = DateTime.UtcNow - msg.Timestamp;
-                                if (age.TotalSeconds > 10.0)
-                                {
-                                    continue; // silently skip old messages
-                                }
-                                
-                                if (msg.MessageType == MessageType.GameData && msg.IsSuccess && msg.IsPositionValid)
-                                {
-                                    eventFireCount++;
-                                    if (eventFireCount == 1)
-                                    {
-                                        _debugLog?.LogNamedPipe($"Game data events started: Map={msg.MapId}, Pos=({msg.X},{msg.Y})");
-                                    }
-                                    
-                                    // fire event with game data
-                                    GameDataRead?.Invoke(this, (true, msg.MapId, msg.MapName, msg.X, msg.Y, msg.CharacterName));
-                                }
-                                else
-                                {
-                                    // fire event indicating failure (only log first few)
-                                    if (eventFireCount < 3)
-                                    {
-                                        _debugLog?.LogNamedPipe($"Invalid game data: Type={msg.MessageType}, Success={msg.IsSuccess}");
-                                    }
-                                    GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
-                                }
+                                _debugLog?.LogNamedPipe($"First valid message: SeqNum={msg.SequenceNumber}, Type={msg.MessageType}");
                             }
-                        }
-                    }
-                    else
-                    {
-                        // timeout - track consecutive timeouts to detect disconnect
-                        timeoutCount++;
-                        consecutiveTimeouts++;
-                        
-                        // much faster disconnect detection for local ipc (5 timeouts = 250ms)
-                        if (consecutiveTimeouts == 5 && wasConnected)
-                        {
-                            _debugLog?.LogNamedPipe("Publisher disconnected, attempting reconnection...");
-                            wasConnected = false;
-                            GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
-                            CleanupConnection();
-                        }
-                        // aggressive reconnection when disconnected
-                        else if (!wasConnected && consecutiveTimeouts % 10 == 0)
-                        {
-                            _debugLog?.LogNamedPipe($"Still disconnected after {consecutiveTimeouts} attempts");
-                            CleanupConnection();
-                        }
-                        
-                        // log timeouts much less frequently
-                        if (timeoutCount == 1 || timeoutCount % 200 == 0)
-                        {
-                            _debugLog?.LogNamedPipe($"No data received (timeout #{timeoutCount})");
+                            
+                            // check for duplicate messages
+                            if (msg.SequenceNumber <= _lastSequenceNumber && _lastSequenceNumber != 0)
+                            {
+                                continue; // skip duplicate or out-of-order message
+                            }
+                            _lastSequenceNumber = msg.SequenceNumber;
+                            
+                            // validate timestamp (must be within 10 seconds)
+                            var age = DateTime.UtcNow - msg.Timestamp;
+                            if (age.TotalSeconds > 10.0)
+                            {
+                                continue; // silently skip old messages
+                            }
+                            
+                            if (msg.MessageType == MessageType.GameData && msg.IsSuccess && msg.IsPositionValid)
+                            {
+                                eventFireCount++;
+                                
+                                string characterName = msg.CharacterName;
+                                string mapName = msg.MapName;
+                                
+                                if (eventFireCount == 1)
+                                {
+                                    _debugLog?.LogNamedPipe($"Game data events started: Map={msg.MapId}({mapName}), Pos=({msg.X},{msg.Y}), Char='{characterName}'");
+                                }
+                                
+                                // detailed logging for first few events to debug UI issues
+                                if (eventFireCount <= 3)
+                                {
+                                    _debugLog?.LogNamedPipe($"Firing GameDataRead event #{eventFireCount}: Success=true, MapId={msg.MapId}, MapName='{mapName}', X={msg.X}, Y={msg.Y}, CharacterName='{characterName}'");
+                                }
+                                
+                                // fire event with game data
+                                GameDataRead?.Invoke(this, (true, msg.MapId, mapName, msg.X, msg.Y, characterName));
+                            }
+                            else
+                            {
+                                // fire event indicating failure (only log first few)
+                                if (eventFireCount < 3)
+                                {
+                                    _debugLog?.LogNamedPipe($"Invalid game data: Type={msg.MessageType}, Success={msg.IsSuccess}, PosValid={msg.IsPositionValid}");
+                                }
+                                GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
+                            }
                         }
                     }
                 }
                 else
                 {
-                    // no connection, wait short period for reconnect
+                    // no data available, check if connection is still alive
+                    var timeSinceLastData = DateTime.UtcNow - _lastDataReceived;
+                    if (timeSinceLastData.TotalMilliseconds > HEARTBEAT_INTERVAL_MS * 3)
+                    {
+                        _debugLog?.LogNamedPipe("No data received for too long - connection may be dead");
+                        DisconnectPipe();
+                    }
+                    
                     Thread.Sleep(50);
                 }
             }
             catch (Exception ex)
             {
                 _debugLog?.LogNamedPipe($"Read thread error: {ex.Message}");
-                CleanupConnection();
-                Thread.Sleep(100);
+                DisconnectPipe();
+                Thread.Sleep(500);
             }
         }
         
-        _debugLog?.LogNamedPipe($"Reader stopped. Received: {frameReceiveCount}, Valid: {validMessageCount}, Events: {eventFireCount}");
+        _debugLog?.LogNamedPipe($"Reader stopped. Messages: {messageCount}, Valid: {validMessageCount}, Events: {eventFireCount}");
     }
 
-    private void EnsureConnection()
+    private void HeartbeatThreadLoop()
     {
-        if (_subscriber == null && !_disposed)
+        _debugLog?.LogNamedPipe("Heartbeat thread started");
+        
+        while (!_shouldStop && !_disposed)
         {
             try
             {
-                _debugLog?.LogNamedPipe($"Connecting to ZeroMQ endpoint '{_zmqEndpoint}'...");
-                _subscriber = new SubscriberSocket();
+                if (_connected)
+                {
+                    var timeSinceLastHeartbeat = DateTime.UtcNow - _lastHeartbeatSent;
+                    if (timeSinceLastHeartbeat.TotalMilliseconds >= HEARTBEAT_INTERVAL_MS)
+                    {
+                        if (SendHeartbeat())
+                        {
+                            _lastHeartbeatSent = DateTime.UtcNow;
+                        }
+                        else
+                        {
+                            _debugLog?.LogNamedPipe("Heartbeat failed - disconnecting");
+                            DisconnectPipe();
+                        }
+                    }
+                }
                 
-                // optimal socket options for local ipc real-time game data
-                _subscriber.Options.ReceiveHighWatermark = 5; // very small queue - we want latest data only
-                _subscriber.Options.Linger = TimeSpan.Zero; // immediate close, don't wait
+                Thread.Sleep(1000);
+            }
+            catch (Exception ex)
+            {
+                _debugLog?.LogNamedPipe($"Heartbeat thread error: {ex.Message}");
+                DisconnectPipe();
+                Thread.Sleep(1000);
+            }
+        }
+        
+        _debugLog?.LogNamedPipe("Heartbeat thread stopped");
+    }
+
+    private bool EnsureConnection()
+    {
+        if (_connected || _disposed) return _connected;
+        
+        lock (_pipeLock)
+        {
+            if (_connected || _disposed) return _connected;
+            
+            try
+            {
+                _debugLog?.LogNamedPipe($"Attempting to connect to named pipe '{PIPE_NAME}'...");
                 
-                // aggressive reconnection for local ipc
-                _subscriber.Options.ReconnectInterval = TimeSpan.FromMilliseconds(10); // start fast
-                _subscriber.Options.ReconnectIntervalMax = TimeSpan.FromMilliseconds(100); // low max for local ipc
+                _pipeClient = new NamedPipeClientStream(".", PIPE_NAME, PipeDirection.InOut, PipeOptions.Asynchronous);
                 
-                // connection attempts - more aggressive for local
-                _subscriber.Options.Backlog = 0; // no connection backlog queue needed for single publisher
+                // try to connect with timeout
+                var connectTask = Task.Run(() => _pipeClient.Connect(CONNECTION_TIMEOUT_MS));
+                if (!connectTask.Wait(CONNECTION_TIMEOUT_MS + 500))
+                {
+                    _pipeClient?.Dispose();
+                    _pipeClient = null;
+                    return false;
+                }
                 
-                _subscriber.Connect(_zmqEndpoint);
+                _connected = true;
+                _lastDataReceived = DateTime.UtcNow;
+                _lastHeartbeatSent = DateTime.MinValue; // force immediate heartbeat
                 
-                // subscribe to all messages (empty subscription = receive everything)
-                _subscriber.Subscribe("");
-                
-                // brief delay for subscription establishment
-                Thread.Sleep(10);
-                
-                _debugLog?.LogNamedPipe("ZeroMQ socket connected and subscribed");
+                _debugLog?.LogNamedPipe("Successfully connected to named pipe server");
+                return true;
             }
             catch (Exception ex)
             {
                 _debugLog?.LogNamedPipe($"Connection failed: {ex.Message}");
-                CleanupConnection();
+                _pipeClient?.Dispose();
+                _pipeClient = null;
+                return false;
             }
         }
     }
 
-    private void CleanupConnection()
+    private void DisconnectPipe()
     {
-        if (_subscriber != null)
+        lock (_pipeLock)
         {
-            try 
-            { 
-                _subscriber.Dispose();
-                _debugLog?.LogNamedPipe("Socket disposed for reconnection");
-            } 
+            if (_connected)
+            {
+                _debugLog?.LogNamedPipe("Disconnecting from named pipe");
+                _connected = false;
+            }
+            
+            try
+            {
+                _pipeClient?.Close();
+                _pipeClient?.Dispose();
+            }
             catch { }
             finally
             {
-                _subscriber = null;
+                _pipeClient = null;
             }
         }
     }
 
-    private GameDataMessage? ParseMessage(byte[] buffer)
+    private bool SendHeartbeat()
+    {
+        lock (_pipeLock)
+        {
+            if (!_connected || _pipeClient == null) return false;
+            
+            try
+            {
+                var heartbeatMsg = new PipeMessage
+                {
+                    MessageType = 0, // heartbeat
+                    DataSize = 0,
+                    Data = new byte[64]
+                };
+                
+                var messageBytes = PipeMessageToBytes(heartbeatMsg);
+                _pipeClient.Write(messageBytes, 0, messageBytes.Length);
+                _pipeClient.Flush();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _debugLog?.LogNamedPipe($"Failed to send heartbeat: {ex.Message}");
+                return false;
+            }
+        }
+    }
+
+    private byte[]? ReadPipeMessage()
+    {
+        lock (_pipeLock)
+        {
+            if (!_connected || _pipeClient == null) return null;
+            
+            try
+            {
+                // check if data is available without blocking
+                if (!_pipeClient.IsConnected)
+                {
+                    return null;
+                }
+                
+                var buffer = new byte[PIPE_MESSAGE_SIZE];
+                
+                // use synchronous read with the pipe's built-in timeout
+                int totalBytesRead = 0;
+                while (totalBytesRead < PIPE_MESSAGE_SIZE && _pipeClient.IsConnected)
+                {
+                    int bytesRead = _pipeClient.Read(buffer, totalBytesRead, PIPE_MESSAGE_SIZE - totalBytesRead);
+                    if (bytesRead == 0)
+                    {
+                        // pipe closed
+                        return null;
+                    }
+                    totalBytesRead += bytesRead;
+                }
+                
+                return totalBytesRead == PIPE_MESSAGE_SIZE ? buffer : null;
+            }
+            catch (TimeoutException)
+            {
+                // normal timeout, not an error
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _debugLog?.LogNamedPipe($"Failed to read from pipe: {ex.Message}");
+                return null;
+            }
+        }
+    }
+
+    private PipeMessage BytesToPipeMessage(byte[] bytes)
+    {
+        var msg = new PipeMessage();
+        msg.MessageType = BitConverter.ToUInt32(bytes, 0);
+        msg.DataSize = BitConverter.ToUInt32(bytes, 4);
+        msg.Data = new byte[64];
+        Array.Copy(bytes, 8, msg.Data, 0, 64);
+        return msg;
+    }
+
+    private byte[] PipeMessageToBytes(PipeMessage msg)
+    {
+        var buffer = new byte[PIPE_MESSAGE_SIZE];
+        BitConverter.GetBytes(msg.MessageType).CopyTo(buffer, 0);
+        BitConverter.GetBytes(msg.DataSize).CopyTo(buffer, 4);
+        msg.Data.CopyTo(buffer, 8);
+        return buffer;
+    }
+
+    private GameDataMessage? ParseGameDataMessage(byte[] buffer)
     {
         try
         {
@@ -252,7 +414,7 @@ public class ZeroMQGameDataReader : IDisposable
         }
         catch (Exception ex)
         {
-            _debugLog?.LogNamedPipe($"ParseMessage error: {ex.Message}");
+            _debugLog?.LogNamedPipe($"ParseGameDataMessage error: {ex.Message}");
             return null;
         }
     }
@@ -261,7 +423,7 @@ public class ZeroMQGameDataReader : IDisposable
     // this is for compatibility with existing code - the event-based approach is preferred
     public (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) ReadPositionAndName()
     {
-        // for zeromq implementation, we rely on the event callback
+        // for named pipe implementation, we rely on the event callback
         // this method returns the last known state or defaults
         return (false, 0, string.Empty, 0, 0, "Player");
     }
@@ -280,8 +442,8 @@ public class ZeroMQGameDataReader : IDisposable
             {
                 _shouldStop = true;
                 _readThread?.Join(TimeSpan.FromSeconds(5));
-                CleanupConnection();
-                NetMQConfig.Cleanup(); // cleanup netmq resources
+                _heartbeatThread?.Join(TimeSpan.FromSeconds(5));
+                DisconnectPipe();
             }
 
             _disposed = true;
@@ -293,7 +455,7 @@ public class ZeroMQGameDataReader : IDisposable
         Close();
     }
 
-    ~ZeroMQGameDataReader()
+    ~NamedPipeGameDataReader()
     {
         Dispose(disposing: false);
     }

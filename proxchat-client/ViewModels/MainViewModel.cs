@@ -21,7 +21,7 @@ namespace ProxChatClient.ViewModels;
 
 public class MainViewModel : INotifyPropertyChanged, IDisposable
 {
-    private readonly ZeroMQGameDataReader _memoryReader;
+    private readonly NamedPipeGameDataReader _memoryReader;
     private readonly SignalingService _signalingService;
     private readonly WebRtcService _webRtcService;
     private readonly AudioService _audioService;
@@ -88,6 +88,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     // add fields for logging state tracking
     private bool _shouldLogRead = false;
+    
+    // debug counters for OnGameDataRead
+    private int _debugSuccessCount = 0;
+    private int _debugFailureCount = 0;
 
     public ObservableCollection<PeerViewModel> ConnectedPeers { get; } = new();
     public ObservableCollection<string> InputDevices => _audioService.InputDevices;
@@ -519,7 +523,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var debugLog = new DebugLogService(logFileName);
         _debugLog = debugLog;
 
-        _memoryReader = new ZeroMQGameDataReader(_config.GameDataIpcChannel, _debugLog);
+        _memoryReader = new NamedPipeGameDataReader(_config.GameDataIpcChannel, _debugLog);
         
         // Use hardcoded max distance for consistency across all users
         const float HARDCODED_MAX_DISTANCE = 15.0f; // Extended range for more realistic audio falloff
@@ -895,6 +899,24 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async void OnGameDataRead(object? sender, (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) data)
     {
+        // debug: log first few successful reads to confirm data flow
+        if (data.Success)
+        {
+            _debugSuccessCount++;
+            if (_debugSuccessCount <= 3)
+            {
+                _debugLog.LogMain($"OnGameDataRead SUCCESS #{_debugSuccessCount}: Map={data.MapId}('{data.MapName}'), Pos=({data.X},{data.Y}), Char='{data.CharacterName}'");
+            }
+        }
+        else
+        {
+            _debugFailureCount++;
+            if (_debugFailureCount <= 3)
+            {
+                _debugLog.LogMain($"OnGameDataRead FAILURE #{_debugFailureCount}");
+            }
+        }
+        
         // only log game data reads when critical state changes occur
         if (!data.Success && !_shouldLogRead)
         {
