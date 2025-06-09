@@ -26,6 +26,8 @@ public class UpdatePositionData
     public int Y { get; set; }
     [JsonProperty("channel")]
     public int Channel { get; set; }
+    [JsonProperty("game_id")]
+    public int GameId { get; set; }
 }
 
 public class ClientMessage : SignalingMessageBase

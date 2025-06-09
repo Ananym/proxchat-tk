@@ -65,6 +65,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _gameX = 0;
     private int _gameY = 0;
     private string _gameCharacterName = "Player";
+    private int _gameId = 0;
 
     private readonly string _peerSettingsFilePath; // Added for dedicated peer settings file
 
@@ -897,7 +898,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IsSelfMuted));
     }
 
-    private async void OnGameDataRead(object? sender, (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) data)
+    private async void OnGameDataRead(object? sender, (bool Success, int MapId, string MapName, int X, int Y, string CharacterName, int GameId) data)
     {
         var startTime = DateTime.UtcNow;
         
@@ -1034,6 +1035,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     _gameCharacterName = data.CharacterName;
                     OnPropertyChanged(nameof(CurrentCharacterName));
                 }
+                if (_gameId != data.GameId)
+                {
+                    _gameId = data.GameId;
+                }
             }
 
             // early return if not running - position sending and peer logic only happens when running
@@ -1086,7 +1091,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     name = _gameCharacterName;
                 }
 
-                await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
+                await _signalingService.UpdatePosition(mapId, x, y, _config.Channel, _gameId);
                 _lastSentMapId = mapId;
                 _lastSentX = x;
                 _lastSentY = y;
@@ -1140,7 +1145,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     name = _gameCharacterName;
                 }
 
-                await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
+                await _signalingService.UpdatePosition(mapId, x, y, _config.Channel, _gameId);
                 _lastSentMapId = mapId;
                 _lastSentX = x;
                 _lastSentY = y;
@@ -1512,7 +1517,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                          name = _gameCharacterName;
                      }
 
-                     await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
+                     await _signalingService.UpdatePosition(mapId, x, y, _config.Channel, _gameId);
                      _lastSentMapId = mapId;
                      _lastSentX = x;
                      _lastSentY = y;
@@ -1642,7 +1647,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
             if (positionChanged || timeElapsed)
             {
-                await _signalingService.UpdatePosition(mapId, x, y, _config.Channel);
+                await _signalingService.UpdatePosition(mapId, x, y, _config.Channel, _gameId);
                 _lastSentMapId = mapId;
                 _lastSentX = x;
                 _lastSentY = y;

@@ -19,6 +19,7 @@ struct ClientPosition {
     x: i32,
     y: i32,
     channel: i32,
+    game_id: i32, // int enum where NexusTK is value 0
 }
 
 // Message types for client -> server communication
@@ -82,6 +83,7 @@ impl ServerState {
                 if id == &pos.client_id { return None; }
                 if other_pos.map_id != pos.map_id { return None; }
                 if other_pos.channel != pos.channel { return None; }
+                if other_pos.game_id != pos.game_id { return None; }
                 
                 // squared distance check (no sqrt needed)
                 let dx = other_pos.x - pos.x;

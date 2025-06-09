@@ -10,7 +10,7 @@ namespace ProxChatClient.Services;
 public class NamedPipeGameDataReader : IDisposable
 {
     private const string PIPE_NAME = "gamedata";
-    private const int MESSAGE_SIZE = 56; // sizeof(GameDataMessage) - updated for simplified structure
+    private const int MESSAGE_SIZE = 56; // sizeof(GameDataMessage) - gameId field replaced reserved1
     private const int PIPE_MESSAGE_SIZE = 72; // sizeof(PipeMessage)
     private const int HEARTBEAT_INTERVAL_MS = 3000;
     private const int CONNECTION_TIMEOUT_MS = 2000; // reverted: keep reasonable timeout for stable connections
@@ -27,7 +27,7 @@ public class NamedPipeGameDataReader : IDisposable
     private DateTime _lastDataReceived = DateTime.MinValue;
     
     // add event for new game data
-    public event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName)>? GameDataRead;
+    public event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName, int GameId)>? GameDataRead;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     struct PipeMessage
@@ -66,6 +66,7 @@ public class NamedPipeGameDataReader : IDisposable
         int messageCount = 0;
         int validMessageCount = 0;
         int eventFireCount = 0;
+        int invalidMessageCount = 0;
         int connectionAttempts = 0;
         
         _debugLog?.LogNamedPipe("Named pipe reader thread started");
@@ -159,16 +160,20 @@ public class NamedPipeGameDataReader : IDisposable
                                 }
                                 
                                 // fire event with game data
-                                GameDataRead?.Invoke(this, (true, msg.MapId, mapName, msg.X, msg.Y, characterName));
+                                GameDataRead?.Invoke(this, (true, msg.MapId, mapName, msg.X, msg.Y, characterName, msg.GameId));
                             }
                             else
                             {
-                                // fire event indicating failure (only log first few)
-                                if (eventFireCount < 3)
+                                invalidMessageCount++;
+                                
+                                // log 2% of invalid messages to avoid spam (every 50th = 2%)
+                                if (invalidMessageCount % 50 == 0)
                                 {
-                                    _debugLog?.LogNamedPipe($"Invalid game data: Success={msg.IsSuccess}, Flags=0x{msg.Flags:X2}, MapId={msg.MapId}, Pos=({msg.X},{msg.Y}), Name='{msg.CharacterName}'");
+                                    _debugLog?.LogNamedPipe($"Invalid game data #{invalidMessageCount} (2% sample): Success={msg.IsSuccess}, Flags=0x{msg.Flags:X2}, MapId={msg.MapId}, Pos=({msg.X},{msg.Y}), Name='{msg.CharacterName}'");
                                 }
-                                GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
+                                
+                                // fire event indicating failure
+                                GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player", 0));
                             }
                         }
                     }
@@ -194,7 +199,7 @@ public class NamedPipeGameDataReader : IDisposable
             }
         }
         
-        _debugLog?.LogNamedPipe($"Reader stopped. Messages: {messageCount}, Valid: {validMessageCount}, Events: {eventFireCount}");
+        _debugLog?.LogNamedPipe($"Reader stopped. Messages: {messageCount}, Valid: {validMessageCount}, Invalid: {invalidMessageCount}, Events: {eventFireCount}");
     }
 
     private void HeartbeatThreadLoop()
@@ -398,7 +403,7 @@ public class NamedPipeGameDataReader : IDisposable
             msg.X = BitConverter.ToInt32(buffer, 8);
             msg.Y = BitConverter.ToInt32(buffer, 12);
             msg.MapId = BitConverter.ToUInt16(buffer, 16);
-            msg.Reserved1 = BitConverter.ToUInt16(buffer, 18);
+            msg.GameId = BitConverter.ToUInt16(buffer, 18);
             msg.MapNameBytes = new byte[16];
             msg.CharacterNameBytes = new byte[12];
             Array.Copy(buffer, 20, msg.MapNameBytes, 0, 16);
@@ -417,11 +422,11 @@ public class NamedPipeGameDataReader : IDisposable
 
     // main method used by viewmodel to read the current game state
     // this is for compatibility with existing code - the event-based approach is preferred
-    public (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) ReadPositionAndName()
+    public (bool Success, int MapId, string MapName, int X, int Y, string CharacterName, int GameId) ReadPositionAndName()
     {
         // for named pipe implementation, we rely on the event callback
         // this method returns the last known state or defaults
-        return (false, 0, string.Empty, 0, 0, "Player");
+        return (false, 0, string.Empty, 0, 0, "Player", 0);
     }
 
     public void Close()

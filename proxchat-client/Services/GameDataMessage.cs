@@ -15,7 +15,7 @@ public struct GameDataMessage
     public int X;                   // player x coordinate
     public int Y;                   // player y coordinate
     public ushort MapId;            // map identifier
-    public ushort Reserved1;        // padding for alignment
+    public ushort GameId;           // game identifier (always 0 for this game)
     
     // strings with fixed sizes (null-terminated)
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]

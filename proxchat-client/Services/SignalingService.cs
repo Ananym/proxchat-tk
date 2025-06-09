@@ -27,6 +27,7 @@ public class SignalingService : IDisposable
     // throttle position update logging
     private int _lastLoggedMapId = -1;
     private DateTime _lastPositionLogTime = DateTime.MinValue;
+    private int _messagesSent = 0;
 
     public event EventHandler<List<string>>? NearbyClientsReceived;
     public event EventHandler<OfferPayload>? OfferReceived;
@@ -231,7 +232,7 @@ public class SignalingService : IDisposable
                     break;
             }
         }
-        catch (System.Text.Json.JsonException ex)
+        catch (Newtonsoft.Json.JsonException ex)
         {
             _debugLog.LogSignaling($"Failed to parse incoming signaling message: {ex.Message}, Raw: {messageText}");
         }
@@ -241,7 +242,7 @@ public class SignalingService : IDisposable
         }
     }
 
-    public async Task UpdatePosition(int mapId, int x, int y, int channel)
+    public async Task UpdatePosition(int mapId, int x, int y, int channel, int gameId)
     {
         if (!IsConnected) return;
 
@@ -251,13 +252,14 @@ public class SignalingService : IDisposable
             MapId = mapId,
             X = x,
             Y = y,
-            Channel = channel
+            Channel = channel,
+            GameId = gameId
         };
         
         // only log position updates occasionally to avoid spam
         if (mapId != _lastLoggedMapId || DateTime.Now - _lastPositionLogTime > TimeSpan.FromSeconds(5))
         {
-            _debugLog.LogSignaling($"Sending position: ClientId={_clientId}, MapId={mapId}, X={x}, Y={y}, Channel={channel}");
+            _debugLog.LogSignaling($"Sending position: ClientId={_clientId}, MapId={mapId}, X={x}, Y={y}, Channel={channel}, GameId={gameId}");
             _lastLoggedMapId = mapId;
             _lastPositionLogTime = DateTime.Now;
         }
@@ -304,7 +306,15 @@ public class SignalingService : IDisposable
 
         try
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(message);
+            var json = JsonConvert.SerializeObject(message);
+            
+            // log first few messages for debugging
+            if (_messagesSent <= 3)
+            {
+                _debugLog.LogSignaling($"Sending JSON message #{_messagesSent + 1}: {json}");
+            }
+            _messagesSent++;
+            
             var bytes = Encoding.UTF8.GetBytes(json);
             await _webSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
             

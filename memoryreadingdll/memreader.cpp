@@ -120,6 +120,9 @@ GameDataMessage CreateGameDataMessage() {
         failureReason = "Map ID pointer read failed";
     }
 
+    // set game ID (hardcoded to 0)
+    msg.gameId = 0;
+
     // read map name
     const size_t mapNameBufferSize = 42;
     std::vector<char> mapNameBuffer(mapNameBufferSize);
@@ -159,6 +162,15 @@ GameDataMessage CreateGameDataMessage() {
     } else {
         success = false;
         failureReason = "Character name pointer read failed";
+    }
+
+    // additional validation: treat map id 65535 with empty map name as failure
+    if (success && msg.mapId == 65535) {
+        // check if map name is empty or just whitespace (already trimmed by TrimStringData)
+        if (strlen(msg.mapName) == 0) {
+            success = false;
+            failureReason = "Invalid map state (ID 65535 with empty name)";
+        }
     }
 
     // set flags based on success

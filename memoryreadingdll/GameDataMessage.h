@@ -12,7 +12,7 @@ struct GameDataMessage {
     int32_t x;                // player x coordinate
     int32_t y;                // player y coordinate
     uint16_t mapId;           // map identifier
-    uint16_t reserved1;       // padding for alignment
+    uint16_t gameId;          // game identifier (always 0 for this game)
     
     // strings with fixed sizes (null-terminated)
     char mapName[16];         // map name (15 chars + null terminator)
