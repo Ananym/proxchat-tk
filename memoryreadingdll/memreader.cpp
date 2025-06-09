@@ -56,11 +56,8 @@ bool SafeReadProcessMemory(LPCVOID lpBaseAddress, LPVOID lpBuffer, SIZE_T nSize,
 
 GameDataMessage CreateGameDataMessage() {
     static bool previousCallSucceeded = true;
-    static uint32_t sequenceNumber = 0;
     
     GameDataMessage msg = {}; // zero-initialize
-    msg.messageType = MSG_TYPE_GAME_DATA;
-    msg.sequenceNumber = ++sequenceNumber;
     
     // get current timestamp in milliseconds
     auto now = std::chrono::system_clock::now();
@@ -73,13 +70,13 @@ GameDataMessage CreateGameDataMessage() {
             LogToFile("Memory reading failed: Unable to get module handle");
             previousCallSucceeded = false;
         }
-        msg.messageType = MSG_TYPE_ERROR;
         msg.flags = 0; // no success flag
         return msg;
     }
 
     bool success = true;
     SIZE_T bytesRead = 0;
+    std::string failureReason = "";
 
     // read X coordinate
     uintptr_t xPtrAddr = baseAddress + 0x0029B4E4;
@@ -88,9 +85,11 @@ GameDataMessage CreateGameDataMessage() {
         uintptr_t xAddr = xBasePtr + 0xFC;
         if (!SafeReadProcessMemory(reinterpret_cast<LPCVOID>(xAddr), &msg.x, sizeof(msg.x), &bytesRead) || bytesRead != sizeof(msg.x)) {
             success = false;
+            failureReason = "X coordinate read failed";
         }
     } else {
         success = false;
+        failureReason = "X pointer read failed";
     }
 
     // read Y coordinate
@@ -100,9 +99,11 @@ GameDataMessage CreateGameDataMessage() {
         uintptr_t yAddr = yBasePtr + 0x108;
         if (!SafeReadProcessMemory(reinterpret_cast<LPCVOID>(yAddr), &msg.y, sizeof(msg.y), &bytesRead) || bytesRead != sizeof(msg.y)) {
             success = false;
+            failureReason = "Y coordinate read failed";
         }
     } else {
         success = false;
+        failureReason = "Y pointer read failed";
     }
 
     // read map ID
@@ -112,9 +113,11 @@ GameDataMessage CreateGameDataMessage() {
         uintptr_t mapIdAddr = mapIdBasePtr + 0x3F2;
         if (!SafeReadProcessMemory(reinterpret_cast<LPCVOID>(mapIdAddr), &msg.mapId, sizeof(msg.mapId), &bytesRead) || bytesRead != sizeof(msg.mapId)) {
             success = false;
+            failureReason = "Map ID read failed";
         }
     } else {
         success = false;
+        failureReason = "Map ID pointer read failed";
     }
 
     // read map name
@@ -131,9 +134,11 @@ GameDataMessage CreateGameDataMessage() {
             msg.mapName[sizeof(msg.mapName) - 1] = '\0';
         } else {
             success = false;
+            failureReason = "Map name read failed";
         }
     } else {
         success = false;
+        failureReason = "Map name pointer read failed";
     }
 
     // read character name
@@ -149,27 +154,49 @@ GameDataMessage CreateGameDataMessage() {
             msg.characterName[sizeof(msg.characterName) - 1] = '\0';
         } else {
             success = false;
+            failureReason = "Character name read failed";
         }
     } else {
         success = false;
+        failureReason = "Character name pointer read failed";
     }
 
     // set flags based on success
     if (success) {
-        msg.flags |= FLAG_SUCCESS | FLAG_POSITION_VALID;
+        msg.flags |= FLAG_SUCCESS;
+        // log first few successful messages to confirm flag setting
+        static int successMessageCount = 0;
+        successMessageCount++;
+        if (successMessageCount <= 3) {
+            LogToFile("SUCCESS MESSAGE #" + std::to_string(successMessageCount) + ": Flags=0x" + std::to_string(msg.flags));
+        }
     } else {
-        msg.messageType = MSG_TYPE_ERROR;
         msg.flags = 0;
+        // log first few error messages after recovery attempt
+        static int errorAfterRecoveryCount = 0;
+        if (previousCallSucceeded) { // only count errors that happen after we thought we recovered
+            errorAfterRecoveryCount++;
+            if (errorAfterRecoveryCount <= 5) {
+                LogToFile("ERROR AFTER RECOVERY #" + std::to_string(errorAfterRecoveryCount) + ": " + failureReason);
+            }
+        }
     }
 
-    // log state transitions
+    // log state transitions with more detail
     if (success != previousCallSucceeded) {
         if (success) {
             LogToFile("Memory reading recovered: All data read successfully");
         } else {
-            LogToFile("Memory reading failed");
+            LogToFile("Memory reading failed: " + failureReason);
         }
         previousCallSucceeded = success;
+    } else if (!success) {
+        // periodic logging during failure periods to help debug persistent issues
+        static int failureCount = 0;
+        failureCount++;
+        if (failureCount % 100 == 0) {
+            LogToFile("Memory reading still failing after " + std::to_string(failureCount) + " attempts");
+        }
     }
 
     return msg;

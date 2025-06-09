@@ -331,6 +331,13 @@ void MemoryPollingLoop() {
             messageCount++;
             if (success) successCount++;
             
+            // log first few successful messages with success flag info
+            static int successfulSendsLogged = 0;
+            if (success && (gameMsg.flags & 0x01) && successfulSendsLogged < 3) {
+                successfulSendsLogged++;
+                LogToFile("SENT SUCCESS MESSAGE #" + std::to_string(successfulSendsLogged) + ": Flags=0x" + std::to_string(gameMsg.flags));
+            }
+            
             // log every 50 attempts to avoid spam
             if (messageCount % 50 == 0) {
                 LogToFile("Sent " + std::to_string(messageCount) + " messages, " + 

@@ -10,14 +10,13 @@ namespace ProxChatClient.Services;
 public class NamedPipeGameDataReader : IDisposable
 {
     private const string PIPE_NAME = "gamedata";
-    private const int MESSAGE_SIZE = 64; // sizeof(GameDataMessage)
+    private const int MESSAGE_SIZE = 56; // sizeof(GameDataMessage) - updated for simplified structure
     private const int PIPE_MESSAGE_SIZE = 72; // sizeof(PipeMessage)
     private const int HEARTBEAT_INTERVAL_MS = 3000;
     private const int CONNECTION_TIMEOUT_MS = 2000; // reverted: keep reasonable timeout for stable connections
     
     private NamedPipeClientStream? _pipeClient;
     private bool _disposed = false;
-    private uint _lastSequenceNumber = 0;
     private Thread? _readThread;
     private Thread? _heartbeatThread;
     private volatile bool _shouldStop = false;
@@ -131,15 +130,8 @@ public class NamedPipeGameDataReader : IDisposable
                             // log only first valid message
                             if (validMessageCount == 1)
                             {
-                                _debugLog?.LogNamedPipe($"First valid message: SeqNum={msg.SequenceNumber}, Type={msg.MessageType}");
+                                _debugLog?.LogNamedPipe($"First valid message");
                             }
-                            
-                            // check for duplicate messages
-                            if (msg.SequenceNumber <= _lastSequenceNumber && _lastSequenceNumber != 0)
-                            {
-                                continue; // skip duplicate or out-of-order message
-                            }
-                            _lastSequenceNumber = msg.SequenceNumber;
                             
                             // validate timestamp (must be within 10 seconds)
                             var age = DateTime.UtcNow - msg.Timestamp;
@@ -148,7 +140,7 @@ public class NamedPipeGameDataReader : IDisposable
                                 continue; // silently skip old messages
                             }
                             
-                            if (msg.MessageType == MessageType.GameData && msg.IsSuccess && msg.IsPositionValid)
+                            if (msg.IsSuccess)
                             {
                                 eventFireCount++;
                                 
@@ -157,7 +149,7 @@ public class NamedPipeGameDataReader : IDisposable
                                 
                                 if (eventFireCount == 1)
                                 {
-                                    _debugLog?.LogNamedPipe($"Game data events started: Map={msg.MapId}({mapName}), Pos=({msg.X},{msg.Y}), Char='{characterName}'");
+                                    _debugLog?.LogNamedPipe($"Game data events started: Map={msg.MapId}({mapName}), Pos=({msg.X},{msg.Y}), Char='{characterName}', Flags=0x{msg.Flags:X2}");
                                 }
                                 
                                 // detailed logging for first few events to debug UI issues
@@ -174,7 +166,7 @@ public class NamedPipeGameDataReader : IDisposable
                                 // fire event indicating failure (only log first few)
                                 if (eventFireCount < 3)
                                 {
-                                    _debugLog?.LogNamedPipe($"Invalid game data: Type={msg.MessageType}, Success={msg.IsSuccess}, PosValid={msg.IsPositionValid}");
+                                    _debugLog?.LogNamedPipe($"Invalid game data: Success={msg.IsSuccess}, Flags=0x{msg.Flags:X2}, MapId={msg.MapId}, Pos=({msg.X},{msg.Y}), Name='{msg.CharacterName}'");
                                 }
                                 GameDataRead?.Invoke(this, (false, 0, string.Empty, 0, 0, "Player"));
                             }
@@ -402,19 +394,17 @@ public class NamedPipeGameDataReader : IDisposable
         try
         {
             var msg = new GameDataMessage();
-            msg.MessageType = BitConverter.ToUInt32(buffer, 0);
-            msg.SequenceNumber = BitConverter.ToUInt32(buffer, 4);
-            msg.TimestampMs = BitConverter.ToUInt64(buffer, 8);
-            msg.X = BitConverter.ToInt32(buffer, 16);
-            msg.Y = BitConverter.ToInt32(buffer, 20);
-            msg.MapId = BitConverter.ToUInt16(buffer, 24);
-            msg.Reserved1 = BitConverter.ToUInt16(buffer, 26);
+            msg.TimestampMs = BitConverter.ToUInt64(buffer, 0);
+            msg.X = BitConverter.ToInt32(buffer, 8);
+            msg.Y = BitConverter.ToInt32(buffer, 12);
+            msg.MapId = BitConverter.ToUInt16(buffer, 16);
+            msg.Reserved1 = BitConverter.ToUInt16(buffer, 18);
             msg.MapNameBytes = new byte[16];
             msg.CharacterNameBytes = new byte[12];
-            Array.Copy(buffer, 28, msg.MapNameBytes, 0, 16);
-            Array.Copy(buffer, 44, msg.CharacterNameBytes, 0, 12);
-            msg.Flags = BitConverter.ToUInt32(buffer, 56);
-            msg.Reserved2 = BitConverter.ToUInt32(buffer, 60);
+            Array.Copy(buffer, 20, msg.MapNameBytes, 0, 16);
+            Array.Copy(buffer, 36, msg.CharacterNameBytes, 0, 12);
+            msg.Flags = BitConverter.ToUInt32(buffer, 48);
+            msg.Reserved2 = BitConverter.ToUInt32(buffer, 52);
             
             return msg;
         }

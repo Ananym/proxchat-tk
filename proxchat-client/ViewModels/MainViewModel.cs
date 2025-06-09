@@ -899,6 +899,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async void OnGameDataRead(object? sender, (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) data)
     {
+        var startTime = DateTime.UtcNow;
+        
         // log first few calls to confirm the event handler is being triggered
         var totalCallCount = _debugSuccessCount + _debugFailureCount + 1;
         if (totalCallCount <= 5)
@@ -946,9 +948,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 
                 if (!_isMemoryReaderInitialized)
                 {
+                    var processingTime = DateTime.UtcNow - startTime;
                     _isMemoryReaderInitialized = true;
                     StatusMessage = "Game data connection established. Ready.";
-                    _debugLog.LogMain($"Memory reader initialized - status set to Ready. IsRunning={IsRunning}");
+                    _debugLog.LogMain($"Memory reader initialized - status set to Ready. IsRunning={IsRunning}, ProcessingTime={processingTime.TotalMilliseconds:F1}ms");
                     Debug.WriteLine("GameMemoryReader successfully connected to MMF.");
                     
                     // reset debug counters on successful reconnection
