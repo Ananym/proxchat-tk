@@ -899,6 +899,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async void OnGameDataRead(object? sender, (bool Success, int MapId, string MapName, int X, int Y, string CharacterName) data)
     {
+        // log first few calls to confirm the event handler is being triggered
+        var totalCallCount = _debugSuccessCount + _debugFailureCount + 1;
+        if (totalCallCount <= 5)
+        {
+            _debugLog.LogMain($"OnGameDataRead call #{totalCallCount}: Success={data.Success}, IsRunning={IsRunning}, _isMemoryReaderInitialized={_isMemoryReaderInitialized}");
+        }
+        
         // debug: log first few successful reads to confirm data flow
         if (data.Success)
         {
@@ -941,19 +948,30 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 {
                     _isMemoryReaderInitialized = true;
                     StatusMessage = "Game data connection established. Ready.";
-                    _debugLog.LogMain($"Memory reader initialized - status set to Ready");
+                    _debugLog.LogMain($"Memory reader initialized - status set to Ready. IsRunning={IsRunning}");
                     Debug.WriteLine("GameMemoryReader successfully connected to MMF.");
+                    
+                    // reset debug counters on successful reconnection
+                    _debugSuccessCount = 0;
+                    _debugFailureCount = 0;
+                    _shouldLogRead = false;
+                    _debugLog.LogMain($"Reset debug counters on successful reconnection");
+                    
                     ((RelayCommand)StartCommand).RaiseCanExecuteChanged();
                 }
                 else
                 {
-                    // Debug: log why status message isn't being updated
-                    _debugLog.LogMain($"OnGameDataRead: Success but _isMemoryReaderInitialized already true, status not updated");
+                    // log successful reads periodically even when already initialized
+                    if (_debugSuccessCount % 50 == 1) // log every 50th success = 2%
+                    {
+                        _debugLog.LogMain($"OnGameDataRead: Success #{_debugSuccessCount} while already initialized. IsRunning={IsRunning}");
+                    }
                 }
             }
             else if (!data.Success && _isMemoryReaderInitialized && !IsDebugModeEnabled)
             {
                 _consecutiveReadFailures++;
+                _debugLog.LogMain($"OnGameDataRead: Failure #{_consecutiveReadFailures}/{MAX_CONSECUTIVE_FAILURES}. IsRunning={IsRunning}");
                 
                 if (IsRunning && _consecutiveReadFailures >= MAX_CONSECUTIVE_FAILURES)
                 {
@@ -962,13 +980,21 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     return;
                 }
                 
-                _isMemoryReaderInitialized = false;
-                StatusMessage = "Lost connection to game data provider. Waiting...";
-                Debug.WriteLine("GameMemoryReader lost connection to MMF.");
-                ((RelayCommand)StartCommand).RaiseCanExecuteChanged();
-                
-                ClearAllConnectedPeers();
-                _lastKnownCharacterName = null;
+                if (_consecutiveReadFailures >= MAX_CONSECUTIVE_FAILURES)
+                {
+                    _isMemoryReaderInitialized = false;
+                    StatusMessage = "Lost connection to game data provider. Waiting...";
+                    _debugLog.LogMain($"Memory reader marked as uninitialized after {_consecutiveReadFailures} failures");
+                    Debug.WriteLine("GameMemoryReader lost connection to MMF.");
+                    ((RelayCommand)StartCommand).RaiseCanExecuteChanged();
+                    
+                    if (IsRunning)
+                    {
+                        _debugLog.LogMain($"Clearing connected peers due to data provider failure while running");
+                        ClearAllConnectedPeers();
+                        _lastKnownCharacterName = null;
+                    }
+                }
             }
 
             // update source of truth fields and trigger UI updates (this should happen regardless of IsRunning)

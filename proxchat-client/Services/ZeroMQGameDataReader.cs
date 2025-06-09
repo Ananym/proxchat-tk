@@ -13,7 +13,7 @@ public class NamedPipeGameDataReader : IDisposable
     private const int MESSAGE_SIZE = 64; // sizeof(GameDataMessage)
     private const int PIPE_MESSAGE_SIZE = 72; // sizeof(PipeMessage)
     private const int HEARTBEAT_INTERVAL_MS = 3000;
-    private const int CONNECTION_TIMEOUT_MS = 2000;
+    private const int CONNECTION_TIMEOUT_MS = 2000; // reverted: keep reasonable timeout for stable connections
     
     private NamedPipeClientStream? _pipeClient;
     private bool _disposed = false;
@@ -79,11 +79,11 @@ public class NamedPipeGameDataReader : IDisposable
                 if (!_connected && !EnsureConnection())
                 {
                     connectionAttempts++;
-                    if (connectionAttempts % 20 == 1) // log every 20 attempts (every ~10 seconds)
+                    if (connectionAttempts % 5 == 1) // log every 5 attempts (every ~25 seconds)
                     {
                         _debugLog?.LogNamedPipe($"Connection attempt #{connectionAttempts} failed");
                     }
-                    Thread.Sleep(500);
+                    Thread.Sleep(5000); // 5-second intervals for reliable, non-interfering reconnections
                     continue;
                 }
                 
@@ -110,7 +110,13 @@ public class NamedPipeGameDataReader : IDisposable
                         messageCount++;
                         _lastDataReceived = DateTime.UtcNow;
                         
-                        // log only first message and every 100th
+                        // log 2% of messages to track reception without excessive verbosity
+                        if (messageCount % 50 == 0) // log every 50th message = 2%
+                        {
+                            _debugLog?.LogNamedPipe($"Received game data message #{messageCount} (2% sample)");
+                        }
+                        
+                        // log only first message and every 100th for overall count
                         if (messageCount == 1 || messageCount % 100 == 0)
                         {
                             _debugLog?.LogNamedPipe($"Received {messageCount} game data messages");
@@ -192,7 +198,7 @@ public class NamedPipeGameDataReader : IDisposable
             {
                 _debugLog?.LogNamedPipe($"Read thread error: {ex.Message}");
                 DisconnectPipe();
-                Thread.Sleep(500);
+                Thread.Sleep(5000); // 5-second intervals for reliable, non-interfering reconnections
             }
         }
         
@@ -253,7 +259,7 @@ public class NamedPipeGameDataReader : IDisposable
                 
                 // try to connect with timeout
                 var connectTask = Task.Run(() => _pipeClient.Connect(CONNECTION_TIMEOUT_MS));
-                if (!connectTask.Wait(CONNECTION_TIMEOUT_MS + 500))
+                if (!connectTask.Wait(CONNECTION_TIMEOUT_MS + 500)) // reverted: keep reasonable margin for stable connections
                 {
                     _pipeClient?.Dispose();
                     _pipeClient = null;

@@ -1,11 +1,29 @@
 #!/usr/bin/env pwsh
 
 param(
-    [switch]$build = $false
+    [switch]$build = $false,
+    [switch]$server = $false
 )
 
 # test script for zeromq ipc communication
 Write-Host "=== ProxChat ZeroMQ Test Script ===" -ForegroundColor Green
+
+# if server option, just start the game immediately
+if ($server) {
+    $gameExe = "E:\NexusTK\NexusTK.exe"  # adjust this path if needed
+    
+    Write-Host "Starting NexusTK server..." -ForegroundColor Yellow
+    
+    if (Test-Path $gameExe) {
+        $gameProcess = Start-Process -FilePath $gameExe -PassThru -WindowStyle Normal
+        Write-Host "Server started (PID: $($gameProcess.Id))" -ForegroundColor Green
+        exit 0
+    } else {
+        Write-Host "ERROR: Game exe not found at $gameExe" -ForegroundColor Red
+        Write-Host "Please adjust the game exe path" -ForegroundColor Yellow
+        exit 1
+    }
+}
 
 # paths - adjust game exe path if needed
 $projectRoot = $PSScriptRoot

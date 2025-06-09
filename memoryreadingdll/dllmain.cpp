@@ -61,7 +61,7 @@ private:
             PIPE_NAME.c_str(),
             PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
-            1,  // max instances
+            2,  // increased from 1 to allow better reconnection handling
             PIPE_BUFFER_SIZE,
             PIPE_BUFFER_SIZE,
             0,  // default timeout
@@ -69,7 +69,29 @@ private:
         );
 
         if (pipe == INVALID_HANDLE_VALUE) {
-            LogToFile("Failed to create named pipe: " + std::to_string(GetLastError()));
+            DWORD error = GetLastError();
+            LogToFile("Failed to create named pipe: " + std::to_string(error));
+            
+            // if pipe is busy, wait a bit and retry once
+            if (error == ERROR_PIPE_BUSY) {
+                LogToFile("Pipe busy, waiting 100ms and retrying...");
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                pipe = CreateNamedPipeA(
+                    PIPE_NAME.c_str(),
+                    PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                    PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+                    2,
+                    PIPE_BUFFER_SIZE,
+                    PIPE_BUFFER_SIZE,
+                    0,
+                    nullptr
+                );
+                if (pipe != INVALID_HANDLE_VALUE) {
+                    LogToFile("Named pipe created successfully on retry");
+                } else {
+                    LogToFile("Named pipe creation failed again: " + std::to_string(GetLastError()));
+                }
+            }
         } else {
             LogToFile("Named pipe created successfully");
         }
