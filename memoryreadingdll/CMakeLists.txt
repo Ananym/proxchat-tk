@@ -29,40 +29,14 @@ endif()
 add_library(memoryreadingdll SHARED
     dllmain.cpp
     memreader.cpp
-    ZeroMQPublisher.cpp
     version.rc
 )
 
-# manually find and link zeromq static library
-find_path(ZMQ_INCLUDE_DIR zmq.h 
-    PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/x86-windows-static/include)
-
-find_library(ZMQ_STATIC_LIB 
-    NAMES libzmq-mt-s-4_3_5 libzmq-mt-s
-    PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/x86-windows-static/lib
-    NO_DEFAULT_PATH)
-
-if(NOT ZMQ_INCLUDE_DIR OR NOT ZMQ_STATIC_LIB)
-    message(FATAL_ERROR "Static ZeroMQ not found. Include: ${ZMQ_INCLUDE_DIR}, Lib: ${ZMQ_STATIC_LIB}")
-endif()
-
-message(STATUS "Found ZeroMQ static lib: ${ZMQ_STATIC_LIB}")
-message(STATUS "Found ZeroMQ include: ${ZMQ_INCLUDE_DIR}")
-
-# include zeromq headers
-target_include_directories(memoryreadingdll PRIVATE ${ZMQ_INCLUDE_DIR})
-
-# define ZMQ_STATIC for static linking
-target_compile_definitions(memoryreadingdll PRIVATE ZMQ_STATIC)
-
-# link zeromq static library and all its dependencies
+# link with required windows libraries for named pipes
 target_link_libraries(memoryreadingdll PRIVATE 
-    ${ZMQ_STATIC_LIB}
     kernel32 
     ws2_32 
     version
-    iphlpapi
-    rpcrt4
     advapi32
 )
 
