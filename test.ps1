@@ -2,7 +2,8 @@
 
 param(
     [switch]$build = $false,
-    [switch]$server = $false
+    [switch]$server = $false,
+    [switch]$debug = $false
 )
 
 # test script for zeromq ipc communication
@@ -21,6 +22,24 @@ if ($server) {
     } else {
         Write-Host "ERROR: Game exe not found at $gameExe" -ForegroundColor Red
         Write-Host "Please adjust the game exe path" -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+# if debug option, just run client in debug mode
+if ($debug) {
+    $projectRoot = $PSScriptRoot
+    $clientExe = "$projectRoot\proxchat-client\bin\Debug\net9.0-windows10.0.17763.0\win-x64\ProxChatClient.exe"
+    
+    Write-Host "Starting ProxChat client in debug mode..." -ForegroundColor Yellow
+    
+    if (Test-Path $clientExe) {
+        $clientProcess = Start-Process -FilePath $clientExe -ArgumentList "--debug", "--log", "debugmode" -PassThru -WindowStyle Normal
+        Write-Host "Client started in debug mode (PID: $($clientProcess.Id))" -ForegroundColor Green
+        exit 0
+    } else {
+        Write-Host "ERROR: Client exe not found at $clientExe" -ForegroundColor Red
+        Write-Host "Run build first: cd proxchat-client && dotnet build" -ForegroundColor Yellow
         exit 1
     }
 }

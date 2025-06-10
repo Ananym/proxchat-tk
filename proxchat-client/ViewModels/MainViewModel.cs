@@ -45,8 +45,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     // Debug Mode Fields
     private bool _isDebugModeEnabled = false;
     private string _debugCharacterName = Guid.NewGuid().ToString().Substring(0, 8); // Default random string
-    private int _debugX = 110; // Changed to int
-    private int _debugY = 206; // Changed to int
+    private int _debugX = 109; // Changed to int
+    private int _debugY = 191; // Changed to int
     private int _debugMapId = 0; // Map 0 is perfectly valid - it's the first map
     private bool _useWavInput; // Debug-only, not persisted
     private string? _selectedAudioFile; // Path to selected audio file

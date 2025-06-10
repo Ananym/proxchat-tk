@@ -99,6 +99,13 @@ impl ServerState {
             .collect()
     }
 
+    // remove a client from all other clients' cached nearby lists
+    fn remove_from_all_nearby_caches(&mut self, client_id: &str) {
+        for (_, nearby_set) in self.last_nearby_lists.iter_mut() {
+            nearby_set.remove(client_id);
+        }
+    }
+
     // efficient update that only notifies for NEW peer introductions
     fn update_position_and_notify(&mut self, new_pos: ClientPosition, sender_tx: &mpsc::Sender<ServerMessage>) -> Vec<(String, mpsc::Sender<ServerMessage>)> {
         let client_id = new_pos.client_id.clone();
@@ -276,6 +283,9 @@ async fn handle_connection(
                                 state_write.positions.remove(&client_id_from_payload);
                                 state_write.last_update_time.remove(&client_id_from_payload);
                                 state_write.last_nearby_lists.remove(&client_id_from_payload);
+                                
+                                // remove this client from all other clients' cached nearby lists so they get reintroduced
+                                state_write.remove_from_all_nearby_caches(&client_id_from_payload);
                                 // note: not removing from connections as old connection will clean itself up
                             }
 
@@ -435,12 +445,15 @@ async fn handle_connection(
             state_write.last_update_time.remove(&disconnected_client_id);
             state_write.last_nearby_lists.remove(&disconnected_client_id); // clean up nearby cache
             
+            // remove this client from all other clients' cached nearby lists so they get reintroduced on reconnect
+            state_write.remove_from_all_nearby_caches(&disconnected_client_id);
+            
             // Only remove the client_id -> connection_id mapping if it still points to *this* connection
             // (Avoid removing it if the client reconnected quickly and the mapping was updated)
             if state_write.client_id_to_connection_id.get(&disconnected_client_id) == Some(&disconnected_connection_id) {
                 state_write.client_id_to_connection_id.remove(&disconnected_client_id);
             }
-            info!("Client disconnected and cleaned up: ID {} (connection {}) ({})",
+            info!("Client disconnected and cleaned up: ID {} (connection {}) ({}). Removed from all peer caches for proper reintroduction on reconnect.",
                   disconnected_client_id, disconnected_connection_id, addr);
         } else {
             // Client disconnected before sending UpdatePosition or task panicked
@@ -476,6 +489,9 @@ async fn check_timeouts(state: Arc<RwLock<ServerState>>) {
                 state_write.positions.remove(&client_id);
                 state_write.last_update_time.remove(&client_id);
                 state_write.last_nearby_lists.remove(&client_id); // clean up nearby cache
+                
+                // remove this client from all other clients' cached nearby lists so they get reintroduced on reconnect
+                state_write.remove_from_all_nearby_caches(&client_id);
                 
                 if let Some(connection_id) = state_write.client_id_to_connection_id.remove(&client_id) {
                     // Removing the connection sender will cause the send_task for that client to terminate,
