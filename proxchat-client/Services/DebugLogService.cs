@@ -93,56 +93,22 @@ public class DebugLogService : IDisposable
         }
     }
 
-    // only log truly critical WebRTC events
+    // log all WebRTC events
     public void LogWebRtc(string message, string? peerId = null)
-    {
-        // only log connection state changes and critical errors
-        if (message.Contains("connection state changed") || 
-            message.Contains("established") || 
-            message.Contains("failed") || 
-            message.Contains("ERROR") ||
-            message.Contains("Created new peer connection") ||
-            message.Contains("Cleaned up peer connection"))
-        {
-            string key = $"WEBRTC_{message.Substring(0, Math.Min(30, message.Length))}";
-            if (ShouldLog(key))
             {
                 Log(message, "WEBRTC");
-            }
-        }
     }
 
-    // only log signaling connection events and errors
+    // log all signaling events
     public void LogSignaling(string message, string? connectionId = null)
-    {
-        if (message.Contains("connected") || 
-            message.Contains("disconnected") || 
-            message.Contains("failed") || 
-            message.Contains("ERROR") ||
-            message.Contains("Regenerating client ID"))
-        {
-            string key = $"SIGNALING_{message.Substring(0, Math.Min(30, message.Length))}";
-            if (ShouldLog(key))
             {
                 Log(message, "SIGNALING");
-            }
-        }
     }
 
-    // only log audio device changes and critical errors
+    // log all audio events
     public void LogAudio(string message, string? deviceId = null)
-    {
-        if (message.Contains("Created") ||
-            message.Contains("device") ||
-            message.Contains("ERROR") ||
-            message.Contains("Failed"))
-        {
-            string key = $"AUDIO_{message.Substring(0, Math.Min(30, message.Length))}";
-            if (ShouldLog(key))
             {
                 Log(message, "AUDIO");
-            }
-        }
     }
 
     // main events - only log important state changes

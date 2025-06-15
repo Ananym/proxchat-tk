@@ -107,6 +107,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 _isDebugModeEnabled = value;
                 OnPropertyChanged();
+                
+                // disable/enable pipe reading based on debug mode
+                _memoryReader?.SetPipeReadingEnabled(!value);
+                _debugLog.LogMain($"Debug mode {(value ? "enabled" : "disabled")} - pipe reading {(value ? "disabled" : "enabled")}");
+                
                 // Refresh UI-bound properties that depend on debug mode
                 OnPropertyChanged(nameof(CurrentCharacterName));
                 OnPropertyChanged(nameof(CurrentX));
@@ -575,16 +580,41 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         
         var debugLog = new DebugLogService(logFileName);
         _debugLog = debugLog;
+        _debugLog.LogMain("MainViewModel constructor started");
 
-        _memoryReader = new NamedPipeGameDataReader(_config.GameDataIpcChannel, _debugLog);
-        
-        // Use hardcoded max distance for consistency across all users
-        const float HARDCODED_MAX_DISTANCE = 17.0f; // Extended range for more realistic audio falloff
-        _audioService = new AudioService(HARDCODED_MAX_DISTANCE, config, debugLog);
-        _signalingService = new SignalingService(config.WebSocketServer, debugLog);
-        _webRtcService = new WebRtcService(_audioService, _signalingService, HARDCODED_MAX_DISTANCE, debugLog);
-        _globalHotkeyService = new GlobalHotkeyService(debugLog);
-        
+        try
+        {
+            // determine if we should enable pipe reading based on whether we're likely in debug mode
+            // for now, we'll default to enabling pipe reading, but users can override with debug mode checkbox
+            bool enablePipeReading = true;
+            
+            _debugLog.LogMain($"Initializing NamedPipeGameDataReader with enablePipeReading={enablePipeReading}");
+            _memoryReader = new NamedPipeGameDataReader(_config.GameDataIpcChannel, _debugLog, enablePipeReading);
+            
+            // Use hardcoded max distance for consistency across all users
+            const float HARDCODED_MAX_DISTANCE = 17.0f; // Extended range for more realistic audio falloff
+            
+            _debugLog.LogMain("Initializing AudioService");
+            _audioService = new AudioService(HARDCODED_MAX_DISTANCE, config, debugLog);
+            
+            _debugLog.LogMain("Initializing SignalingService");
+            _signalingService = new SignalingService(config.WebSocketServer, debugLog);
+            
+            _debugLog.LogMain("Initializing WebRtcService");
+            _webRtcService = new WebRtcService(_audioService, _signalingService, HARDCODED_MAX_DISTANCE, debugLog);
+            
+            _debugLog.LogMain("Initializing GlobalHotkeyService");
+            _globalHotkeyService = new GlobalHotkeyService(debugLog);
+            
+            _debugLog.LogMain("Services initialized successfully");
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogMain($"ERROR during service initialization: {ex.Message}");
+            _debugLog.LogMain($"ERROR stack trace: {ex.StackTrace}");
+            throw;
+        }
+
         // Subscribe to game data read events
         _memoryReader.GameDataRead += OnGameDataRead;
 

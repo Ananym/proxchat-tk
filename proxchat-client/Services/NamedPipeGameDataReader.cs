@@ -21,6 +21,7 @@ public class NamedPipeGameDataReader : IDisposable
     private Thread? _heartbeatThread;
     private volatile bool _shouldStop = false;
     private volatile bool _connected = false;
+    private volatile bool _pipeReadingEnabled = true;
     private readonly DebugLogService? _debugLog;
     private readonly object _pipeLock = new object();
     private DateTime _lastHeartbeatSent = DateTime.MinValue;
@@ -28,6 +29,21 @@ public class NamedPipeGameDataReader : IDisposable
     
     // add event for new game data
     public event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName, int GameId)>? GameDataRead;
+    
+    // method to enable/disable pipe reading (e.g., when debug mode is toggled)
+    public void SetPipeReadingEnabled(bool enabled)
+    {
+        if (_pipeReadingEnabled == enabled) return;
+        
+        _pipeReadingEnabled = enabled;
+        _debugLog?.LogNamedPipe($"Pipe reading {(enabled ? "enabled" : "disabled")}");
+        
+        if (!enabled)
+        {
+            // disconnect if we're disabling
+            DisconnectPipe();
+        }
+    }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     struct PipeMessage
@@ -38,27 +54,36 @@ public class NamedPipeGameDataReader : IDisposable
         public byte[] Data;
     }
 
-    public NamedPipeGameDataReader(string ipcChannelName = "game-data-channel", DebugLogService? debugLog = null)
+    public NamedPipeGameDataReader(string ipcChannelName = "game-data-channel", DebugLogService? debugLog = null, bool enablePipeReading = true)
     {
         _debugLog = debugLog;
-        _debugLog?.LogNamedPipe($"Initializing NamedPipeGameDataReader for pipe '{PIPE_NAME}'");
+        _debugLog?.LogNamedPipe($"Initializing NamedPipeGameDataReader for pipe '{PIPE_NAME}', enablePipeReading={enablePipeReading}");
         
-        // start dedicated threads
-        _readThread = new Thread(ReadThreadLoop)
+        _pipeReadingEnabled = enablePipeReading;
+        
+        if (enablePipeReading)
         {
-            IsBackground = true,
-            Name = "NamedPipeReader"
-        };
-        _readThread.Start();
-        
-        _heartbeatThread = new Thread(HeartbeatThreadLoop)
+            // start dedicated threads only if pipe reading is enabled
+            _readThread = new Thread(ReadThreadLoop)
+            {
+                IsBackground = true,
+                Name = "NamedPipeReader"
+            };
+            _readThread.Start();
+            
+            _heartbeatThread = new Thread(HeartbeatThreadLoop)
+            {
+                IsBackground = true,
+                Name = "NamedPipeHeartbeat"
+            };
+            _heartbeatThread.Start();
+            
+            _debugLog?.LogNamedPipe("Started named pipe reader and heartbeat threads");
+        }
+        else
         {
-            IsBackground = true,
-            Name = "NamedPipeHeartbeat"
-        };
-        _heartbeatThread.Start();
-        
-        _debugLog?.LogNamedPipe("Started named pipe reader and heartbeat threads");
+            _debugLog?.LogNamedPipe("Pipe reading disabled - threads not started");
+        }
     }
 
     private void ReadThreadLoop()
@@ -75,6 +100,13 @@ public class NamedPipeGameDataReader : IDisposable
         {
             try
             {
+                // if pipe reading is disabled, just sleep and continue
+                if (!_pipeReadingEnabled)
+                {
+                    Thread.Sleep(1000);
+                    continue;
+                }
+                
                 // ensure we have a connection
                 if (!_connected && !EnsureConnection())
                 {
@@ -210,6 +242,13 @@ public class NamedPipeGameDataReader : IDisposable
         {
             try
             {
+                // if pipe reading is disabled, just sleep and continue
+                if (!_pipeReadingEnabled)
+                {
+                    Thread.Sleep(1000);
+                    continue;
+                }
+                
                 if (_connected)
                 {
                     var timeSinceLastHeartbeat = DateTime.UtcNow - _lastHeartbeatSent;

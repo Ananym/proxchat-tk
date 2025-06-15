@@ -42,10 +42,9 @@ public class AudioService : IDisposable
     private string? _customAudioFilePath; // User-selected audio file path
 
     // Opus specific settings for WebRTC transmission
-    internal const int OPUS_SAMPLE_RATE = 48000; // Opus native sample rate
+    internal const int DEFAULT_OPUS_SAMPLE_RATE = 48000; // Default Opus sample rate
     internal const int OPUS_CHANNELS = 1; // mono for voice chat
     internal const int OPUS_FRAME_SIZE_MS = 20; // Standard WebRTC packet size
-    internal const int OPUS_FRAME_SIZE_SAMPLES = OPUS_SAMPLE_RATE * OPUS_FRAME_SIZE_MS / 1000; // 960 samples
     internal const int OPUS_MAX_PACKET_SIZE = 1276; // max opus packet size
 
     private static readonly Random _random = new Random(); // For probabilistic logging
@@ -53,11 +52,12 @@ public class AudioService : IDisposable
 
     private readonly DebugLogService _debugLog;
     private readonly OpusCodecService _opusCodec;
+    private OpusCodecService? _fileOpusCodec; // separate codec for file input with different sample rate
     private readonly VolumeTransitionService _volumeTransitionService;
 
     // Buffer for microphone data before encoding
     private CircularBuffer? _microphoneCircularBuffer;
-    private WaveFormat _opus48KhzFormat = new WaveFormat(OPUS_SAMPLE_RATE, 16, OPUS_CHANNELS);
+    private WaveFormat _opus48KhzFormat = new WaveFormat(DEFAULT_OPUS_SAMPLE_RATE, 16, OPUS_CHANNELS);
     
     // track last audio level update time to prevent stuck displays
     private DateTime _lastAudioLevelUpdate = DateTime.UtcNow;
@@ -208,8 +208,8 @@ public class AudioService : IDisposable
         _config = config ?? new Config();
         _debugLog = debugLog ?? new DebugLogService();
         
-        // Initialize Opus codec service
-        _opusCodec = new OpusCodecService(_debugLog);
+        // Initialize Opus codec service with default 48kHz for microphone
+        _opusCodec = new OpusCodecService(_debugLog, DEFAULT_OPUS_SAMPLE_RATE);
         
         // Initialize volume transition service
         _volumeTransitionService = new VolumeTransitionService(_debugLog);
@@ -364,6 +364,15 @@ public class AudioService : IDisposable
                 _audioFileStream = reader;
                 _rawMuLawStream = null;
 
+                // Check if file sample rate is supported by Opus, otherwise use 48kHz
+                int fileSampleRate = (int)waveFormat.SampleRate;
+                int[] supportedRates = { 8000, 12000, 16000, 24000, 48000 };
+                int targetSampleRate = supportedRates.Contains(fileSampleRate) ? fileSampleRate : 48000;
+                
+                _fileOpusCodec?.Dispose(); // dispose any existing file codec
+                _fileOpusCodec = new OpusCodecService(_debugLog, targetSampleRate);
+                _debugLog.LogAudio($"[FILE] Created file-specific Opus codec: {fileSampleRate}Hz source -> {targetSampleRate}Hz Opus");
+
                 _audioFilePlaybackTimer = new Timer(AudioFilePlaybackCallback, null, 0, OPUS_FRAME_SIZE_MS);
                 _debugLog.LogAudio($"[FILE] Timer created with {OPUS_FRAME_SIZE_MS}ms interval");
             }
@@ -513,18 +522,17 @@ public class AudioService : IDisposable
             return; // exit early if buffer write fails
         }
 
-        // Calculate required 48kHz PCM bytes for one 20ms Opus frame
-        // One 20ms Opus frame = 960 samples at 48kHz
-        // Bytes for 960 samples of 48kHz, 16-bit mono = 960 * 2 bytes = 1920 bytes
+        // Calculate required PCM bytes for one 20ms Opus frame
+        // Use the actual frame size from the Opus codec (960 samples for 48kHz)
         
         // validate format parameters to prevent division by zero
-        if (OPUS_SAMPLE_RATE <= 0 || OPUS_FRAME_SIZE_MS <= 0 || _captureFormat.SampleRate <= 0 || _captureFormat.BitsPerSample <= 0)
+        if (_opusCodec.SampleRate <= 0 || OPUS_FRAME_SIZE_MS <= 0 || _captureFormat.SampleRate <= 0 || _captureFormat.BitsPerSample <= 0)
         {
-            _debugLog.LogAudio($"Invalid audio format parameters: OPUS_SAMPLE_RATE={OPUS_SAMPLE_RATE}, OPUS_FRAME_SIZE_MS={OPUS_FRAME_SIZE_MS}, CaptureRate={_captureFormat.SampleRate}, CaptureBits={_captureFormat.BitsPerSample}");
+            _debugLog.LogAudio($"Invalid audio format parameters: OpusSampleRate={_opusCodec.SampleRate}, OPUS_FRAME_SIZE_MS={OPUS_FRAME_SIZE_MS}, CaptureRate={_captureFormat.SampleRate}, CaptureBits={_captureFormat.BitsPerSample}");
             return; // exit early to prevent calculation errors
         }
         
-        int requiredInputBytes = OPUS_FRAME_SIZE_SAMPLES * 2; // 960 samples * 2 bytes per sample = 1920 bytes
+        int requiredInputBytes = _opusCodec.FrameSize * 2; // frame size * 2 bytes per sample
         
         // clamp to reasonable range to prevent extreme buffer requirements
         requiredInputBytes = Math.Clamp(requiredInputBytes, 32, 65536); // min 32 bytes, max 64KB per packet
@@ -675,6 +683,14 @@ public class AudioService : IDisposable
             _debugLog.LogAudio($"[FILE] First callback executed");
         }
 
+        // Debug: Check if anyone is subscribed to our event
+        if (_audioFileCallbackCount <= 3)
+        {
+            bool hasSubscribers = EncodedAudioPacketAvailable != null;
+            int subscriberCount = EncodedAudioPacketAvailable?.GetInvocationList()?.Length ?? 0;
+            _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: EncodedAudioPacketAvailable subscribers: {subscriberCount} (hasSubscribers: {hasSubscribers})");
+        }
+
         if (_isSelfMuted || (_isPushToTalk && !_isPushToTalkActive) || (_audioFileStream == null && _rawMuLawStream == null))
         {
             // Send silence when muted or push-to-talk is not active
@@ -691,7 +707,9 @@ public class AudioService : IDisposable
 
         try
         {
-            byte[] pcm48kHzData = new byte[OPUS_FRAME_SIZE_SAMPLES * 2]; // 960 samples * 2 bytes = 1920 bytes
+            // Use the file-specific codec if available, otherwise fall back to main codec
+            var activeCodec = _fileOpusCodec ?? _opusCodec;
+            byte[] pcmData = new byte[activeCodec.FrameSize * 2]; // frame size * 2 bytes per sample
             float calculatedLevel = 0.0f;
             bool hasValidAudio = false;
 
@@ -702,9 +720,13 @@ public class AudioService : IDisposable
                 var sourceFormat = audioFileStreamRef.WaveFormat;
                 if (sourceFormat == null) return;
                 
-                // Calculate how many bytes we need from the source to get 960 samples at 48kHz
-                int sourceBytesNeeded = (OPUS_FRAME_SIZE_SAMPLES * sourceFormat.SampleRate / OPUS_SAMPLE_RATE) * 
-                                      (sourceFormat.BitsPerSample / 8) * sourceFormat.Channels;
+                // Calculate how many bytes we need from the source for 20ms
+                // Use the actual frame size from the file-specific codec
+                double sourceSamplesFor20ms = activeCodec.FrameSize; // samples needed for this codec
+                int sourceBytesNeeded = (int)(sourceSamplesFor20ms * sourceFormat.Channels * (sourceFormat.BitsPerSample / 8));
+                
+                // Ensure we have a reasonable buffer size (prevent negative/zero values)
+                sourceBytesNeeded = Math.Max(1024, Math.Min(sourceBytesNeeded, 16384)); // between 1KB and 16KB
                 
                 byte[] sourcePcmData = new byte[sourceBytesNeeded];
                 int bytesRead = audioFileStreamRef.Read(sourcePcmData, 0, sourceBytesNeeded);
@@ -720,14 +742,19 @@ public class AudioService : IDisposable
                     // Apply input volume scaling to source PCM data before conversion
                     ApplyInputVolumeScaling(sourcePcmData, bytesRead, sourceFormat);
                     
-                    // Convert to 48kHz PCM and calculate level
-                    (pcm48kHzData, calculatedLevel) = ConvertPcmTo48kHzAndCalculateLevel(sourcePcmData, bytesRead, sourceFormat);
-                    hasValidAudio = true;
+                    // Convert to mono and resample if needed for Opus compatibility
+                    (pcmData, calculatedLevel) = ConvertToMonoAndResample(sourcePcmData, bytesRead, sourceFormat, activeCodec);
+                    hasValidAudio = pcmData.Length > 0;
+                    
+                    if (_audioFileCallbackCount <= 5)
+                    {
+                        _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: conversion result - input: {bytesRead} bytes, output: {pcmData.Length} bytes, hasValidAudio: {hasValidAudio}");
+                    }
                 }
                 else
                 {
                     // Empty file - fill with silence  
-                    Array.Fill(pcm48kHzData, (byte)0);
+                    Array.Fill(pcmData, (byte)0);
                 }
             }
             else 
@@ -735,8 +762,8 @@ public class AudioService : IDisposable
                 var rawMuLawStreamRef = _rawMuLawStream; // Capture reference to avoid race condition
                 if (rawMuLawStreamRef != null)
                 {
-                    // Raw MuLaw stream - convert to 48kHz PCM
-                    byte[] muLawData = new byte[OPUS_FRAME_SIZE_SAMPLES / 6]; // MuLaw is 8kHz, so 160 bytes for 20ms
+                    // Raw MuLaw stream - convert to target sample rate PCM
+                    byte[] muLawData = new byte[activeCodec.FrameSize / 6]; // MuLaw is typically 8kHz, adjust for frame size
                     int bytesRead = rawMuLawStreamRef.Read(muLawData, 0, muLawData.Length);
                     
                     if (bytesRead == 0)
@@ -748,14 +775,14 @@ public class AudioService : IDisposable
 
                     if (bytesRead > 0)
                     {
-                        // Convert MuLaw to 48kHz PCM
-                        (pcm48kHzData, calculatedLevel) = ConvertMuLawTo48kHzPcm(muLawData, bytesRead);
+                        // Convert MuLaw to target sample rate PCM
+                        (pcmData, calculatedLevel) = ConvertMuLawToPcm(muLawData, bytesRead, activeCodec);
                         hasValidAudio = true;
                     }
                     else
                     {
                         // Empty file - fill with silence
-                        Array.Fill(pcm48kHzData, (byte)0);
+                        Array.Fill(pcmData, (byte)0);
                     }
                 }
             }
@@ -771,29 +798,92 @@ public class AudioService : IDisposable
                 return;
             }
 
-            // Encode with Opus
-            if (hasValidAudio)
+            // Encode with Opus using the file-specific codec
+            if (hasValidAudio && pcmData.Length > 0) // Need some valid data
             {
-                short[] pcmSamples = OpusCodecService.BytesToShorts(pcm48kHzData, pcm48kHzData.Length);
-                byte[] opusPacket = _opusCodec.Encode(pcmSamples, pcmSamples.Length);
-                
-                if (opusPacket.Length > 0)
+                try
                 {
-                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
+                    // Validate PCM data before conversion to catch corruption early
+                    bool isDataValid = true;
+                    for (int i = 0; i < Math.Min(10, pcmData.Length - 1); i += 2)
+                    {
+                        try
+                        {
+                            short testSample = BitConverter.ToInt16(pcmData, i);
+                            // If we can read a sample without exception, data is probably valid
+                        }
+                        catch
+                        {
+                            isDataValid = false;
+                            break;
+                        }
+                    }
                     
+                    if (!isDataValid)
+                    {
+                        _debugLog.LogAudio($"[ERROR] PCM data is corrupted, skipping encoding");
+                        var silencePacket = new byte[0];
+                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
+                        return;
+                    }
+                    
+                    // Convert bytes to shorts and encode with the file-specific codec
+                    int bytesToUse = Math.Min(pcmData.Length, activeCodec.FrameSize * 2); // use actual data size, not more than frame size
+                    if (bytesToUse <= 0)
+                    {
+                        _debugLog.LogAudio($"[ERROR] No valid PCM data to encode: pcmData.Length={pcmData.Length}, frameSize={activeCodec.FrameSize}");
+                        var silencePacket = new byte[0];
+                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
+                        return;
+                    }
+                    
+                    short[] pcmSamples = OpusCodecService.BytesToShorts(pcmData, bytesToUse);
+                    
+                    // Add detailed logging to debug the Opus encoding issue
                     if (_audioFileCallbackCount <= 5)
                     {
-                        _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: generated {opusPacket.Length} byte packet, level={calculatedLevel:F3}");
+                        _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: About to encode - bytesToUse={bytesToUse}, pcmSamples.Length={pcmSamples.Length}, activeCodec.FrameSize={activeCodec.FrameSize}");
+                    }
+                    
+                    // Validate sample count before encoding
+                    if (pcmSamples.Length <= 0)
+                    {
+                        _debugLog.LogAudio($"[ERROR] Invalid sample count for Opus encoding: {pcmSamples.Length}");
+                        var silencePacket = new byte[0];
+                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
+                        return;
+                    }
+                    
+                    byte[] opusPacket = activeCodec.Encode(pcmSamples, pcmSamples.Length);
+                    
+                    if (opusPacket.Length > 0)
+                    {
+                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
+                        
+                        if (_audioFileCallbackCount <= 5)
+                        {
+                            _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: generated {opusPacket.Length} byte packet from {pcmSamples.Length} samples at {activeCodec.SampleRate}Hz, level={calculatedLevel:F3}");
+                        }
+                    }
+                    else
+                    {
+                        var silencePacket = new byte[0]; // Opus silence is empty packet
+                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
                     }
                 }
-                else
+                catch (Exception ex)
                 {
+                    _debugLog.LogAudio($"[ERROR] Error encoding Opus from file audio: {ex.Message}");
                     var silencePacket = new byte[0]; // Opus silence is empty packet
                     EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
                 }
             }
             else
             {
+                if (_audioFileCallbackCount <= 5)
+                {
+                    _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: sending silence - hasValidAudio={hasValidAudio}, dataLength={pcmData.Length}, requiredLength={activeCodec.FrameSize * 2}");
+                }
                 var silencePacket = new byte[0]; // Opus silence is empty packet
                 EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
             }
@@ -835,6 +925,12 @@ public class AudioService : IDisposable
         {
             _rawMuLawStream.Dispose();
             _rawMuLawStream = null;
+        }
+        
+        if (_fileOpusCodec != null)
+        {
+            _fileOpusCodec.Dispose();
+            _fileOpusCodec = null;
         }
     }
 
@@ -943,7 +1039,7 @@ public class AudioService : IDisposable
         {
             var waveOut = new WaveOutEvent();
             // create stereo format for panning support (8kHz, 16-bit, 2 channels)
-            var stereoFormat = new WaveFormat(OPUS_SAMPLE_RATE, 16, 2);
+            var stereoFormat = new WaveFormat(DEFAULT_OPUS_SAMPLE_RATE, 16, 2);
             var buffer = new BufferedWaveProvider(stereoFormat)
             {
                 DiscardOnBufferOverflow = true,
@@ -1299,6 +1395,7 @@ public class AudioService : IDisposable
         _transmissionCheckTimer?.Dispose(); // Dispose transmission timer
         _audioLevelResetTimer?.Dispose(); // Dispose audio level reset timer
         _opusCodec?.Dispose(); // Dispose Opus codec service
+        _fileOpusCodec?.Dispose(); // Dispose file-specific Opus codec service
         _volumeTransitionService?.Dispose(); // Dispose volume transition service
         GC.SuppressFinalize(this);
     }
@@ -1416,7 +1513,7 @@ public class AudioService : IDisposable
                 ApplyInputVolumeScaling(pcmBuffer, bytesDecoded, _opus48KhzFormat);
                 
                 // convert back to MuLaw
-                var muLawFormat = WaveFormat.CreateMuLawFormat(OPUS_SAMPLE_RATE, OPUS_CHANNELS);
+                var muLawFormat = WaveFormat.CreateMuLawFormat(DEFAULT_OPUS_SAMPLE_RATE, OPUS_CHANNELS);
                 using var rawPcmStream = new RawSourceWaveStream(pcmBuffer, 0, bytesDecoded, _opus48KhzFormat);
                 using var muLawStream = new WaveFormatConversionStream(muLawFormat, rawPcmStream);
                 
@@ -1506,75 +1603,121 @@ public class AudioService : IDisposable
         return Math.Clamp(maxSample, 0.0f, 1.0f);
     }
 
-    private (byte[] pcm48kHzData, float level) ConvertPcmTo48kHzAndCalculateLevel(byte[] sourcePcmData, int validBytes, WaveFormat sourceFormat)
+    private (byte[] monoData, float level) ConvertToMonoAndResample(byte[] sourcePcmData, int validBytes, WaveFormat sourceFormat, OpusCodecService codec)
     {
         try
         {
-            // first calculate level from source PCM
+            // Validate input data
+            if (sourcePcmData == null || validBytes <= 0 || sourceFormat == null)
+            {
+                _debugLog.LogAudio($"Invalid input to ConvertToMonoAndResample: data={sourcePcmData != null}, validBytes={validBytes}, format={sourceFormat != null}");
+                return (new byte[0], 0.0f);
+            }
+            
+            // Calculate level from source PCM
             float sourceLevel = CalculateLevelFromPcm(sourcePcmData, validBytes);
             
-            // convert source PCM to target format (48kHz, 16-bit, mono)
-            using var rawSourceStream = new RawSourceWaveStream(sourcePcmData, 0, validBytes, sourceFormat);
-            using var pcm48kHzStream = new WaveFormatConversionStream(_opus48KhzFormat, rawSourceStream);
+            // Target format for the codec
+            var targetFormat = new WaveFormat(codec.SampleRate, 16, 1); // mono at codec sample rate
+            int targetBytes = codec.FrameSize * 2; // target frame size in bytes
             
-            // read converted PCM data
-            byte[] pcm48kHzBuffer = new byte[OPUS_FRAME_SIZE_SAMPLES * 2]; // 960 samples * 2 bytes = 1920 bytes
-            int pcmBytesRead = pcm48kHzStream.Read(pcm48kHzBuffer, 0, pcm48kHzBuffer.Length);
+            // Check if we need resampling
+            bool needsResampling = sourceFormat.SampleRate != codec.SampleRate;
+            bool needsChannelConversion = sourceFormat.Channels != 1;
             
-            if (pcmBytesRead > 0)
+            if (!needsResampling && !needsChannelConversion)
             {
-                // pad with silence if needed
-                if (pcmBytesRead < pcm48kHzBuffer.Length)
-                {
-                    Array.Fill(pcm48kHzBuffer, (byte)0, pcmBytesRead, pcm48kHzBuffer.Length - pcmBytesRead);
-                }
+                // Already correct format - just take what we need
+                int bytesToTake = Math.Min(validBytes, targetBytes);
+                byte[] monoData = new byte[targetBytes];
+                Array.Copy(sourcePcmData, monoData, bytesToTake);
                 
-                return (pcm48kHzBuffer, sourceLevel);
+                _debugLog.LogAudio($"Audio already correct format: took {bytesToTake} bytes, level={sourceLevel:F3}");
+                return (monoData, sourceLevel);
             }
+            
+            // Use NAudio for format conversion (but with better error handling)
+            try
+            {
+                using var rawSourceStream = new RawSourceWaveStream(sourcePcmData, 0, validBytes, sourceFormat);
+                using var convertedStream = new WaveFormatConversionStream(targetFormat, rawSourceStream);
+                
+                byte[] convertedData = new byte[targetBytes];
+                int bytesRead = convertedStream.Read(convertedData, 0, targetBytes);
+                
+                if (bytesRead > 0)
+                {
+                    // Pad with silence if we didn't get enough data
+                    if (bytesRead < targetBytes)
+                    {
+                        Array.Fill(convertedData, (byte)0, bytesRead, targetBytes - bytesRead);
+                    }
+                    
+                    _debugLog.LogAudio($"Format conversion: {sourceFormat.SampleRate}Hz {sourceFormat.Channels}ch -> {codec.SampleRate}Hz 1ch, {validBytes} -> {bytesRead} bytes, level={sourceLevel:F3}");
+                    return (convertedData, sourceLevel);
+                }
+                else
+                {
+                    _debugLog.LogAudio($"Format conversion failed: no data read from conversion stream");
+                }
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogAudio($"Error in format conversion: {ex.Message}");
+            }
+            
+            // Fallback: return silence of correct size
+            byte[] silenceData = new byte[targetBytes];
+            Array.Fill(silenceData, (byte)0);
+            _debugLog.LogAudio($"ConvertToMonoAndResample fallback: returning {targetBytes} bytes of silence");
+            return (silenceData, 0.0f);
         }
         catch (Exception ex)
         {
-            _debugLog.LogAudio($"Error converting PCM to 48kHz: {ex.Message}");
+            _debugLog.LogAudio($"Error in simple mono conversion: {ex.Message}");
+            _debugLog.LogAudio($"Source format: {sourceFormat?.SampleRate}Hz, {sourceFormat?.Channels}ch, {sourceFormat?.BitsPerSample}bit, validBytes={validBytes}");
         }
         
-        // fallback: return silence
-        var silenceData = new byte[OPUS_FRAME_SIZE_SAMPLES * 2];
-        Array.Fill(silenceData, (byte)0);
-        return (silenceData, 0.0f);
+        // fallback: return silence of correct size (will be handled as no valid audio)
+        byte[] fallbackSilence = new byte[codec.FrameSize * 2];
+        Array.Fill(fallbackSilence, (byte)0);
+        _debugLog.LogAudio($"ConvertToMonoAndResample final fallback: returning {fallbackSilence.Length} bytes of silence");
+        return (fallbackSilence, 0.0f);
     }
 
-    private (byte[] pcm48kHzData, float level) ConvertMuLawTo48kHzPcm(byte[] muLawData, int validBytes)
+    private (byte[] pcmData, float level) ConvertMuLawToPcm(byte[] muLawData, int validBytes, OpusCodecService codec)
     {
         try
         {
-            // convert MuLaw to PCM for level analysis
+            // convert MuLaw to PCM at the codec's sample rate
             using var ms = new MemoryStream(muLawData, 0, validBytes);
             using var muLawReader = new MuLawWaveStream(ms);
-            using var pcmStream = new WaveFormatConversionStream(_opus48KhzFormat, muLawReader);
+            var targetFormat = new WaveFormat(codec.SampleRate, 16, OPUS_CHANNELS);
+            using var pcmStream = new WaveFormatConversionStream(targetFormat, muLawReader);
             
-            byte[] pcm48kHzBuffer = new byte[OPUS_FRAME_SIZE_SAMPLES * 2]; // 960 samples * 2 bytes = 1920 bytes
-            int bytesDecoded = pcmStream.Read(pcm48kHzBuffer, 0, pcm48kHzBuffer.Length);
+            byte[] pcmBuffer = new byte[codec.FrameSize * 2]; // frame size * 2 bytes per sample
+            int bytesDecoded = pcmStream.Read(pcmBuffer, 0, pcmBuffer.Length);
             
             if (bytesDecoded > 0)
             {
-                float level = CalculateLevelFromPcm(pcm48kHzBuffer, bytesDecoded);
+                float level = CalculateLevelFromPcm(pcmBuffer, bytesDecoded);
                 
                 // pad with silence if needed
-                if (bytesDecoded < pcm48kHzBuffer.Length)
+                if (bytesDecoded < pcmBuffer.Length)
                 {
-                    Array.Fill(pcm48kHzBuffer, (byte)0, bytesDecoded, pcm48kHzBuffer.Length - bytesDecoded);
+                    Array.Fill(pcmBuffer, (byte)0, bytesDecoded, pcmBuffer.Length - bytesDecoded);
                 }
                 
-                return (pcm48kHzBuffer, level);
+                return (pcmBuffer, level);
             }
         }
         catch (Exception ex)
         {
-            _debugLog.LogAudio($"Error converting MuLaw to 48kHz PCM: {ex.Message}");
+            _debugLog.LogAudio($"Error converting MuLaw to PCM: {ex.Message}");
         }
         
         // fallback: return silence
-        var silenceData = new byte[OPUS_FRAME_SIZE_SAMPLES * 2];
+        var silenceData = new byte[codec.FrameSize * 2];
         Array.Fill(silenceData, (byte)0);
         return (silenceData, 0.0f);
     }
@@ -1696,7 +1839,7 @@ public class AudioService : IDisposable
         {
             _debugLog.LogAudio($"Error decoding Opus packet for WebRTC aggregation: {ex.Message}");
             // return silence on decode error
-            return new short[OPUS_FRAME_SIZE_SAMPLES];
+            return new short[_opusCodec.FrameSize];
         }
     }
 }
@@ -1730,10 +1873,10 @@ internal class MuLawWaveStream : WaveStream
     private readonly Stream _sourceStream;
     private readonly WaveFormat _waveFormat;
 
-    public MuLawWaveStream(Stream sourceStream)
+    public MuLawWaveStream(Stream sourceStream, int sampleRate = 8000)
     {
         _sourceStream = sourceStream;
-        _waveFormat = WaveFormat.CreateMuLawFormat(AudioService.OPUS_SAMPLE_RATE, AudioService.OPUS_CHANNELS);
+        _waveFormat = WaveFormat.CreateMuLawFormat(sampleRate, AudioService.OPUS_CHANNELS);
     }
 
     public override WaveFormat WaveFormat => _waveFormat;

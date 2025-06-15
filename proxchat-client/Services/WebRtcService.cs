@@ -30,7 +30,7 @@ public class WebRtcService : IDisposable
     private const double LOG_PROBABILITY = 0.02; // Enable some logging to debug core issue
 
     private static readonly RTCIceServer _stunServer = new RTCIceServer { urls = "stun:stun.l.google.com:19302" };
-    private AudioExtrasSource? _audioExtrasSource;
+    private VirtualAudioSource? _virtualAudioSource;
     private MediaStreamTrack? _audioTrack;
 
     public event EventHandler<(string PeerId, int MapId, int X, int Y, string CharacterName)>? PositionReceived;
@@ -55,8 +55,8 @@ public class WebRtcService : IDisposable
         // Initialize audio system first
         InitializeAudioSystem();
 
-        // Connect our AudioService to the audio aggregator
-        _audioService.EncodedAudioPacketAvailable += OnAudioPacketFromService;
+        // VirtualAudioSource will connect directly to AudioService events
+        // No need for manual subscription here
 
         // Initialize immediately
         EnsureInitialized();
@@ -84,89 +84,51 @@ public class WebRtcService : IDisposable
 
     private void InitializeAudioSystem()
     {
+        _debugLog.LogWebRtc("InitializeAudioSystem started");
+        
         try
         {
             // Clean up existing resources
-            if (_audioExtrasSource != null)
+            if (_virtualAudioSource != null)
             {
-                _audioExtrasSource.CloseAudio();
-                _audioExtrasSource = null;
+                _debugLog.LogWebRtc("Cleaning up existing VirtualAudioSource");
+                _virtualAudioSource.CloseAudio().Wait();
+                _virtualAudioSource = null;
             }
 
-            // Create AudioExtrasSource as our audio aggregator
-            _audioExtrasSource = new AudioExtrasSource(new AudioEncoder());
-            _debugLog.LogWebRtc("Created AudioExtrasSource as audio aggregator");
+            // Create VirtualAudioSource as our audio aggregator
+            _debugLog.LogWebRtc("Creating VirtualAudioSource");
+            _virtualAudioSource = new VirtualAudioSource(_audioService, _debugLog);
+            _debugLog.LogWebRtc("Created VirtualAudioSource as audio aggregator");
             
-            // Create media track with the AudioExtrasSource
-            _audioTrack = new MediaStreamTrack(_audioExtrasSource.GetAudioSourceFormats(), MediaStreamStatusEnum.SendOnly);
-            _debugLog.LogWebRtc($"Created audio track with AudioExtrasSource");
-
-            // AudioExtrasSource will automatically handle audio distribution through the MediaStreamTrack
-            // No need for manual SendAudio calls - the track integration handles this
+            // Create media track with the VirtualAudioSource
+            _debugLog.LogWebRtc("Creating MediaStreamTrack");
+            _audioTrack = new MediaStreamTrack(_virtualAudioSource.GetAudioSourceFormats(), MediaStreamStatusEnum.SendOnly);
+            _debugLog.LogWebRtc($"Created audio track with VirtualAudioSource");
 
             // Start the audio source
-            _audioExtrasSource.StartAudio();
-            _debugLog.LogWebRtc("AudioExtrasSource started and connected to track");
+            _debugLog.LogWebRtc("Starting VirtualAudioSource");
+            _virtualAudioSource.StartAudio().Wait();
+            _debugLog.LogWebRtc("VirtualAudioSource started and connected to track");
         }
         catch (Exception ex)
         {
-            _debugLog.LogWebRtc($"Error initializing audio system with AudioExtrasSource: {ex.Message}");
+            _debugLog.LogWebRtc($"ERROR initializing audio system with VirtualAudioSource: {ex.Message}");
+            _debugLog.LogWebRtc($"ERROR stack trace: {ex.StackTrace}");
             
             // Clean up any partially initialized resources
-            if (_audioExtrasSource != null)
+            if (_virtualAudioSource != null)
             {
                 try
                 {
-                    _audioExtrasSource.CloseAudio();
+                    _virtualAudioSource.CloseAudio().Wait();
                 }
                 catch { }
-                _audioExtrasSource = null;
+                _virtualAudioSource = null;
             }
             _audioTrack = null;
             
             throw;
-        }
-    }
-
-    private void OnAudioPacketFromService(object? sender, EncodedAudioPacketEventArgs e)
-    {
-        // Bridge our AudioService packets to AudioExtrasSource
-        if (_audioExtrasSource != null)
-        {
-            try
-            {
-                // AudioExtrasSource expects raw PCM samples via ExternalAudioSourceRawSample
-                // We need to decode our Opus packets back to PCM first
-                if (e.Buffer.Length > 0)
-                {
-                    // Decode Opus packet to PCM using AudioService's codec
-                    short[] pcmSamples = _audioService.DecodeOpusPacket(e.Buffer, e.Buffer.Length);
-                    
-                    if (pcmSamples.Length > 0)
-                    {
-                        // Feed raw PCM samples to AudioExtrasSource
-                        // Duration is 20ms for standard Opus frames
-                        _audioExtrasSource.ExternalAudioSourceRawSample(
-                            SIPSorceryMedia.Abstractions.AudioSamplingRatesEnum.Rate48KHz, 
-                            20, // 20ms duration
-                            pcmSamples);
-                    }
-                }
-                else
-                {
-                    // Send silence for empty packets
-                    short[] silenceSamples = new short[960]; // 20ms at 48kHz = 960 samples
-                    Array.Fill(silenceSamples, (short)0);
-                    _audioExtrasSource.ExternalAudioSourceRawSample(
-                        SIPSorceryMedia.Abstractions.AudioSamplingRatesEnum.Rate48KHz, 
-                        20, 
-                        silenceSamples);
-                }
-            }
-            catch (Exception ex)
-            {
-                _debugLog.LogWebRtc($"Error forwarding audio packet to AudioExtrasSource: {ex.Message}");
-            }
         }
     }
 
@@ -204,12 +166,19 @@ public class WebRtcService : IDisposable
             pc.addTrack(_audioTrack);
             _debugLog.LogWebRtc($"Added audio track to peer connection {peerId}");
 
+            // Connect VirtualAudioSource to this peer connection
+            if (_virtualAudioSource != null)
+            {
+                _virtualAudioSource.OnAudioSourceEncodedSample += pc.SendAudio;
+                _debugLog.LogWebRtc($"Connected VirtualAudioSource to peer connection {peerId}");
+            }
+
             // Set up format negotiation for the audio source
             pc.OnAudioFormatsNegotiated += (formats) =>
             {
-                if (_audioExtrasSource != null && formats.Any())
+                if (_virtualAudioSource != null && formats.Any())
                 {
-                    _audioExtrasSource.SetAudioSourceFormat(formats.First());
+                    _virtualAudioSource.SetAudioSourceFormat(formats.First());
                     _debugLog.LogWebRtc($"Set audio format for peer {peerId}: {formats.First().Codec}");
                 }
             };
@@ -552,6 +521,13 @@ public class WebRtcService : IDisposable
         {
             try
             {
+                // Disconnect VirtualAudioSource from this peer connection
+                if (_virtualAudioSource != null)
+                {
+                    _virtualAudioSource.OnAudioSourceEncodedSample -= state.PeerConnection.SendAudio;
+                    _debugLog.LogWebRtc($"Disconnected VirtualAudioSource from peer connection {peerId}");
+                }
+                
                 state.PeerConnection.Close("Removed by application logic");
             }
             catch (Exception ex)
@@ -628,9 +604,18 @@ public class WebRtcService : IDisposable
         _signalingService.OfferReceived -= OnOfferReceived;
         _signalingService.AnswerReceived -= OnAnswerReceived;
         _signalingService.IceCandidateReceived -= OnIceCandidateReceived;
-        _audioService.EncodedAudioPacketAvailable -= OnAudioPacketFromService;
         
-        _audioExtrasSource?.CloseAudio(); 
+        if (_virtualAudioSource != null)
+        {
+            try
+            {
+                _virtualAudioSource.CloseAudio().Wait();
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogWebRtc($"Error closing VirtualAudioSource: {ex.Message}");
+            }
+        }
 
         GC.SuppressFinalize(this);
     }

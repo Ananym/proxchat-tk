@@ -1,160 +1,220 @@
 #!/usr/bin/env pwsh
 
 param(
-    [switch]$build = $false,
-    [switch]$server = $false,
-    [switch]$debug = $false
+    [switch]$s = $false,   # run nexustk.exe (server only)
+    [switch]$bs = $false,  # build dll + run nexustk.exe (build server)
+    [switch]$n = $false,   # run proxchat client normal mode
+    [switch]$d = $false,   # run proxchat client debug mode
+    [switch]$b = $false    # build proxchat client only
 )
 
 # test script for zeromq ipc communication
 Write-Host "=== ProxChat ZeroMQ Test Script ===" -ForegroundColor Green
 
-# if server option, just start the game immediately
-if ($server) {
-    $gameExe = "E:\NexusTK\NexusTK.exe"  # adjust this path if needed
-    
-    Write-Host "Starting NexusTK server..." -ForegroundColor Yellow
-    
-    if (Test-Path $gameExe) {
-        $gameProcess = Start-Process -FilePath $gameExe -ArgumentList "--debug" -PassThru -WindowStyle Normal
-        Write-Host "Server started (PID: $($gameProcess.Id))" -ForegroundColor Green
-        exit 0
-    } else {
-        Write-Host "ERROR: Game exe not found at $gameExe" -ForegroundColor Red
-        Write-Host "Please adjust the game exe path" -ForegroundColor Yellow
-        exit 1
-    }
+# check for mutually exclusive options
+if ($s -and $bs) {
+    Write-Host "ERROR: -s and -bs are mutually exclusive" -ForegroundColor Red
+    Write-Host "Use -s for server only, or -bs for build+server" -ForegroundColor Yellow
+    exit 1
 }
 
-# if debug option, just run client in debug mode
-if ($debug) {
-    $projectRoot = $PSScriptRoot
-    $clientExe = "$projectRoot\proxchat-client\bin\Debug\net9.0-windows10.0.17763.0\win-x64\ProxChatClient.exe"
-    
-    Write-Host "Starting ProxChat client in debug mode..." -ForegroundColor Yellow
-    
-    if (Test-Path $clientExe) {
-        $clientProcess = Start-Process -FilePath $clientExe -ArgumentList "--debug", "--log", "debugmode" -PassThru -WindowStyle Normal
-        Write-Host "Client started in debug mode (PID: $($clientProcess.Id))" -ForegroundColor Green
-        exit 0
-    } else {
-        Write-Host "ERROR: Client exe not found at $clientExe" -ForegroundColor Red
-        Write-Host "Run build first: cd proxchat-client && dotnet build" -ForegroundColor Yellow
-        exit 1
-    }
+# show what we're going to do
+$actions = @()
+if ($bs) { $actions += "build dll + server" }
+elseif ($s) { $actions += "server" }
+if ($b) { $actions += "build client" }
+if ($n) { $actions += "client (normal)" }
+if ($d) { $actions += "client (debug)" }
+
+if ($actions.Count -eq 0) {
+    Write-Host "No actions specified. Available options:" -ForegroundColor Yellow
+    Write-Host "  -s   : run nexustk.exe (server only)" -ForegroundColor Gray
+    Write-Host "  -bs  : build dll + run nexustk.exe (build server)" -ForegroundColor Gray
+    Write-Host "  -n   : run proxchat client (normal mode)" -ForegroundColor Gray
+    Write-Host "  -d   : run proxchat client (debug mode)" -ForegroundColor Gray
+    Write-Host "  -b   : build proxchat client" -ForegroundColor Gray
+    Write-Host "" -ForegroundColor Gray
+    Write-Host "Examples:" -ForegroundColor Yellow
+    Write-Host "  .\test.ps1 -s           # server only" -ForegroundColor Gray
+    Write-Host "  .\test.ps1 -bs -n       # build dll, server, normal client" -ForegroundColor Gray
+    Write-Host "  .\test.ps1 -b -n -d     # build client, run normal + debug" -ForegroundColor Gray
+    Write-Host "  .\test.ps1 -bs -b -n -d # build all, run server + both clients" -ForegroundColor Gray
+    exit 0
 }
 
-# paths - adjust game exe path if needed
+Write-Host "Actions: $($actions -join ', ')" -ForegroundColor Cyan
+Write-Host ""
+
+# paths
 $projectRoot = $PSScriptRoot
-$clientLogPath = "$projectRoot\normalmode.log"
+$clientNormalLogPath = "$projectRoot\normalmode.log"
+$clientDebugLogPath = "$projectRoot\debugmode.log"
 $dllLogPath = "E:\NexusTK\memoryreadingdll_log.txt"
 $sourceDll = "$projectRoot\memoryreadingdll\build\Release\VERSION.dll"
 $targetDll = "E:\NexusTK\VERSION.dll"
 $clientExe = "$projectRoot\proxchat-client\bin\Debug\net9.0-windows10.0.17763.0\win-x64\ProxChatClient.exe"
 $gameExe = "E:\NexusTK\NexusTK.exe"  # adjust this path if needed
 
-# build projects if requested
-if ($build) {
-    Write-Host "Building projects..." -ForegroundColor Yellow
+$startedProcesses = @()
+
+# === BUILD PHASE ===
+
+# build memory reading dll if -bs specified
+if ($bs) {
+    Write-Host "Building memory reading DLL..." -ForegroundColor Yellow
     
-    # save original directory
     $originalDir = Get-Location
-    
     try {
-        # build memory reading dll
-        Write-Host "  Building memory reading DLL..." -ForegroundColor Cyan
         Set-Location "$projectRoot\memoryreadingdll"
         & .\build.ps1
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "    ERROR: Memory reading DLL build failed" -ForegroundColor Red
+            Write-Host "ERROR: Memory reading DLL build failed" -ForegroundColor Red
             exit 1
         }
-        Write-Host "    Memory reading DLL build completed" -ForegroundColor Green
-        
-        # build client
-        Write-Host "  Building client..." -ForegroundColor Cyan
-        Set-Location "$projectRoot\proxchat-client"
-        & dotnet build
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "    ERROR: Client build failed" -ForegroundColor Red
-            exit 1
-        }
-        Write-Host "    Client build completed" -ForegroundColor Green
+        Write-Host "Memory reading DLL build completed" -ForegroundColor Green
     }
     finally {
-        # restore original directory
         Set-Location $originalDir
     }
     
-    Write-Host "All builds completed successfully!" -ForegroundColor Green
-    Write-Host ""
+    # copy dll to game folder
+    Write-Host "Copying VERSION.dll to game directory..." -ForegroundColor Yellow
+    if (Test-Path $sourceDll) {
+        Copy-Item $sourceDll $targetDll -Force
+        Write-Host "Copied: $sourceDll -> $targetDll" -ForegroundColor Green
+    } else {
+        Write-Host "ERROR: Source DLL not found at $sourceDll" -ForegroundColor Red
+        exit 1
+    }
 }
 
-Write-Host "Cleaning up old log files..." -ForegroundColor Yellow
-
-# delete normalmode.log if it exists
-if (Test-Path $clientLogPath) {
-    Remove-Item $clientLogPath -Force
-    Write-Host "  Deleted: $clientLogPath"
-} else {
-    Write-Host "  normalmode.log not found (ok)"
+# build proxchat client if -b specified
+if ($b) {
+    Write-Host "Building ProxChat client..." -ForegroundColor Yellow
+    
+    $originalDir = Get-Location
+    try {
+        Set-Location "$projectRoot\proxchat-client"
+        & dotnet build
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Client build failed" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "Client build completed" -ForegroundColor Green
+    }
+    finally {
+        Set-Location $originalDir
+    }
 }
 
-# delete dll log if it exists  
-if (Test-Path $dllLogPath) {
-    "" | Out-File $dllLogPath -Encoding UTF8
-    Write-Host "  Cleared: $dllLogPath"
-} else {
-    "" | Out-File $dllLogPath -Encoding UTF8
-    Write-Host "  Created: $dllLogPath"
+# === CLEANUP PHASE ===
+
+# clean dll log if server will be started
+if ($s -or $bs) {
+    Write-Host "Cleaning server log..." -ForegroundColor Yellow
+    if (Test-Path $dllLogPath) {
+        "" | Out-File $dllLogPath -Encoding UTF8
+        Write-Host "Cleared: $dllLogPath"
+    } else {
+        "" | Out-File $dllLogPath -Encoding UTF8
+        Write-Host "Created: $dllLogPath"
+    }
 }
 
-Write-Host "Copying VERSION.dll to game directory..." -ForegroundColor Yellow
-
-# copy built dll to game folder
-if (Test-Path $sourceDll) {
-    Copy-Item $sourceDll $targetDll -Force
-    Write-Host "  Copied: $sourceDll -> $targetDll"
-} else {
-    Write-Host "  ERROR: Source DLL not found at $sourceDll" -ForegroundColor Red
-    Write-Host "  Run build first: cd memoryreadingdll && .\build.ps1" -ForegroundColor Red
-    exit 1
+# clean normal client log if -n specified
+if ($n) {
+    Write-Host "Cleaning normal client log..." -ForegroundColor Yellow
+    if (Test-Path $clientNormalLogPath) {
+        Remove-Item $clientNormalLogPath -Force
+        Write-Host "Deleted: $clientNormalLogPath"
+    }
 }
 
-Write-Host "Starting ProxChat client..." -ForegroundColor Yellow
-
-# start client with logging
-if (Test-Path $clientExe) {
-    $clientProcess = Start-Process -FilePath $clientExe -ArgumentList "--log", "normalmode" -PassThru -WindowStyle Normal
-    Write-Host "  Client started (PID: $($clientProcess.Id))"
-} else {
-    Write-Host "  ERROR: Client exe not found at $clientExe" -ForegroundColor Red
-    Write-Host "  Run build first: cd proxchat-client && dotnet build" -ForegroundColor Red
-    exit 1
+# clean debug client log if -d specified
+if ($d) {
+    Write-Host "Cleaning debug client log..." -ForegroundColor Yellow
+    if (Test-Path $clientDebugLogPath) {
+        Remove-Item $clientDebugLogPath -Force
+        Write-Host "Deleted: $clientDebugLogPath"
+    }
 }
 
-Write-Host "Waiting 3 seconds before starting game..." -ForegroundColor Yellow
-Start-Sleep -Seconds 3
+# === EXECUTION PHASE ===
 
-Write-Host "Starting NexusTK game..." -ForegroundColor Yellow
-
-# start game
-if (Test-Path $gameExe) {
-    $gameProcess = Start-Process -FilePath $gameExe -ArgumentList "--debug" -PassThru -WindowStyle Normal
-    Write-Host "  Game started (PID: $($gameProcess.Id))"
-} else {
-    Write-Host "  ERROR: Game exe not found at $gameExe" -ForegroundColor Red
-    Write-Host "  Please adjust the `$gameExe path in this script" -ForegroundColor Yellow
-    exit 1
+# start server if -s or -bs specified
+if ($s -or $bs) {
+    Write-Host "Starting NexusTK server..." -ForegroundColor Yellow
+    
+    if (Test-Path $gameExe) {
+        $gameProcess = Start-Process -FilePath $gameExe -ArgumentList "--debug" -PassThru -WindowStyle Normal
+        Write-Host "Server started (PID: $($gameProcess.Id))" -ForegroundColor Green
+        $startedProcesses += @{ Type = "Server"; PID = $gameProcess.Id }
+    } else {
+        Write-Host "ERROR: Game exe not found at $gameExe" -ForegroundColor Red
+        Write-Host "Please adjust the game exe path" -ForegroundColor Yellow
+        exit 1
+    }
+    
+    # wait a bit before starting clients
+    if ($n -or $d) {
+        Write-Host "Waiting 3 seconds before starting clients..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 3
+    }
 }
+
+# start normal client if -n specified
+if ($n) {
+    Write-Host "Starting ProxChat client (normal mode)..." -ForegroundColor Yellow
+    
+    if (Test-Path $clientExe) {
+        $clientProcess = Start-Process -FilePath $clientExe -ArgumentList "--log", "normalmode" -PassThru -WindowStyle Normal
+        Write-Host "Normal client started (PID: $($clientProcess.Id))" -ForegroundColor Green
+        $startedProcesses += @{ Type = "Client (Normal)"; PID = $clientProcess.Id }
+    } else {
+        Write-Host "ERROR: Client exe not found at $clientExe" -ForegroundColor Red
+        Write-Host "Run build first with -b option" -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+# start debug client if -d specified
+if ($d) {
+    Write-Host "Starting ProxChat client (debug mode)..." -ForegroundColor Yellow
+    
+    if (Test-Path $clientExe) {
+        $clientProcess = Start-Process -FilePath $clientExe -ArgumentList "--debug", "--log", "debugmode" -PassThru -WindowStyle Normal
+        Write-Host "Debug client started (PID: $($clientProcess.Id))" -ForegroundColor Green
+        $startedProcesses += @{ Type = "Client (Debug)"; PID = $clientProcess.Id }
+    } else {
+        Write-Host "ERROR: Client exe not found at $clientExe" -ForegroundColor Red
+        Write-Host "Run build first with -b option" -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+# === SUMMARY ===
 
 Write-Host ""
-Write-Host "=== Test Started Successfully ===" -ForegroundColor Green
-Write-Host "Client PID: $($clientProcess.Id)" -ForegroundColor Cyan
-Write-Host "Game PID: $($gameProcess.Id)" -ForegroundColor Cyan
+Write-Host "=== Started Successfully ===" -ForegroundColor Green
+
+if ($startedProcesses.Count -gt 0) {
+    foreach ($proc in $startedProcesses) {
+        Write-Host "$($proc.Type): PID $($proc.PID)" -ForegroundColor Cyan
+    }
+} else {
+    Write-Host "No processes started (build-only operation)" -ForegroundColor Cyan
+}
+
 Write-Host ""
 Write-Host "To monitor logs in real-time:" -ForegroundColor Yellow
-Write-Host "  Client: Get-Content '$clientLogPath' -Wait" -ForegroundColor Gray
-Write-Host "  DLL:    Get-Content '$dllLogPath' -Wait" -ForegroundColor Gray
+if ($s -or $bs) {
+    Write-Host "  Server: Get-Content '$dllLogPath' -Wait" -ForegroundColor Gray
+}
+if ($n) {
+    Write-Host "  Normal: Get-Content '$clientNormalLogPath' -Wait" -ForegroundColor Gray
+}
+if ($d) {
+    Write-Host "  Debug:  Get-Content '$clientDebugLogPath' -Wait" -ForegroundColor Gray
+}
 Write-Host ""
 Write-Host "Press Ctrl+C to stop monitoring, or close windows manually" 
