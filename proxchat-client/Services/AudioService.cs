@@ -63,6 +63,9 @@ public class AudioService : IDisposable
     private DateTime _lastAudioLevelUpdate = DateTime.UtcNow;
     private Timer? _audioLevelResetTimer;
 
+    // Add this field with the other private fields
+    private int _audioFileCallbackCount = 0;
+
     // Static constructor to initialize MediaFoundation for MP3 support
     static AudioService()
     {
@@ -113,17 +116,37 @@ public class AudioService : IDisposable
         get => _useAudioFileInput;
         set
         {
+            _debugLog.LogAudio($"[DEBUG] UseAudioFileInput setter called: current={_useAudioFileInput}, new={value}");
+            
             if (_useAudioFileInput != value)
             {
-                _debugLog.LogAudio($"UseAudioFileInput changing from {_useAudioFileInput} to {value}");
+                _debugLog.LogAudio($"[DEBUG] UseAudioFileInput changing from {_useAudioFileInput} to {value}");
+                
+                // Always stop current capture first
+                _debugLog.LogAudio($"[DEBUG] Stopping current capture");
+                StopCapture();
+                
+                // Update the field
                 _useAudioFileInput = value;
-                if (_waveIn != null || _audioFilePlaybackTimer != null)
+                _debugLog.LogAudio($"[DEBUG] Updated _useAudioFileInput to {_useAudioFileInput}");
+                
+                // Always try to start capture with the new setting
+                try
                 {
-                    _debugLog.LogAudio("Stopping current capture before switching input type");
-                    StopCapture();
+                    _debugLog.LogAudio($"[DEBUG] About to call StartCapture()");
+                    StartCapture();
+                    _debugLog.LogAudio($"[DEBUG] Successfully started capture with UseAudioFileInput={_useAudioFileInput}");
                 }
-                _debugLog.LogAudio("Starting capture with new input type");
-                StartCapture();
+                catch (Exception ex)
+                {
+                    _debugLog.LogAudio($"[ERROR] Error starting capture: {ex.Message}");
+                    // Re-throw so UI can handle the error
+                    throw;
+                }
+            }
+            else
+            {
+                _debugLog.LogAudio($"[DEBUG] UseAudioFileInput value unchanged: {value}");
             }
         }
     }
@@ -136,14 +159,23 @@ public class AudioService : IDisposable
             if (_customAudioFilePath != value)
             {
                 _customAudioFilePath = value;
-                _debugLog.LogAudio($"CustomAudioFilePath changed to: {value ?? "null"}");
+                _debugLog.LogAudio($"[DEBUG] CustomAudioFilePath changed to: {value ?? "null"}");
                 
-                // If currently using file input, restart with new file
-                if (_useAudioFileInput && (_waveIn != null || _audioFilePlaybackTimer != null))
+                // If using file input, restart capture to pick up the new file
+                if (_useAudioFileInput)
                 {
-                    _debugLog.LogAudio("Restarting audio file capture with new file path");
-                    StopCapture();
-                    StartCapture();
+                    _debugLog.LogAudio("[DEBUG] File input is enabled, restarting capture with new file");
+                    try
+                    {
+                        StopCapture();
+                        StartCapture();
+                        _debugLog.LogAudio($"[DEBUG] Successfully restarted capture with new audio file");
+                    }
+                    catch (Exception ex)
+                    {
+                        _debugLog.LogAudio($"[ERROR] Error restarting capture with new audio file: {ex.Message}");
+                        // Don't throw here - just log the error and leave capture stopped
+                    }
                 }
             }
         }
@@ -254,14 +286,30 @@ public class AudioService : IDisposable
 
     public void StartCapture()
     {
-        if (_waveIn != null || _audioFilePlaybackTimer != null) return;
+        _debugLog.LogAudio($"[DEBUG] StartCapture called: useFile={_useAudioFileInput}, waveIn={_waveIn != null}, timer={_audioFilePlaybackTimer != null}");
+        
+        if (_waveIn != null || _audioFilePlaybackTimer != null) 
+        {
+            _debugLog.LogAudio($"[DEBUG] StartCapture: already running, returning");
+            return;
+        }
 
         if (_useAudioFileInput)
         {
+            // Validate file exists before starting
+            string audioFilePath = CurrentAudioFilePath;
+            _debugLog.LogAudio($"[DEBUG] File input mode: path='{audioFilePath}'");
+            
+            if (!File.Exists(audioFilePath))
+            {
+                throw new FileNotFoundException($"Audio file not found: {audioFilePath}");
+            }
+            _debugLog.LogAudio($"[DEBUG] Starting audio file input with: {audioFilePath}");
             StartAudioFileCapture();
         }
         else
         {
+            _debugLog.LogAudio($"[DEBUG] Starting microphone input");
             StartMicrophoneCapture();
         }
     }
@@ -271,14 +319,13 @@ public class AudioService : IDisposable
         try
         {
             string audioFilePath = CurrentAudioFilePath;
-            string fullPath = Path.GetFullPath(audioFilePath);
             
             if (!File.Exists(audioFilePath))
             {
                 throw new FileNotFoundException($"Audio file not found: {audioFilePath}");
             }
 
-            _debugLog.LogAudio($"Starting audio file capture from: {audioFilePath}");
+            _debugLog.LogAudio($"[FILE] Starting audio file capture: {audioFilePath}");
 
             // Determine file type and create appropriate reader
             string extension = Path.GetExtension(audioFilePath).ToLowerInvariant();
@@ -288,29 +335,21 @@ public class AudioService : IDisposable
             {
                 if (extension == ".mp3")
                 {
-                    // Use MediaFoundationReader for MP3 files
                     reader = new MediaFoundationReader(audioFilePath);
-                    _debugLog.LogAudio($"Using MediaFoundationReader for MP3 file: {audioFilePath}");
                 }
                 else if (extension == ".wav")
                 {
-                    // Use WaveFileReader for WAV files
                     reader = new WaveFileReader(audioFilePath);
-                    _debugLog.LogAudio($"Using WaveFileReader for WAV file: {audioFilePath}");
                 }
                 else
                 {
-                    // Try MediaFoundationReader for other formats (it supports many formats)
                     try
                     {
                         reader = new MediaFoundationReader(audioFilePath);
-                        _debugLog.LogAudio($"Using MediaFoundationReader for file: {audioFilePath}");
                     }
                     catch
                     {
-                        // Fallback to WaveFileReader
                         reader = new WaveFileReader(audioFilePath);
-                        _debugLog.LogAudio($"Using WaveFileReader as fallback for file: {audioFilePath}");
                     }
                 }
 
@@ -320,26 +359,13 @@ public class AudioService : IDisposable
                 }
 
                 var waveFormat = reader.WaveFormat;
-                _debugLog.LogAudio($"Audio file format: {waveFormat.Encoding}, {waveFormat.SampleRate}Hz, {waveFormat.Channels} channels, {waveFormat.BitsPerSample} bits");
+                _debugLog.LogAudio($"[FILE] Audio format: {waveFormat.Encoding}, {waveFormat.SampleRate}Hz, {waveFormat.Channels} channels");
 
-                // Check if it's already in target MuLaw format
-                if (waveFormat.Encoding == WaveFormatEncoding.MuLaw && 
-                    waveFormat.SampleRate == OPUS_SAMPLE_RATE && 
-                    waveFormat.Channels == OPUS_CHANNELS)
-                {
-                    _debugLog.LogAudio($"Audio file is already in target MuLaw format");
-                    _audioFileStream = reader;
-                    _rawMuLawStream = null;
-                }
-                else
-                {
-                    // Any other format (PCM, Float, MP3, etc.) - will be converted in real-time
-                    _debugLog.LogAudio($"Audio file will be converted from {waveFormat.Encoding} to PCMU in real-time");
-                    _audioFileStream = reader;
-                    _rawMuLawStream = null;
-                }
+                _audioFileStream = reader;
+                _rawMuLawStream = null;
 
                 _audioFilePlaybackTimer = new Timer(AudioFilePlaybackCallback, null, 0, OPUS_FRAME_SIZE_MS);
+                _debugLog.LogAudio($"[FILE] Timer created with {OPUS_FRAME_SIZE_MS}ms interval");
             }
             catch (Exception ex)
             {
@@ -349,7 +375,7 @@ public class AudioService : IDisposable
         }
         catch (Exception ex)
         {
-            _debugLog.LogAudio($"Error starting audio file capture: {ex.Message}");
+            _debugLog.LogAudio($"[FILE] Error starting capture: {ex.Message}");
             _audioFileStream?.Dispose();
             _audioFileStream = null;
             _rawMuLawStream?.Dispose();
@@ -636,12 +662,30 @@ public class AudioService : IDisposable
 
     private void AudioFilePlaybackCallback(object? state)
     {
+        _audioFileCallbackCount++;
+        
+        // Basic null checks first
+        if (_debugLog == null || _opusCodec == null)
+        {
+            return;
+        }
+        
+        if (_audioFileCallbackCount == 1)
+        {
+            _debugLog.LogAudio($"[FILE] First callback executed");
+        }
+
         if (_isSelfMuted || (_isPushToTalk && !_isPushToTalkActive) || (_audioFileStream == null && _rawMuLawStream == null))
         {
             // Send silence when muted or push-to-talk is not active
             var silenceBuffer = new byte[0]; // Opus silence is empty packet
             EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0));
-            AudioLevelChanged?.Invoke(this, 0.0f); // Show 0 level when not transmitting due to mute/PTT
+            AudioLevelChanged?.Invoke(this, 0.0f);
+            
+            if (_audioFileCallbackCount <= 5)
+            {
+                _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: sending silence - muted={_isSelfMuted}, ptt={_isPushToTalk && !_isPushToTalkActive}, nostreams={_audioFileStream == null && _rawMuLawStream == null}");
+            }
             return;
         }
 
@@ -652,30 +696,28 @@ public class AudioService : IDisposable
             bool hasValidAudio = false;
 
             // Process audio file stream
-            if (_audioFileStream != null)
+            var audioFileStreamRef = _audioFileStream; // Capture reference to avoid race condition
+            if (audioFileStreamRef != null)
             {
-                var sourceFormat = _audioFileStream.WaveFormat;
+                var sourceFormat = audioFileStreamRef.WaveFormat;
+                if (sourceFormat == null) return;
                 
                 // Calculate how many bytes we need from the source to get 960 samples at 48kHz
                 int sourceBytesNeeded = (OPUS_FRAME_SIZE_SAMPLES * sourceFormat.SampleRate / OPUS_SAMPLE_RATE) * 
                                       (sourceFormat.BitsPerSample / 8) * sourceFormat.Channels;
                 
                 byte[] sourcePcmData = new byte[sourceBytesNeeded];
-                int bytesRead = _audioFileStream.Read(sourcePcmData, 0, sourceBytesNeeded);
+                int bytesRead = audioFileStreamRef.Read(sourcePcmData, 0, sourceBytesNeeded);
                 
                 if (bytesRead == 0) // End of file
                 {
-                    _audioFileStream.Position = 0; // Restart
-                    bytesRead = _audioFileStream.Read(sourcePcmData, 0, sourceBytesNeeded);
+                    audioFileStreamRef.Position = 0; // Restart
+                    bytesRead = audioFileStreamRef.Read(sourcePcmData, 0, sourceBytesNeeded);
                 }
                 
                 if (bytesRead > 0)
                 {
                     // Apply input volume scaling to source PCM data before conversion
-                    if (_inputVolumeScale != 1.0f)
-                    {
-                        _debugLog.LogAudio($"Applying input volume scaling ({_inputVolumeScale:F2}x) to audio file PCM data");
-                    }
                     ApplyInputVolumeScaling(sourcePcmData, bytesRead, sourceFormat);
                     
                     // Convert to 48kHz PCM and calculate level
@@ -688,29 +730,33 @@ public class AudioService : IDisposable
                     Array.Fill(pcm48kHzData, (byte)0);
                 }
             }
-            else if (_rawMuLawStream != null)
+            else 
             {
-                // Raw MuLaw stream - convert to 48kHz PCM
-                byte[] muLawData = new byte[OPUS_FRAME_SIZE_SAMPLES / 6]; // MuLaw is 8kHz, so 160 bytes for 20ms
-                int bytesRead = _rawMuLawStream.Read(muLawData, 0, muLawData.Length);
-                
-                if (bytesRead == 0)
+                var rawMuLawStreamRef = _rawMuLawStream; // Capture reference to avoid race condition
+                if (rawMuLawStreamRef != null)
                 {
-                    // End of file, restart
-                    _rawMuLawStream.Position = 0;
-                    bytesRead = _rawMuLawStream.Read(muLawData, 0, muLawData.Length);
-                }
+                    // Raw MuLaw stream - convert to 48kHz PCM
+                    byte[] muLawData = new byte[OPUS_FRAME_SIZE_SAMPLES / 6]; // MuLaw is 8kHz, so 160 bytes for 20ms
+                    int bytesRead = rawMuLawStreamRef.Read(muLawData, 0, muLawData.Length);
+                    
+                    if (bytesRead == 0)
+                    {
+                        // End of file, restart
+                        rawMuLawStreamRef.Position = 0;
+                        bytesRead = rawMuLawStreamRef.Read(muLawData, 0, muLawData.Length);
+                    }
 
-                if (bytesRead > 0)
-                {
-                    // Convert MuLaw to 48kHz PCM
-                    (pcm48kHzData, calculatedLevel) = ConvertMuLawTo48kHzPcm(muLawData, bytesRead);
-                    hasValidAudio = true;
-                }
-                else
-                {
-                    // Empty file - fill with silence
-                    Array.Fill(pcm48kHzData, (byte)0);
+                    if (bytesRead > 0)
+                    {
+                        // Convert MuLaw to 48kHz PCM
+                        (pcm48kHzData, calculatedLevel) = ConvertMuLawTo48kHzPcm(muLawData, bytesRead);
+                        hasValidAudio = true;
+                    }
+                    else
+                    {
+                        // Empty file - fill with silence
+                        Array.Fill(pcm48kHzData, (byte)0);
+                    }
                 }
             }
 
@@ -728,24 +774,20 @@ public class AudioService : IDisposable
             // Encode with Opus
             if (hasValidAudio)
             {
-                try
+                short[] pcmSamples = OpusCodecService.BytesToShorts(pcm48kHzData, pcm48kHzData.Length);
+                byte[] opusPacket = _opusCodec.Encode(pcmSamples, pcmSamples.Length);
+                
+                if (opusPacket.Length > 0)
                 {
-                    short[] pcmSamples = OpusCodecService.BytesToShorts(pcm48kHzData, pcm48kHzData.Length);
-                    byte[] opusPacket = _opusCodec.Encode(pcmSamples, pcmSamples.Length);
+                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
                     
-                    if (opusPacket.Length > 0)
+                    if (_audioFileCallbackCount <= 5)
                     {
-                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
-                    }
-                    else
-                    {
-                        var silencePacket = new byte[0]; // Opus silence is empty packet
-                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
+                        _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: generated {opusPacket.Length} byte packet, level={calculatedLevel:F3}");
                     }
                 }
-                catch (Exception ex)
+                else
                 {
-                    _debugLog.LogAudio($"Error encoding audio file with Opus: {ex.Message}");
                     var silencePacket = new byte[0]; // Opus silence is empty packet
                     EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
                 }
@@ -755,21 +797,21 @@ public class AudioService : IDisposable
                 var silencePacket = new byte[0]; // Opus silence is empty packet
                 EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
             }
-            
-            // Removed verbose audio file logging
         }
         catch (Exception ex)
         {
-            _debugLog.LogAudio($"Error in audio file playback: {ex.Message}");
+            _debugLog.LogAudio($"[ERROR] Error in audio file playback: {ex.Message}");
             // Send silence on error
             var silenceBuffer = new byte[0]; // Opus silence is empty packet
-            EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0));
-            AudioLevelChanged?.Invoke(this, 0.0f);
+            try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch { }
+            try { AudioLevelChanged?.Invoke(this, 0.0f); } catch { }
         }
     }
 
     public void StopCapture()
     {
+        _audioFileCallbackCount = 0; // Reset callback counter
+        
         if (_waveIn != null)
         {
             _waveIn.StopRecording();
@@ -1592,6 +1634,70 @@ public class AudioService : IDisposable
     public bool GetPeerTransmissionState(string peerId)
     {
         return _peerTransmissionStates.GetValueOrDefault(peerId, false);
+    }
+
+    public bool IsAudioInputReady()
+    {
+        if (_useAudioFileInput)
+        {
+            string audioFilePath = CurrentAudioFilePath;
+            return !string.IsNullOrEmpty(audioFilePath) && File.Exists(audioFilePath);
+        }
+        else
+        {
+            return _selectedInputDeviceNumber != -1;
+        }
+    }
+
+    public string GetAudioInputStatus()
+    {
+        if (_useAudioFileInput)
+        {
+            string audioFilePath = CurrentAudioFilePath;
+            if (string.IsNullOrEmpty(audioFilePath))
+            {
+                return "No audio file selected";
+            }
+            else if (!File.Exists(audioFilePath))
+            {
+                return $"Audio file not found: {Path.GetFileName(audioFilePath)}";
+            }
+            else
+            {
+                return $"Audio file ready: {Path.GetFileName(audioFilePath)}";
+            }
+        }
+        else
+        {
+            if (_selectedInputDeviceNumber == -1)
+            {
+                return "No microphone device selected";
+            }
+            else
+            {
+                return $"Microphone ready: {_selectedInputDeviceName}";
+            }
+        }
+    }
+
+    /// <summary>
+    /// decode opus packet to pcm samples for use by webrtc aggregation
+    /// </summary>
+    /// <param name="opusPacket">encoded opus packet</param>
+    /// <param name="packetLength">length of opus packet</param>
+    /// <returns>decoded pcm samples</returns>
+    public short[] DecodeOpusPacket(byte[] opusPacket, int packetLength)
+    {
+        try
+        {
+            return _opusCodec.Decode(opusPacket, packetLength);
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error decoding Opus packet for WebRTC aggregation: {ex.Message}");
+            // return silence on decode error
+            return new short[OPUS_FRAME_SIZE_SAMPLES];
+        }
     }
 }
 

@@ -367,8 +367,39 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (_useWavInput != value)
             {
                 _debugLog.LogMain($"audio input changed: wav={value}");
-                _useWavInput = value;
-                _audioService.UseAudioFileInput = value;
+                try
+                {
+                    _audioService.UseAudioFileInput = value;
+                    _useWavInput = value; // Only update the backing field if the AudioService accepts the change
+                    _debugLog.LogMain($"Successfully changed audio input mode to file input: {value}");
+                }
+                catch (Exception ex)
+                {
+                    _debugLog.LogMain($"Failed to change audio input mode: {ex.Message}");
+                    
+                    // Show user-friendly error message
+                    string errorMessage;
+                    if (value && string.IsNullOrEmpty(_selectedAudioFile))
+                    {
+                        errorMessage = "Cannot enable audio file input: No audio file selected. Please select an audio file first.";
+                    }
+                    else if (value && !File.Exists(_selectedAudioFile))
+                    {
+                        errorMessage = $"Cannot enable audio file input: Selected audio file not found ({Path.GetFileName(_selectedAudioFile)}). Please select a valid audio file.";
+                    }
+                    else
+                    {
+                        errorMessage = $"Failed to change audio input mode: {ex.Message}";
+                    }
+                    
+                    // Update status message to show the error
+                    StatusMessage = errorMessage;
+                    
+                    // Don't update _useWavInput since the operation failed
+                    OnPropertyChanged(); // Still notify UI to refresh the checkbox state
+                    return;
+                }
+                
                 // UseWavInput is debug-only, not persisted to config
                 OnPropertyChanged();
             }
@@ -383,20 +414,41 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (_selectedAudioFile != value)
             {
                 _selectedAudioFile = value;
-                _audioService.SetCustomAudioFile(value);
                 
-                // Update display name
-                if (string.IsNullOrEmpty(value))
+                try
                 {
-                    AudioFileDisplayName = "No file selected";
+                    _audioService.SetCustomAudioFile(value);
+                    _debugLog.LogMain($"Selected audio file: {value ?? "none"}");
+                    
+                    // Update display name
+                    if (string.IsNullOrEmpty(value))
+                    {
+                        AudioFileDisplayName = "No file selected";
+                    }
+                    else
+                    {
+                        AudioFileDisplayName = Path.GetFileName(value);
+                    }
+                    
+                    // Clear any previous error status if we successfully set the file
+                    if (UseWavInput && !string.IsNullOrEmpty(value) && File.Exists(value))
+                    {
+                        // If file input is enabled and we selected a valid file,
+                        // update status to show the audio is ready
+                        StatusMessage = _audioService.GetAudioInputStatus();
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    AudioFileDisplayName = Path.GetFileName(value);
+                    _debugLog.LogMain($"Error setting custom audio file: {ex.Message}");
+                    AudioFileDisplayName = "Error loading file";
+                    if (UseWavInput)
+                    {
+                        StatusMessage = $"Audio file error: {ex.Message}";
+                    }
                 }
                 
                 OnPropertyChanged();
-                _debugLog.LogMain($"Selected audio file: {value ?? "none"}");
             }
         }
     }
@@ -527,7 +579,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _memoryReader = new NamedPipeGameDataReader(_config.GameDataIpcChannel, _debugLog);
         
         // Use hardcoded max distance for consistency across all users
-        const float HARDCODED_MAX_DISTANCE = 15.0f; // Extended range for more realistic audio falloff
+        const float HARDCODED_MAX_DISTANCE = 17.0f; // Extended range for more realistic audio falloff
         _audioService = new AudioService(HARDCODED_MAX_DISTANCE, config, debugLog);
         _signalingService = new SignalingService(config.WebSocketServer, debugLog);
         _webRtcService = new WebRtcService(_audioService, _signalingService, HARDCODED_MAX_DISTANCE, debugLog);
@@ -739,9 +791,15 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async void Start()
     {
-        if (string.IsNullOrEmpty(SelectedInputDevice))
+        // Validate audio input configuration before starting
+        bool isAudioReady = _audioService.IsAudioInputReady();
+        string audioStatus = _audioService.GetAudioInputStatus();
+        _debugLog.LogMain($"[DEBUG] Audio input ready: {isAudioReady}, status: {audioStatus}");
+        
+        if (!isAudioReady)
         {
-            StatusMessage = "Error: No audio device selected.";
+            StatusMessage = audioStatus;
+            _debugLog.LogMain($"[DEBUG] Cannot start - audio input not ready: {audioStatus}");
             return;
         }
         
@@ -775,6 +833,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 StatusMessage = "Starting audio capture...";
                 _audioService.StartCapture();
+                _debugLog.LogMain("[DEBUG] Audio capture started successfully");
             }
             catch (Exception ex)
             {

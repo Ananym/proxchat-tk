@@ -25,13 +25,12 @@ public class WebRtcService : IDisposable
     private readonly float _maxDistance;
     private readonly DebugLogService _debugLog;
     private bool _isInitialized;
-    private uint _rtpTimestamp = 0; // Add timestamp tracking
 
     private static readonly Random _random = new Random(); // For probabilistic logging
-    private const double LOG_PROBABILITY = 0.0; // Disabled verbose logging to focus on core issues
+    private const double LOG_PROBABILITY = 0.02; // Enable some logging to debug core issue
 
     private static readonly RTCIceServer _stunServer = new RTCIceServer { urls = "stun:stun.l.google.com:19302" };
-    private WindowsAudioEndPoint? _audioEndPoint;
+    private AudioExtrasSource? _audioExtrasSource;
     private MediaStreamTrack? _audioTrack;
 
     public event EventHandler<(string PeerId, int MapId, int X, int Y, string CharacterName)>? PositionReceived;
@@ -56,8 +55,8 @@ public class WebRtcService : IDisposable
         // Initialize audio system first
         InitializeAudioSystem();
 
-        // Subscribe to audio data events
-        _audioService.EncodedAudioPacketAvailable += OnEncodedAudioPacketReadyToSend;
+        // Connect our AudioService to the audio aggregator
+        _audioService.EncodedAudioPacketAvailable += OnAudioPacketFromService;
 
         // Initialize immediately
         EnsureInitialized();
@@ -87,42 +86,87 @@ public class WebRtcService : IDisposable
     {
         try
         {
-            if (_audioEndPoint != null)
+            // Clean up existing resources
+            if (_audioExtrasSource != null)
             {
-                _audioEndPoint.CloseAudio();
-                _audioEndPoint = null;
+                _audioExtrasSource.CloseAudio();
+                _audioExtrasSource = null;
             }
 
-            // Create audio endpoint with Opus encoder
-            _audioEndPoint = new WindowsAudioEndPoint(new AudioEncoder());
-            _debugLog.LogWebRtc("Created WindowsAudioEndPoint with Opus encoder");
+            // Create AudioExtrasSource as our audio aggregator
+            _audioExtrasSource = new AudioExtrasSource(new AudioEncoder());
+            _debugLog.LogWebRtc("Created AudioExtrasSource as audio aggregator");
             
-            // Create media track with Opus format
-            var audioFormat = new AudioFormat(AudioCodecsEnum.OPUS, 111); // 111 is common Opus payload type
-            _audioTrack = new MediaStreamTrack(audioFormat, MediaStreamStatusEnum.SendRecv);
-            _debugLog.LogWebRtc($"Created audio track with format: {audioFormat.Codec}, status: {MediaStreamStatusEnum.SendRecv}");
+            // Create media track with the AudioExtrasSource
+            _audioTrack = new MediaStreamTrack(_audioExtrasSource.GetAudioSourceFormats(), MediaStreamStatusEnum.SendOnly);
+            _debugLog.LogWebRtc($"Created audio track with AudioExtrasSource");
 
-            // Start audio
-            _audioEndPoint.StartAudio();
-            _debugLog.LogWebRtc("Started audio endpoint");
+            // AudioExtrasSource will automatically handle audio distribution through the MediaStreamTrack
+            // No need for manual SendAudio calls - the track integration handles this
+
+            // Start the audio source
+            _audioExtrasSource.StartAudio();
+            _debugLog.LogWebRtc("AudioExtrasSource started and connected to track");
         }
         catch (Exception ex)
         {
-            _debugLog.LogWebRtc($"Error initializing audio system: {ex.Message}");
+            _debugLog.LogWebRtc($"Error initializing audio system with AudioExtrasSource: {ex.Message}");
             
             // Clean up any partially initialized resources
-            if (_audioEndPoint != null)
+            if (_audioExtrasSource != null)
             {
                 try
                 {
-                    _audioEndPoint.CloseAudio();
+                    _audioExtrasSource.CloseAudio();
                 }
                 catch { }
-                _audioEndPoint = null;
+                _audioExtrasSource = null;
             }
             _audioTrack = null;
             
             throw;
+        }
+    }
+
+    private void OnAudioPacketFromService(object? sender, EncodedAudioPacketEventArgs e)
+    {
+        // Bridge our AudioService packets to AudioExtrasSource
+        if (_audioExtrasSource != null)
+        {
+            try
+            {
+                // AudioExtrasSource expects raw PCM samples via ExternalAudioSourceRawSample
+                // We need to decode our Opus packets back to PCM first
+                if (e.Buffer.Length > 0)
+                {
+                    // Decode Opus packet to PCM using AudioService's codec
+                    short[] pcmSamples = _audioService.DecodeOpusPacket(e.Buffer, e.Buffer.Length);
+                    
+                    if (pcmSamples.Length > 0)
+                    {
+                        // Feed raw PCM samples to AudioExtrasSource
+                        // Duration is 20ms for standard Opus frames
+                        _audioExtrasSource.ExternalAudioSourceRawSample(
+                            SIPSorceryMedia.Abstractions.AudioSamplingRatesEnum.Rate48KHz, 
+                            20, // 20ms duration
+                            pcmSamples);
+                    }
+                }
+                else
+                {
+                    // Send silence for empty packets
+                    short[] silenceSamples = new short[960]; // 20ms at 48kHz = 960 samples
+                    Array.Fill(silenceSamples, (short)0);
+                    _audioExtrasSource.ExternalAudioSourceRawSample(
+                        SIPSorceryMedia.Abstractions.AudioSamplingRatesEnum.Rate48KHz, 
+                        20, 
+                        silenceSamples);
+                }
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogWebRtc($"Error forwarding audio packet to AudioExtrasSource: {ex.Message}");
+            }
         }
     }
 
@@ -159,6 +203,16 @@ public class WebRtcService : IDisposable
             // --- Media Tracks ---
             pc.addTrack(_audioTrack);
             _debugLog.LogWebRtc($"Added audio track to peer connection {peerId}");
+
+            // Set up format negotiation for the audio source
+            pc.OnAudioFormatsNegotiated += (formats) =>
+            {
+                if (_audioExtrasSource != null && formats.Any())
+                {
+                    _audioExtrasSource.SetAudioSourceFormat(formats.First());
+                    _debugLog.LogWebRtc($"Set audio format for peer {peerId}: {formats.First().Codec}");
+                }
+            };
 
             // Hook up the RTP packet received event to the audio end point
             pc.OnRtpPacketReceived += (ep, mediaType, rtpPacket) => 
@@ -213,6 +267,7 @@ public class WebRtcService : IDisposable
                 if (connState == RTCPeerConnectionState.connected)
                 {
                     _debugLog.LogWebRtc($"WebRTC connection established with {peerId}");
+                    _debugLog.LogWebRtc($"[AUDIO_FLOW] Peer {peerId} connected - will now receive audio packets if any are being generated");
                 }
                 else if (connState == RTCPeerConnectionState.failed)
                 {
@@ -566,72 +621,6 @@ public class WebRtcService : IDisposable
         _peerConnections.Clear();
     }
 
-    private void OnEncodedAudioPacketReadyToSend(object? sender, EncodedAudioPacketEventArgs e)
-    {
-        // if (_audioEndPoint == null) return; // _audioEndPoint is not directly used for sending via track
-
-        try
-        {
-            byte[] audioData = e.Buffer;
-            int samplesInPacket = e.Samples; // Changed from BytesRecorded to Samples
-            
-            // Check if audio data contains non-silence
-            bool hasAudio = false;
-            if (audioData.Length > 0)
-            {
-                // For Opus, check if packet is not empty (Opus silence is typically very small packets or DTX)
-                hasAudio = audioData.Length > 2; // Opus silence/DTX packets are usually 1-2 bytes
-            }
-
-            // Removed verbose audio packet logging to focus on core issues
-
-            foreach (var peerId in _peerConnections.Keys)
-            {
-                if (_peerConnections.TryGetValue(peerId, out var state))
-                {
-                    try
-                    {
-                        // Check if we have a valid peer connection and audio track
-                        if (state.PeerConnection.connectionState != RTCPeerConnectionState.connected)
-                        {
-                            _debugLog.LogWebRtc($"Peer connection not connected for {peerId}, skipping audio send");
-                            continue;
-                        }
-                        if (_audioTrack == null)
-                        {
-                            _debugLog.LogWebRtc($"Audio track is null for peer {peerId}, skipping audio send");
-                            continue;
-                        }
-
-                        // Send the audio data using the MediaStreamTrack.
-                        // Assumes audioData from AudioService is PCMU encoded.
-                        // _rtpTimestamp is the starting timestamp for this packet.
-                        // The duration is implicit by the timestamp increments and the packet content (samplesInPacket).
-                        // _audioTrack.SendAudioFrame(_rtpTimestamp, audioData); // Changed from SendEncodedAudio(ts, duration, data)
-
-                        // Corrected: Use the PeerConnection to send audio. 
-                        // The duration (samplesInPacket) is how much the RTP timestamp will be incremented by the sender for this packet.
-                        state.PeerConnection.SendAudio((uint)samplesInPacket, audioData);
-
-                        // Removed verbose sent audio packet logging
-                    }
-                    catch (Exception ex)
-                    {
-                        _debugLog.LogWebRtc($"Error sending audio data to {peerId} via track: {ex.Message}");
-                    }
-                }
-            }
-
-            // Increment RTP timestamp by the number of samples in the packet.
-            // For PCMU (8000Hz), samplesInPacket represents the sample count for this packet.
-            _rtpTimestamp += (uint)samplesInPacket; 
-        }
-        catch (Exception ex)
-        {
-            _debugLog.LogWebRtc($"Error in OnEncodedAudioPacketReadyToSend: {ex.Message}");
-        }
-    }
-
     public void Dispose()
     {
         CloseAllConnections();
@@ -639,9 +628,9 @@ public class WebRtcService : IDisposable
         _signalingService.OfferReceived -= OnOfferReceived;
         _signalingService.AnswerReceived -= OnAnswerReceived;
         _signalingService.IceCandidateReceived -= OnIceCandidateReceived;
-        _audioService.EncodedAudioPacketAvailable -= OnEncodedAudioPacketReadyToSend;
+        _audioService.EncodedAudioPacketAvailable -= OnAudioPacketFromService;
         
-        _audioEndPoint?.CloseAudio(); 
+        _audioExtrasSource?.CloseAudio(); 
 
         GC.SuppressFinalize(this);
     }
