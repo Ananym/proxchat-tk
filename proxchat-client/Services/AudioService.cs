@@ -648,18 +648,7 @@ public class AudioService : IDisposable
             return;
         }
         
-        if (_audioFileCallbackCount == 1)
-        {
-            _debugLog.LogAudio($"[FILE] First callback executed");
-        }
 
-        // Debug: Check if anyone is subscribed to our event
-        if (_audioFileCallbackCount <= 3)
-        {
-            bool hasSubscribers = EncodedAudioPacketAvailable != null;
-            int subscriberCount = EncodedAudioPacketAvailable?.GetInvocationList()?.Length ?? 0;
-            _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: EncodedAudioPacketAvailable subscribers: {subscriberCount} (hasSubscribers: {hasSubscribers})");
-        }
 
         if (_isSelfMuted || (_isPushToTalk && !_isPushToTalkActive) || _audioFileStream == null)
         {
@@ -668,10 +657,7 @@ public class AudioService : IDisposable
             EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0));
             AudioLevelChanged?.Invoke(this, 0.0f);
             
-            if (_audioFileCallbackCount <= 5)
-            {
-                _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: sending silence - muted={_isSelfMuted}, ptt={_isPushToTalk && !_isPushToTalkActive}, nostream={_audioFileStream == null}");
-            }
+
             return;
         }
 
@@ -720,13 +706,6 @@ public class AudioService : IDisposable
                     // Convert to mono and resample if needed for Opus compatibility
                     (pcmData, calculatedLevel) = ConvertToMonoAndResample(sourcePcmData, bytesRead, sourceFormat, activeCodec);
                     hasValidAudio = pcmData.Length > 0;
-                    
-                                    if (_audioFileCallbackCount <= 5)
-                {
-                    double sourceTimeMs = (double)bytesRead / (sourceFormat.SampleRate * sourceFormat.Channels * (sourceFormat.BitsPerSample / 8)) * 1000.0;
-                    double targetTimeMs = (double)pcmData.Length / (activeCodec.SampleRate * 1 * 2) * 1000.0;
-                    _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: conversion result - input: {bytesRead} bytes ({sourceTimeMs:F1}ms), output: {pcmData.Length} bytes ({targetTimeMs:F1}ms), hasValidAudio: {hasValidAudio}");
-                }
                 }
                 else
                 {
@@ -787,11 +766,7 @@ public class AudioService : IDisposable
                     
                     short[] pcmSamples = OpusCodecService.BytesToShorts(pcmData, bytesToUse);
                     
-                    // Add detailed logging to debug the Opus encoding issue
-                    if (_audioFileCallbackCount <= 5)
-                    {
-                        _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: About to encode - bytesToUse={bytesToUse}, pcmSamples.Length={pcmSamples.Length}, activeCodec.FrameSize={activeCodec.FrameSize}");
-                    }
+
                     
                     // Validate sample count before encoding
                     if (pcmSamples.Length <= 0)
@@ -807,11 +782,6 @@ public class AudioService : IDisposable
                     if (opusPacket.Length > 0)
                     {
                         EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
-                        
-                        if (_audioFileCallbackCount <= 5)
-                        {
-                            _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: generated {opusPacket.Length} byte packet from {pcmSamples.Length} samples at {activeCodec.SampleRate}Hz, level={calculatedLevel:F3}");
-                        }
                     }
                     else
                     {
@@ -828,10 +798,6 @@ public class AudioService : IDisposable
             }
             else
             {
-                if (_audioFileCallbackCount <= 5)
-                {
-                    _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: sending silence - hasValidAudio={hasValidAudio}, dataLength={pcmData.Length}, requiredLength={activeCodec.FrameSize * 2}");
-                }
                 var silencePacket = new byte[0]; // Opus silence is empty packet
                 EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
             }
@@ -1521,7 +1487,6 @@ public class AudioService : IDisposable
                         Array.Fill(convertedData, (byte)0, totalBytesRead, targetBytes - totalBytesRead);
                     }
                     
-                    _debugLog.LogAudio($"Format conversion: {sourceFormat.SampleRate}Hz {sourceFormat.Channels}ch -> {codec.SampleRate}Hz 1ch, {validBytes} -> {totalBytesRead} bytes, level={sourceLevel:F3}");
                     return (convertedData, sourceLevel);
                 }
                 else

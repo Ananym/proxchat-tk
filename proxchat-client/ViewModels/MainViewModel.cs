@@ -371,6 +371,21 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             if (_useWavInput != value)
             {
+                // If trying to enable file input, check if we have a valid file first
+                if (value && (string.IsNullOrEmpty(_selectedAudioFile) || !File.Exists(_selectedAudioFile)))
+                {
+                    string errorMessage = string.IsNullOrEmpty(_selectedAudioFile) 
+                        ? "Cannot enable audio file input: No audio file selected. Please select an audio file first."
+                        : $"Cannot enable audio file input: Selected audio file not found ({Path.GetFileName(_selectedAudioFile)}). Please select a valid audio file.";
+                    
+                    StatusMessage = errorMessage;
+                    _debugLog.LogMain($"Cannot enable file input: {errorMessage}");
+                    
+                    // Don't change the value, just refresh the UI to uncheck the box
+                    OnPropertyChanged();
+                    return;
+                }
+                
                 _debugLog.LogMain($"audio input changed: wav={value}");
                 try
                 {
@@ -381,24 +396,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 catch (Exception ex)
                 {
                     _debugLog.LogMain($"Failed to change audio input mode: {ex.Message}");
-                    
-                    // Show user-friendly error message
-                    string errorMessage;
-                    if (value && string.IsNullOrEmpty(_selectedAudioFile))
-                    {
-                        errorMessage = "Cannot enable audio file input: No audio file selected. Please select an audio file first.";
-                    }
-                    else if (value && !File.Exists(_selectedAudioFile))
-                    {
-                        errorMessage = $"Cannot enable audio file input: Selected audio file not found ({Path.GetFileName(_selectedAudioFile)}). Please select a valid audio file.";
-                    }
-                    else
-                    {
-                        errorMessage = $"Failed to change audio input mode: {ex.Message}";
-                    }
-                    
-                    // Update status message to show the error
-                    StatusMessage = errorMessage;
+                    StatusMessage = $"Failed to change audio input mode: {ex.Message}";
                     
                     // Don't update _useWavInput since the operation failed
                     OnPropertyChanged(); // Still notify UI to refresh the checkbox state
@@ -1312,47 +1310,68 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 Debug.WriteLine($"Cleaned up resources for peer {peerId}");
             }
 
-            foreach (var peerId in toAddIds)
+            // CHANGE: Process new connections with temporal spreading to reduce system hitching
+            if (toAddIds.Any())
             {
-                // Don't add to UI yet - add to pending peers and initiate connection
-                if (!_pendingPeers.ContainsKey(peerId))
+                _debugLog.LogMain($"Processing {toAddIds.Count} new peer connections with temporal spreading");
+                
+                // Process connections with staggered delays to reduce system load
+                for (int i = 0; i < toAddIds.Count; i++)
                 {
-                    bool amInitiator = string.CompareOrdinal(myClientId, peerId) > 0;
-                    Debug.WriteLine($"Adding new pending peer {peerId}, Initiator: {amInitiator}");
+                    var peerId = toAddIds[i];
                     
-                    // only log map info when adding peers if it's interesting
-                    var currentMapId = IsDebugModeEnabled ? _debugMapId : _gameMapId;
-                    _debugLog.LogMain($"Adding peer {peerId} while on MapId={currentMapId}. Initiator: {amInitiator}");
-                    
-                    _pendingPeers[peerId] = true;
-                    
-                    // Create WebRTC connection, but don't add to UI yet
-                    // The peer will be added to ConnectedPeers when first position data is received
-                    await _webRtcService.CreatePeerConnection(peerId, amInitiator);
-                    
-                    // Set up a timeout to request peer refresh if connection doesn't establish
-                    _ = Task.Run(async () =>
+                    // Don't add to UI yet - add to pending peers and initiate connection
+                    if (!_pendingPeers.ContainsKey(peerId))
                     {
-                        await Task.Delay(15000); // 15 second timeout
+                        bool amInitiator = string.CompareOrdinal(myClientId, peerId) > 0;
+                        Debug.WriteLine($"Adding new pending peer {peerId}, Initiator: {amInitiator}");
                         
-                        // Check if peer is still pending (not connected)
-                        if (_pendingPeers.ContainsKey(peerId))
+                        // only log map info when adding peers if it's interesting
+                        var currentMapId = IsDebugModeEnabled ? _debugMapId : _gameMapId;
+                        _debugLog.LogMain($"Adding peer {peerId} while on MapId={currentMapId}. Initiator: {amInitiator}");
+                        
+                        _pendingPeers[peerId] = true;
+                        
+                        // Create WebRTC connection with delay to spread load over time
+                        var connectionDelay = i * 250; // 250ms delay between each connection attempt
+                        _ = Task.Run(async () =>
                         {
-                            var connectedPeer = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
-                            if (connectedPeer == null)
+                            if (connectionDelay > 0)
                             {
-                                _debugLog.LogMain($"WebRTC connection timeout for peer {peerId}, requesting peer refresh");
-                                try
+                                await Task.Delay(connectionDelay);
+                            }
+                            
+                            // verify peer is still needed before creating connection
+                            if (_pendingPeers.ContainsKey(peerId) && IsRunning)
+                            {
+                                await _webRtcService.CreatePeerConnection(peerId, amInitiator);
+                            }
+                        });
+                        
+                        // Set up a timeout to request peer refresh if connection doesn't establish
+                        _ = Task.Run(async () =>
+                        {
+                            await Task.Delay(15000 + connectionDelay); // Account for initial delay
+                            
+                            // Check if peer is still pending (not connected)
+                            if (_pendingPeers.ContainsKey(peerId))
+                            {
+                                var connectedPeer = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
+                                if (connectedPeer == null)
                                 {
-                                    await _signalingService.RequestPeerRefresh();
-                                }
-                                catch (Exception ex)
-                                {
-                                    _debugLog.LogMain($"Error requesting peer refresh after timeout: {ex.Message}");
+                                    _debugLog.LogMain($"WebRTC connection timeout for peer {peerId}, requesting peer refresh");
+                                    try
+                                    {
+                                        await _signalingService.RequestPeerRefresh();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _debugLog.LogMain($"Error requesting peer refresh after timeout: {ex.Message}");
+                                    }
                                 }
                             }
-                        }
-                    });
+                        });
+                    }
                 }
             }
         });
