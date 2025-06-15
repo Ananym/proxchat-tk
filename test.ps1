@@ -16,7 +16,7 @@ if ($server) {
     Write-Host "Starting NexusTK server..." -ForegroundColor Yellow
     
     if (Test-Path $gameExe) {
-        $gameProcess = Start-Process -FilePath $gameExe -PassThru -WindowStyle Normal
+        $gameProcess = Start-Process -FilePath $gameExe -ArgumentList "--debug" -PassThru -WindowStyle Normal
         Write-Host "Server started (PID: $($gameProcess.Id))" -ForegroundColor Green
         exit 0
     } else {
@@ -140,7 +140,7 @@ Write-Host "Starting NexusTK game..." -ForegroundColor Yellow
 
 # start game
 if (Test-Path $gameExe) {
-    $gameProcess = Start-Process -FilePath $gameExe -PassThru -WindowStyle Normal
+    $gameProcess = Start-Process -FilePath $gameExe -ArgumentList "--debug" -PassThru -WindowStyle Normal
     Write-Host "  Game started (PID: $($gameProcess.Id))"
 } else {
     Write-Host "  ERROR: Game exe not found at $gameExe" -ForegroundColor Red
