@@ -16,8 +16,16 @@
 std::ofstream logFile;
 std::mutex logMutex;
 const char* logFileName = "memoryreadingdll_log.txt";
+std::atomic<bool> debugLoggingEnabled(false);
+
+bool IsDebugFlagPresent() {
+    std::string cmdLine = GetCommandLineA();
+    return cmdLine.find("--debug") != std::string::npos;
+}
 
 void LogToFile(const std::string& message) {
+    if (!debugLoggingEnabled) return;
+    
     std::lock_guard<std::mutex> lock(logMutex);
     if (logFile.is_open()) {
         auto now = std::chrono::system_clock::now();
@@ -385,7 +393,10 @@ BOOL APIENTRY DllMain(HMODULE hModule,
                       LPVOID lpReserved) {
     switch (ul_reason_for_call) {
         case DLL_PROCESS_ATTACH:
-            {
+            // check if debug logging should be enabled
+            debugLoggingEnabled = IsDebugFlagPresent();
+            
+            if (debugLoggingEnabled) {
                 std::lock_guard<std::mutex> lock(logMutex);
                 logFile.open(logFileName, std::ios::app);
             }
@@ -420,7 +431,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
             }
             CleanupNamedPipe();
             LogToFile("DLL_PROCESS_DETACH finished.");
-            {
+            if (debugLoggingEnabled) {
                 std::lock_guard<std::mutex> lock(logMutex);
                 if (logFile.is_open()) {
                     logFile.close();
