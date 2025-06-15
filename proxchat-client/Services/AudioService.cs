@@ -373,8 +373,13 @@ public class AudioService : IDisposable
                 _fileOpusCodec = new OpusCodecService(_debugLog, targetSampleRate);
                 _debugLog.LogAudio($"[FILE] Created file-specific Opus codec: {fileSampleRate}Hz source -> {targetSampleRate}Hz Opus");
 
-                _audioFilePlaybackTimer = new Timer(AudioFilePlaybackCallback, null, 0, OPUS_FRAME_SIZE_MS);
-                _debugLog.LogAudio($"[FILE] Timer created with {OPUS_FRAME_SIZE_MS}ms interval");
+                // Calculate the correct timer interval based on the target codec frame size
+                // This ensures we process exactly the right amount of audio for real-time playback
+                double timerIntervalMs = (double)_fileOpusCodec.FrameSize / _fileOpusCodec.SampleRate * 1000.0;
+                int timerInterval = (int)Math.Round(timerIntervalMs);
+                
+                _audioFilePlaybackTimer = new Timer(AudioFilePlaybackCallback, null, 0, timerInterval);
+                _debugLog.LogAudio($"[FILE] Timer created with {timerInterval}ms interval (calculated from {_fileOpusCodec.FrameSize} samples at {_fileOpusCodec.SampleRate}Hz = {timerIntervalMs:F1}ms)");
             }
             catch (Exception ex)
             {
@@ -720,13 +725,18 @@ public class AudioService : IDisposable
                 var sourceFormat = audioFileStreamRef.WaveFormat;
                 if (sourceFormat == null) return;
                 
-                // Calculate how many bytes we need from the source for 20ms
-                // Use the actual frame size from the file-specific codec
-                double sourceSamplesFor20ms = activeCodec.FrameSize; // samples needed for this codec
+                // Calculate how many bytes we need from the source for 20ms at the SOURCE sample rate
+                // For 44.1kHz: 20ms = 44100 * 0.02 = 882 samples per channel
+                double sourceSamplesFor20ms = sourceFormat.SampleRate * OPUS_FRAME_SIZE_MS / 1000.0;
                 int sourceBytesNeeded = (int)(sourceSamplesFor20ms * sourceFormat.Channels * (sourceFormat.BitsPerSample / 8));
                 
-                // Ensure we have a reasonable buffer size (prevent negative/zero values)
+                // Ensure we have a reasonable buffer size and align to sample boundaries
                 sourceBytesNeeded = Math.Max(1024, Math.Min(sourceBytesNeeded, 16384)); // between 1KB and 16KB
+                // Align to sample boundary (ensure even number of bytes for 16-bit audio)
+                if (sourceFormat.BitsPerSample == 16)
+                {
+                    sourceBytesNeeded = (sourceBytesNeeded / (sourceFormat.Channels * 2)) * (sourceFormat.Channels * 2);
+                }
                 
                 byte[] sourcePcmData = new byte[sourceBytesNeeded];
                 int bytesRead = audioFileStreamRef.Read(sourcePcmData, 0, sourceBytesNeeded);
@@ -746,10 +756,12 @@ public class AudioService : IDisposable
                     (pcmData, calculatedLevel) = ConvertToMonoAndResample(sourcePcmData, bytesRead, sourceFormat, activeCodec);
                     hasValidAudio = pcmData.Length > 0;
                     
-                    if (_audioFileCallbackCount <= 5)
-                    {
-                        _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: conversion result - input: {bytesRead} bytes, output: {pcmData.Length} bytes, hasValidAudio: {hasValidAudio}");
-                    }
+                                    if (_audioFileCallbackCount <= 5)
+                {
+                    double sourceTimeMs = (double)bytesRead / (sourceFormat.SampleRate * sourceFormat.Channels * (sourceFormat.BitsPerSample / 8)) * 1000.0;
+                    double targetTimeMs = (double)pcmData.Length / (activeCodec.SampleRate * 1 * 2) * 1000.0;
+                    _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount}: conversion result - input: {bytesRead} bytes ({sourceTimeMs:F1}ms), output: {pcmData.Length} bytes ({targetTimeMs:F1}ms), hasValidAudio: {hasValidAudio}");
+                }
                 }
                 else
                 {
@@ -1636,24 +1648,35 @@ public class AudioService : IDisposable
                 return (monoData, sourceLevel);
             }
             
-            // Use NAudio for format conversion (but with better error handling)
+            // Use NAudio for format conversion with proper buffering
             try
             {
                 using var rawSourceStream = new RawSourceWaveStream(sourcePcmData, 0, validBytes, sourceFormat);
                 using var convertedStream = new WaveFormatConversionStream(targetFormat, rawSourceStream);
                 
+                // Read in smaller chunks to avoid timing issues
                 byte[] convertedData = new byte[targetBytes];
-                int bytesRead = convertedStream.Read(convertedData, 0, targetBytes);
+                int totalBytesRead = 0;
+                int chunkSize = Math.Min(targetBytes, 4096); // Read in 4KB chunks max
                 
-                if (bytesRead > 0)
+                while (totalBytesRead < targetBytes)
+                {
+                    int bytesToRead = Math.Min(chunkSize, targetBytes - totalBytesRead);
+                    int bytesRead = convertedStream.Read(convertedData, totalBytesRead, bytesToRead);
+                    
+                    if (bytesRead == 0) break; // End of stream
+                    totalBytesRead += bytesRead;
+                }
+                
+                if (totalBytesRead > 0)
                 {
                     // Pad with silence if we didn't get enough data
-                    if (bytesRead < targetBytes)
+                    if (totalBytesRead < targetBytes)
                     {
-                        Array.Fill(convertedData, (byte)0, bytesRead, targetBytes - bytesRead);
+                        Array.Fill(convertedData, (byte)0, totalBytesRead, targetBytes - totalBytesRead);
                     }
                     
-                    _debugLog.LogAudio($"Format conversion: {sourceFormat.SampleRate}Hz {sourceFormat.Channels}ch -> {codec.SampleRate}Hz 1ch, {validBytes} -> {bytesRead} bytes, level={sourceLevel:F3}");
+                    _debugLog.LogAudio($"Format conversion: {sourceFormat.SampleRate}Hz {sourceFormat.Channels}ch -> {codec.SampleRate}Hz 1ch, {validBytes} -> {totalBytesRead} bytes, level={sourceLevel:F3}");
                     return (convertedData, sourceLevel);
                 }
                 else

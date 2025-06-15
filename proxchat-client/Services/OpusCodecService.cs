@@ -1,236 +1,165 @@
-using Concentus.Structs;
 using System;
+using ProxChatClient.Services;
+using OpusSharp.Core;
 
 namespace ProxChatClient.Services;
 
 /// <summary>
-/// service for opus audio encoding and decoding using concentus library
-/// supports variable sample rates for flexible audio processing
+/// service for opus audio encoding and decoding using OpusSharp
+/// provides a wrapper around the native opus codec with proper error handling
 /// </summary>
 public class OpusCodecService : IDisposable
 {
-    // opus configuration constants
-    public const int DEFAULT_SAMPLE_RATE = 48000; // default opus sample rate
-    public const int OPUS_CHANNELS = 1; // mono for voice chat
-    public const int OPUS_FRAME_SIZE_MS = 20; // standard webrtc frame size
-    public const int OPUS_MAX_PACKET_SIZE = 1276; // max opus packet size
-    
     private readonly OpusEncoder _encoder;
     private readonly OpusDecoder _decoder;
     private readonly DebugLogService _debugLog;
     private readonly int _sampleRate;
-    private readonly int _frameSize; // calculated based on actual sample rate
+    private readonly int _frameSize;
     private bool _disposed = false;
+
+    // opus constants
+    internal const int DEFAULT_OPUS_SAMPLE_RATE = 48000;
+    internal const int OPUS_CHANNELS = 1; // mono for voice chat
+    internal const int OPUS_FRAME_SIZE_MS = 20; // standard WebRTC packet size
+    internal const int OPUS_MAX_PACKET_SIZE = 1276; // max opus packet size
 
     public int SampleRate => _sampleRate;
     public int FrameSize => _frameSize;
 
-    public OpusCodecService(DebugLogService debugLog, int sampleRate = DEFAULT_SAMPLE_RATE)
+    public OpusCodecService(DebugLogService debugLog, int sampleRate = DEFAULT_OPUS_SAMPLE_RATE)
     {
         _debugLog = debugLog;
         _sampleRate = sampleRate;
-        _frameSize = _sampleRate * OPUS_FRAME_SIZE_MS / 1000; // e.g., 882 for 44.1kHz, 960 for 48kHz
+        
+        // calculate frame size in samples for the given sample rate
+        // 20ms frame = sampleRate * 0.02
+        _frameSize = _sampleRate * OPUS_FRAME_SIZE_MS / 1000;
         
         try
         {
-            // create opus encoder for voip application - opus supports multiple sample rates
-            _encoder = new OpusEncoder(_sampleRate, OPUS_CHANNELS, Concentus.Enums.OpusApplication.OPUS_APPLICATION_VOIP);
-            
-            // configure encoder for low latency voice chat
-            _encoder.Bitrate = 32000; // 32kbps - good quality for voice
-            _encoder.Complexity = 5; // medium complexity for balance of quality/cpu
-            _encoder.SignalType = Concentus.Enums.OpusSignal.OPUS_SIGNAL_VOICE;
-            _encoder.ForceMode = Concentus.Enums.OpusMode.MODE_SILK_ONLY; // silk mode for voice
-            
-            _debugLog.LogAudio($"Created Opus encoder: {_sampleRate}Hz, {OPUS_CHANNELS} channel(s), {_encoder.Bitrate}bps, frame size: {_frameSize} samples");
-            
-            // create opus decoder
+            // create encoder and decoder with VOIP application for voice chat
+            _encoder = new OpusEncoder(_sampleRate, OPUS_CHANNELS, OpusPredefinedValues.OPUS_APPLICATION_VOIP);
             _decoder = new OpusDecoder(_sampleRate, OPUS_CHANNELS);
-            _debugLog.LogAudio($"Created Opus decoder: {_sampleRate}Hz, {OPUS_CHANNELS} channel(s)");
+            
+            _debugLog.LogAudio($"OpusSharp codec initialized: {_sampleRate}Hz, {OPUS_CHANNELS} channel(s), frame size: {_frameSize} samples");
         }
         catch (Exception ex)
         {
-            _debugLog.LogAudio($"Error creating Opus codec: {ex.Message}");
-            throw;
+            _debugLog.LogAudio($"Failed to initialize OpusSharp codec: {ex.Message}");
+            throw new InvalidOperationException($"Failed to initialize Opus codec: {ex.Message}", ex);
         }
     }
 
     /// <summary>
-    /// encode pcm audio samples to opus
+    /// encode pcm samples to opus packet
     /// </summary>
-    /// <param name="pcmSamples">16-bit pcm samples at the configured sample rate</param>
-    /// <param name="sampleCount">number of samples (should match frame size for optimal encoding)</param>
-    /// <returns>encoded opus packet</returns>
     public byte[] Encode(short[] pcmSamples, int sampleCount)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(OpusCodecService));
         
-        // Validate inputs before encoding
+        // validate inputs
         if (pcmSamples == null)
         {
-            _debugLog.LogAudio($"[ERROR] Opus encode called with null pcmSamples");
-            return new byte[0];
+            throw new ArgumentNullException(nameof(pcmSamples));
         }
         
         if (sampleCount < 0)
         {
-            _debugLog.LogAudio($"[ERROR] Opus encode called with negative sampleCount: {sampleCount}");
-            return new byte[0];
+            throw new ArgumentOutOfRangeException(nameof(sampleCount), sampleCount, "Sample count cannot be negative");
         }
         
         if (sampleCount > pcmSamples.Length)
         {
-            _debugLog.LogAudio($"[ERROR] Opus encode sampleCount ({sampleCount}) exceeds pcmSamples.Length ({pcmSamples.Length})");
-            return new byte[0];
-        }
-        
-        // allow flexible frame sizes - opus can handle different sizes
-        if (sampleCount != _frameSize)
-        {
-            _debugLog.LogAudio($"Frame size mismatch: Expected {_frameSize} samples for {_sampleRate}Hz, got {sampleCount}");
+            throw new ArgumentOutOfRangeException(nameof(sampleCount), sampleCount, $"Sample count ({sampleCount}) exceeds array length ({pcmSamples.Length})");
         }
         
         try
         {
-            // Add detailed logging for debugging
-            _debugLog.LogAudio($"[OPUS] About to call _encoder.Encode with: pcmSamples.Length={pcmSamples.Length}, sampleCount={sampleCount}, _frameSize={_frameSize}, _sampleRate={_sampleRate}");
+            // convert short array to byte array for OpusSharp
+            byte[] pcmBytes = new byte[sampleCount * 2]; // 2 bytes per 16-bit sample
+            Buffer.BlockCopy(pcmSamples, 0, pcmBytes, 0, pcmBytes.Length);
             
+            // create output buffer
             byte[] opusPacket = new byte[OPUS_MAX_PACKET_SIZE];
             
-            // WORKAROUND: Try different approaches to work around Concentus library bug
-            int encodedBytes = 0;
-            
-            // Approach 1: Use frame size instead of sample count (in case library expects frame size)
-            try
-            {
-                encodedBytes = _encoder.Encode(pcmSamples, 0, _frameSize, opusPacket, 0, opusPacket.Length);
-                _debugLog.LogAudio($"[OPUS] Workaround 1 (frame size): Encoding successful with _frameSize={_frameSize}");
-            }
-            catch (Exception ex1)
-            {
-                _debugLog.LogAudio($"[OPUS] Workaround 1 failed: {ex1.Message}");
-                
-                // Approach 2: Try with exact sample count but different buffer approach
-                try
-                {
-                    // Create a new array with exact size needed
-                    short[] exactSamples = new short[_frameSize];
-                    int copyCount = Math.Min(pcmSamples.Length, _frameSize);
-                    Array.Copy(pcmSamples, exactSamples, copyCount);
-                    
-                    encodedBytes = _encoder.Encode(exactSamples, 0, _frameSize, opusPacket, 0, opusPacket.Length);
-                    _debugLog.LogAudio($"[OPUS] Workaround 2 (exact array): Encoding successful with copyCount={copyCount}");
-                }
-                catch (Exception ex2)
-                {
-                    _debugLog.LogAudio($"[OPUS] Workaround 2 failed: {ex2.Message}");
-                    
-                    // Approach 3: Try with smaller buffer sizes to isolate the issue
-                    try
-                    {
-                        int halfFrame = _frameSize / 2;
-                        short[] smallSamples = new short[halfFrame];
-                        Array.Copy(pcmSamples, smallSamples, Math.Min(pcmSamples.Length, halfFrame));
-                        
-                        encodedBytes = _encoder.Encode(smallSamples, 0, halfFrame, opusPacket, 0, opusPacket.Length);
-                        _debugLog.LogAudio($"[OPUS] Workaround 3 (half frame): Encoding successful with halfFrame={halfFrame}");
-                    }
-                    catch (Exception ex3)
-                    {
-                        _debugLog.LogAudio($"[OPUS] All workarounds failed. ex1: {ex1.Message}, ex2: {ex2.Message}, ex3: {ex3.Message}");
-                        throw ex1; // Re-throw the original exception
-                    }
-                }
-            }
+            // encode using OpusSharp
+            int encodedBytes = _encoder.Encode(pcmBytes, sampleCount, opusPacket, opusPacket.Length);
             
             if (encodedBytes > 0)
             {
                 // return only the used portion of the buffer
                 byte[] result = new byte[encodedBytes];
                 Array.Copy(opusPacket, result, encodedBytes);
-                _debugLog.LogAudio($"[OPUS] Final encoding successful: {sampleCount} samples -> {encodedBytes} bytes");
                 return result;
             }
             else
             {
-                _debugLog.LogAudio($"Opus encoding failed, returned {encodedBytes} bytes");
-                return new byte[0];
+                _debugLog.LogAudio($"OpusSharp encoding returned {encodedBytes} bytes");
+                return new byte[0]; // return empty array for silence
             }
         }
         catch (Exception ex)
         {
-            _debugLog.LogAudio($"Error encoding Opus: {ex.Message}");
-            _debugLog.LogAudio($"[OPUS] Error context: pcmSamples.Length={pcmSamples?.Length ?? -1}, sampleCount={sampleCount}, _frameSize={_frameSize}");
-            return new byte[0];
+            _debugLog.LogAudio($"OpusSharp encoding error: {ex.Message}");
+            throw new InvalidOperationException($"Opus encoding failed: {ex.Message}", ex);
         }
     }
 
     /// <summary>
-    /// decode opus packet to pcm audio samples
+    /// decode opus packet to pcm samples
     /// </summary>
-    /// <param name="opusPacket">encoded opus packet</param>
-    /// <param name="packetLength">length of opus packet</param>
-    /// <returns>decoded 16-bit pcm samples at the configured sample rate</returns>
     public short[] Decode(byte[] opusPacket, int packetLength)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(OpusCodecService));
         
-        try
+        // validate inputs
+        if (opusPacket == null)
         {
-            short[] pcmSamples = new short[_frameSize];
-            int decodedSamples = _decoder.Decode(opusPacket, 0, packetLength, pcmSamples, 0, _frameSize, false);
-            
-            if (decodedSamples == _frameSize)
-            {
-                return pcmSamples;
-            }
-            else if (decodedSamples > 0)
-            {
-                // return only the decoded portion
-                short[] result = new short[decodedSamples];
-                Array.Copy(pcmSamples, result, decodedSamples);
-                return result;
-            }
-            else
-            {
-                _debugLog.LogAudio($"Opus decoding failed, returned {decodedSamples} samples");
-                return new short[0];
-            }
+            throw new ArgumentNullException(nameof(opusPacket));
         }
-        catch (Exception ex)
+        
+        if (packetLength < 0)
         {
-            _debugLog.LogAudio($"Error decoding Opus: {ex.Message}");
-            return new short[0];
+            throw new ArgumentOutOfRangeException(nameof(packetLength), packetLength, "Packet length cannot be negative");
         }
-    }
-
-    /// <summary>
-    /// decode opus packet with packet loss concealment
-    /// </summary>
-    /// <returns>decoded pcm samples with plc applied</returns>
-    public short[] DecodeWithPLC()
-    {
-        if (_disposed) throw new ObjectDisposedException(nameof(OpusCodecService));
+        
+        if (packetLength > opusPacket.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(packetLength), packetLength, $"Packet length ({packetLength}) exceeds array length ({opusPacket.Length})");
+        }
         
         try
         {
-            short[] pcmSamples = new short[_frameSize];
-            int decodedSamples = _decoder.Decode(null, 0, 0, pcmSamples, 0, _frameSize, false);
-            
-            if (decodedSamples == _frameSize)
+            // handle silence/empty packets
+            if (packetLength == 0)
             {
+                return new short[_frameSize]; // return silence
+            }
+            
+            // create output buffer for decoded PCM bytes
+            byte[] decodedBytes = new byte[_frameSize * 2]; // 2 bytes per 16-bit sample
+            
+            // decode using OpusSharp
+            int decodedSamples = _decoder.Decode(opusPacket, packetLength, decodedBytes, _frameSize, false);
+            
+            if (decodedSamples > 0)
+            {
+                // convert byte array back to short array
+                short[] pcmSamples = new short[decodedSamples];
+                Buffer.BlockCopy(decodedBytes, 0, pcmSamples, 0, decodedSamples * 2);
                 return pcmSamples;
             }
             else
             {
-                _debugLog.LogAudio($"Opus PLC decoding returned {decodedSamples} samples");
-                return new short[_frameSize]; // return silence
+                _debugLog.LogAudio($"OpusSharp decoding returned {decodedSamples} samples");
+                return new short[_frameSize]; // return silence on decode failure
             }
         }
         catch (Exception ex)
         {
-            _debugLog.LogAudio($"Error in Opus PLC decoding: {ex.Message}");
-            return new short[_frameSize]; // return silence
+            _debugLog.LogAudio($"OpusSharp decoding error: {ex.Message}");
+            // return silence on decode error to maintain audio stream continuity
+            return new short[_frameSize];
         }
     }
 
@@ -256,7 +185,6 @@ public class OpusCodecService : IDisposable
         }
         
         // ensure even number of bytes for 16-bit samples
-        int originalByteCount = byteCount;
         if (byteCount % 2 != 0)
         {
             byteCount--; // drop the last odd byte
@@ -264,12 +192,6 @@ public class OpusCodecService : IDisposable
         
         int sampleCount = byteCount / 2;
         short[] samples = new short[sampleCount];
-        
-        // Add debug logging for the first few calls
-        if (samples.Length <= 1000) // Only log for reasonable sizes
-        {
-            System.Diagnostics.Debug.WriteLine($"[BYTES_TO_SHORTS] Input: {originalByteCount} bytes -> {byteCount} aligned bytes -> {sampleCount} samples");
-        }
         
         for (int i = 0; i < sampleCount; i++)
         {
@@ -280,30 +202,46 @@ public class OpusCodecService : IDisposable
     }
 
     /// <summary>
-    /// convert short array to byte array for audio output
+    /// convert short array to byte array for audio processing
     /// </summary>
     public static byte[] ShortsToBytes(short[] samples, int sampleCount)
     {
-        byte[] bytes = new byte[sampleCount * 2];
-        
-        for (int i = 0; i < sampleCount; i++)
+        if (samples == null)
         {
-            byte[] sampleBytes = BitConverter.GetBytes(samples[i]);
-            bytes[i * 2] = sampleBytes[0];
-            bytes[i * 2 + 1] = sampleBytes[1];
+            throw new ArgumentNullException(nameof(samples));
         }
         
+        if (sampleCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sampleCount), sampleCount, "Sample count cannot be negative");
+        }
+        
+        if (sampleCount > samples.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sampleCount), sampleCount, $"Sample count ({sampleCount}) exceeds array length ({samples.Length})");
+        }
+        
+        byte[] bytes = new byte[sampleCount * 2];
+        Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length);
         return bytes;
     }
 
     public void Dispose()
     {
-        if (!_disposed)
+        if (_disposed) return;
+        
+        try
         {
-            // OpusEncoder and OpusDecoder in Concentus are structs, not classes
-            // so they don't need explicit disposal
-            _disposed = true;
-            _debugLog.LogAudio("Opus codec service disposed");
+            _encoder?.Dispose();
+            _decoder?.Dispose();
+            _debugLog.LogAudio("OpusSharp codec disposed");
         }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error disposing OpusSharp codec: {ex.Message}");
+        }
+        
+        _disposed = true;
+        GC.SuppressFinalize(this);
     }
 } 
