@@ -396,6 +396,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 catch (Exception ex)
                 {
                     _debugLog.LogMain($"Failed to change audio input mode: {ex.Message}");
+                    _debugLog.LogMain($"Exception details: {ex}");
                     StatusMessage = $"Failed to change audio input mode: {ex.Message}";
                     
                     // Don't update _useWavInput since the operation failed
