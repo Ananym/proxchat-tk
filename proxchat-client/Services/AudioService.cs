@@ -337,8 +337,18 @@ public class AudioService : IDisposable
                 int targetSampleRate = supportedRates.Contains(fileSampleRate) ? fileSampleRate : 48000;
                 
                 _fileOpusCodec?.Dispose(); // dispose any existing file codec
-                _fileOpusCodec = new OpusCodecService(_debugLog, targetSampleRate);
-                _debugLog.LogAudio($"[FILE] Created file-specific Opus codec: {fileSampleRate}Hz source -> {targetSampleRate}Hz Opus");
+                
+                try
+                {
+                    _fileOpusCodec = new OpusCodecService(_debugLog, targetSampleRate);
+                    _debugLog.LogAudio($"[FILE] Created file-specific Opus codec: {fileSampleRate}Hz source -> {targetSampleRate}Hz Opus");
+                }
+                catch (Exception codecEx)
+                {
+                    _debugLog.LogAudio($"[ERROR] Failed to create file-specific Opus codec: {codecEx.Message}");
+                    reader?.Dispose();
+                    throw new InvalidOperationException($"Failed to initialize Opus codec for audio file: {codecEx.Message}", codecEx);
+                }
 
                 // Calculate the correct timer interval based on the target codec frame size
                 // This ensures we process exactly the right amount of audio for real-time playback
@@ -640,41 +650,66 @@ public class AudioService : IDisposable
 
     private void AudioFilePlaybackCallback(object? state)
     {
-        _audioFileCallbackCount++;
-        
-        // Basic null checks first
-        if (_debugLog == null || _opusCodec == null)
+        try
         {
-            return;
-        }
+            _audioFileCallbackCount++;
+            _debugLog?.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} started");
+            
+            // Basic null checks first
+            if (_debugLog == null || _opusCodec == null)
+            {
+                return;
+            }
+            
+            // Critical: Ensure we have a valid file-specific codec before proceeding
+            if (_fileOpusCodec == null)
+            {
+                _debugLog.LogAudio($"[ERROR] File-specific Opus codec is null in callback - this should not happen");
+                var silenceBuffer = new byte[0];
+                EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0));
+                AudioLevelChanged?.Invoke(this, 0.0f);
+                return;
+            }
+            
+            _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} passed initial checks");
+
+        _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} checking mute/stream state");
         
-
-
         if (_isSelfMuted || (_isPushToTalk && !_isPushToTalkActive) || _audioFileStream == null)
         {
+            _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} sending silence - muted={_isSelfMuted}, ptt={_isPushToTalk && !_isPushToTalkActive}, nostream={_audioFileStream == null}");
             // Send silence when muted or push-to-talk is not active
             var silenceBuffer = new byte[0]; // Opus silence is empty packet
             EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0));
             AudioLevelChanged?.Invoke(this, 0.0f);
-            
-
             return;
         }
 
+        _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} entering main processing");
+
         try
         {
-            // Use the file-specific codec if available, otherwise fall back to main codec
-            var activeCodec = _fileOpusCodec ?? _opusCodec;
+            // Use the file-specific codec (we've verified it's not null above)
+            var activeCodec = _fileOpusCodec;
+            _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} got codec, creating PCM buffer");
             byte[] pcmData = new byte[activeCodec.FrameSize * 2]; // frame size * 2 bytes per sample
             float calculatedLevel = 0.0f;
             bool hasValidAudio = false;
 
+            _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} processing audio file stream");
             // Process audio file stream
             var audioFileStreamRef = _audioFileStream; // Capture reference to avoid race condition
             if (audioFileStreamRef != null)
             {
+                _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} getting source format");
                 var sourceFormat = audioFileStreamRef.WaveFormat;
-                if (sourceFormat == null) return;
+                if (sourceFormat == null) 
+                {
+                    _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} source format is null, returning");
+                    return;
+                }
+                
+                _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} source format: {sourceFormat.SampleRate}Hz, {sourceFormat.Channels}ch, {sourceFormat.BitsPerSample}bit");
                 
                 // Calculate how many bytes we need from the source for 20ms at the SOURCE sample rate
                 // For 44.1kHz: 20ms = 44100 * 0.02 = 882 samples per channel
@@ -689,13 +724,19 @@ public class AudioService : IDisposable
                     sourceBytesNeeded = (sourceBytesNeeded / (sourceFormat.Channels * 2)) * (sourceFormat.Channels * 2);
                 }
                 
+                _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} creating buffer for {sourceBytesNeeded} bytes");
                 byte[] sourcePcmData = new byte[sourceBytesNeeded];
+                
+                _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} reading from audio stream");
                 int bytesRead = audioFileStreamRef.Read(sourcePcmData, 0, sourceBytesNeeded);
+                _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} read {bytesRead} bytes");
                 
                 if (bytesRead == 0) // End of file
                 {
+                    _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} end of file, restarting");
                     audioFileStreamRef.Position = 0; // Restart
                     bytesRead = audioFileStreamRef.Read(sourcePcmData, 0, sourceBytesNeeded);
+                    _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} after restart, read {bytesRead} bytes");
                 }
                 
                 if (bytesRead > 0)
@@ -760,10 +801,10 @@ public class AudioService : IDisposable
                     {
                         _debugLog.LogAudio($"[ERROR] No valid PCM data to encode: pcmData.Length={pcmData.Length}, frameSize={activeCodec.FrameSize}");
                         var silencePacket = new byte[0];
-                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
-                        return;
-                    }
-                    
+                EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
+                return;
+            }
+
                     short[] pcmSamples = OpusCodecService.BytesToShorts(pcmData, bytesToUse);
                     
 
@@ -778,10 +819,10 @@ public class AudioService : IDisposable
                     }
                     
                     byte[] opusPacket = activeCodec.Encode(pcmSamples, pcmSamples.Length);
-                    
-                    if (opusPacket.Length > 0)
-                    {
-                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
+                
+                if (opusPacket.Length > 0)
+                {
+                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
                     }
                     else
                     {
@@ -810,6 +851,20 @@ public class AudioService : IDisposable
             try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch { }
             try { AudioLevelChanged?.Invoke(this, 0.0f); } catch { }
         }
+        }
+        catch (Exception outerEx)
+        {
+            _debugLog?.LogAudio($"[CRITICAL] Unhandled exception in AudioFilePlaybackCallback: {outerEx.Message}");
+            _debugLog?.LogAudio($"[CRITICAL] Stack trace: {outerEx.StackTrace}");
+            // Try to send silence but don't let this crash either
+            try 
+            { 
+                var silenceBuffer = new byte[0];
+                EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0));
+                AudioLevelChanged?.Invoke(this, 0.0f);
+            } 
+            catch { }
+        }
     }
 
     public void StopCapture()
@@ -831,7 +886,7 @@ public class AudioService : IDisposable
         }
 
         _audioFileStream?.Dispose();
-        _audioFileStream = null;
+            _audioFileStream = null;
         
         _fileOpusCodec?.Dispose();
         _fileOpusCodec = null;
@@ -1063,9 +1118,11 @@ public class AudioService : IDisposable
         return Math.Clamp(volumeScale, 0.0f, 1.0f);
     }
 
-    private void ApplyVolumeSettings(PeerPlayback playback, float? distance = null)
+    private float CalculateFinalVolume(PeerPlayback playback, float? distance = null)
     {
-        if (playback?.WaveOut == null) return;
+        if (playback == null) return 0.0f;
+
+        if (playback.IsMuted) return 0.0f;
 
         float distanceFactor = 1.0f;
         if (distance.HasValue)
@@ -1077,11 +1134,16 @@ public class AudioService : IDisposable
         // - distance factor (0-1, exponential falloff)
         // - peer UI volume setting (0-1, user adjustable per peer, default 0.5)
         // - overall volume scale (0-1, global setting, default 0.5)
-        float finalVolume = playback.IsMuted 
-                            ? 0.0f 
-                            : distanceFactor * playback.UiVolumeSetting * _volumeScale;
+        float finalVolume = distanceFactor * playback.UiVolumeSetting * _volumeScale;
         
-        finalVolume = Math.Clamp(finalVolume, 0.0f, 1.0f);
+        return Math.Clamp(finalVolume, 0.0f, 1.0f);
+    }
+
+    private void ApplyVolumeSettings(PeerPlayback playback, float? distance = null)
+    {
+        if (playback?.WaveOut == null) return;
+
+        float finalVolume = CalculateFinalVolume(playback, distance);
 
         try
         {
@@ -1098,18 +1160,7 @@ public class AudioService : IDisposable
     {
         if (playback?.WaveOut == null) return;
 
-        // calculate volume using piecewise distance curve
-        float distanceFactor = CalculateDistanceFactor(distance);
-
-        // calculate final volume as multiplication of all factors:
-        // - distance factor (0-1, exponential falloff)
-        // - peer UI volume setting (0-1, user adjustable per peer, default 0.5)
-        // - overall volume scale (0-1, global setting, default 0.5)
-        float finalVolume = playback.IsMuted 
-                            ? 0.0f 
-                            : distanceFactor * playback.UiVolumeSetting * _volumeScale;
-        
-        finalVolume = Math.Clamp(finalVolume, 0.0f, 1.0f);
+        float finalVolume = CalculateFinalVolume(playback, distance);
 
         try
         {
@@ -1175,13 +1226,10 @@ public class AudioService : IDisposable
         {
             playback.UiVolumeSetting = Math.Clamp(uiVolume, 0.0f, 1.0f);
             
-            // calculate final volume and apply immediately
-            float finalVolume = playback.IsMuted 
-                                ? 0.0f 
-                                : playback.UiVolumeSetting * _volumeScale;
-            finalVolume = Math.Clamp(finalVolume, 0.0f, 1.0f);
-            
-            _volumeTransitionService.SetVolumeImmediate(peerId, playback.WaveOut, finalVolume);
+            // We need to get the current distance to calculate the proper volume
+            // Since we don't have distance here, we'll just call ApplyVolumeSettings
+            // which will use the last known distance (or 1.0f if no distance set)
+            ApplyVolumeSettings(playback);
         }
     }
 
@@ -1470,6 +1518,15 @@ public class AudioService : IDisposable
                     return (invalidFormatSilence, 0.0f);
                 }
                 
+                // Additional validation for NAudio compatibility
+                if (sourceFormat.Encoding != WaveFormatEncoding.Pcm && sourceFormat.Encoding != WaveFormatEncoding.IeeeFloat)
+                {
+                    _debugLog.LogAudio($"Unsupported audio encoding for conversion: {sourceFormat.Encoding}");
+                    byte[] unsupportedSilence = new byte[targetBytes];
+                    Array.Fill(unsupportedSilence, (byte)0);
+                    return (unsupportedSilence, 0.0f);
+                }
+                
                 using var rawSourceStream = new RawSourceWaveStream(sourcePcmData, 0, validBytes, sourceFormat);
                 using var convertedStream = new WaveFormatConversionStream(targetFormat, rawSourceStream);
                 
@@ -1500,20 +1557,20 @@ public class AudioService : IDisposable
                 else
                 {
                     _debugLog.LogAudio($"Format conversion failed: no data read from conversion stream");
-                }
             }
-            catch (Exception ex)
-            {
+        }
+        catch (Exception ex)
+        {
                 _debugLog.LogAudio($"Error in format conversion: {ex.Message}");
                 _debugLog.LogAudio($"Source format details: {sourceFormat.SampleRate}Hz, {sourceFormat.Channels}ch, {sourceFormat.BitsPerSample}bit, {sourceFormat.Encoding}");
                 _debugLog.LogAudio($"Target format details: {targetFormat.SampleRate}Hz, {targetFormat.Channels}ch, {targetFormat.BitsPerSample}bit");
-            }
-            
+        }
+        
             // Fallback: return silence of correct size
             byte[] silenceData = new byte[targetBytes];
-            Array.Fill(silenceData, (byte)0);
-            return (silenceData, 0.0f);
-        }
+        Array.Fill(silenceData, (byte)0);
+        return (silenceData, 0.0f);
+    }
         catch (Exception ex)
         {
             _debugLog.LogAudio($"Error in simple mono conversion: {ex.Message}");
