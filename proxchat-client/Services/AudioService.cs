@@ -1017,44 +1017,13 @@ public class AudioService : IDisposable
             {
                 _debugLog.LogAudio($"Error decoding Opus for transmission detection from peer {peerId}: {ex.Message}");
                 
-                // If we get the specific "Negating the minimum value" error, replace the corrupted decoder
-                // This error indicates corrupted Opus decoder state during reconnection
+                // If we get the specific "Negating the minimum value" error, it indicates corrupted packet data
+                // This happens during reconnection when malformed packets arrive - just drop them
                 if (ex.Message.Contains("Negating the minimum value"))
                 {
-                    _debugLog.LogAudio($"Opus decoder corruption detected for peer {peerId} - replacing shared decoder");
-                    
-                    // Replace the corrupted shared decoder with a fresh one
-                    try
-                    {
-                        lock (_opusCodec) // Ensure thread safety during replacement
-                        {
-                            _opusCodec.Dispose(); // Dispose the corrupted decoder
-                            _opusCodec = new OpusCodecService(_debugLog, DEFAULT_OPUS_SAMPLE_RATE); // Replace with new decoder
-                            _debugLog.LogAudio($"Replaced corrupted Opus decoder with new instance");
-                            
-                            // Try decoding with the replacement decoder
-                            pcmSamples = _opusCodec.Decode(data, length);
-                            
-                            if (pcmSamples.Length > 0)
-                            {
-                                float audioLevel = CalculateAudioLevelFromSamples(pcmSamples);
-                                const float TRANSMISSION_DETECTION_THRESHOLD = 0.001f;
-                                hasAudio = audioLevel > TRANSMISSION_DETECTION_THRESHOLD;
-                                _debugLog.LogAudio($"Replacement decoder succeeded for peer {peerId}");
-                            }
-                            else
-                            {
-                                // Replacement decoder worked but no audio detected
-                                hasAudio = false;
-                            }
-                        }
-                    }
-                    catch (Exception retryEx)
-                    {
-                        _debugLog.LogAudio($"Replacement decoder also failed for peer {peerId}: {retryEx.Message}");
-                        // Fall back to packet size check if even the replacement decoder fails
-                        hasAudio = data.Length > 2;
-                    }
+                    _debugLog.LogAudio($"Detected corrupted Opus packet from peer {peerId} - dropping packet");
+                    // Don't try to decode corrupted packets, just assume there's audio based on packet size
+                    hasAudio = data.Length > 2;
                 }
                 else
                 {
