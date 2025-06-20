@@ -576,8 +576,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _debugLog.LogMain("NORMAL MODE: NamedPipeGameDataReader successfully created");
             }
             
-            // Use hardcoded max distance for consistency across all users
-            const float HARDCODED_MAX_DISTANCE = 17.0f; // Extended range for more realistic audio falloff
+            // Use hardcoded max distance to match server's disconnect range
+            const float HARDCODED_MAX_DISTANCE = 25.0f; // Match server's disconnection range for consistency
             
             _debugLog.LogMain("Initializing AudioService");
             _audioService = new AudioService(HARDCODED_MAX_DISTANCE, config, debugLog);
@@ -1345,7 +1345,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                             }
                         });
                         
-                        // Set up a timeout to request peer refresh if connection doesn't establish
+                        // Set up a timeout to clean up failed connections
                         _ = Task.Run(async () =>
                         {
                             await Task.Delay(15000 + connectionDelay); // Account for initial delay
@@ -1356,7 +1356,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                                 var connectedPeer = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
                                 if (connectedPeer == null)
                                 {
-                                    _debugLog.LogMain($"WebRTC connection timeout for peer {peerId}, requesting peer refresh");
+                                    _debugLog.LogMain($"WebRTC connection timeout for peer {peerId}, cleaning up and allowing retry");
+                                    
+                                    // Clean up the failed connection attempt
+                                    _pendingPeers.TryRemove(peerId, out _);
+                                    _webRtcService.RemovePeerConnection(peerId);
+                                    
+                                    // Request peer refresh to trigger reintroduction
                                     try
                                     {
                                         await _signalingService.RequestPeerRefresh();

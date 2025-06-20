@@ -37,6 +37,12 @@ public class WebRtcService : IDisposable
     // CHANGE: Add semaphore to limit concurrent connection attempts
     private readonly SemaphoreSlim _connectionSemaphore = new SemaphoreSlim(2, 2); // Max 2 concurrent connections
     
+    // Heartbeat mechanism for fast disconnect detection
+    private readonly Timer _heartbeatTimer;
+    private readonly ConcurrentDictionary<string, DateTime> _lastHeartbeatReceived = new();
+    private readonly TimeSpan _heartbeatInterval = TimeSpan.FromSeconds(1); // Send heartbeat every 1 second
+    private readonly TimeSpan _heartbeatTimeout = TimeSpan.FromSeconds(2); // Disconnect after 2 seconds without heartbeat
+    
     // System resource monitoring for performance analysis
     private static void LogSystemResources(string peerId, string phase, DebugLogService debugLog)
     {
@@ -74,6 +80,24 @@ public class WebRtcService : IDisposable
         public string CharacterName { get; set; } = "";
     }
 
+    private class HeartbeatMessage
+    {
+        public string Type { get; set; } = "heartbeat";
+        public long Timestamp { get; set; }
+    }
+
+    private class DataChannelMessage
+    {
+        public string Type { get; set; } = "";
+        // For position messages
+        public int MapId { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+        public string CharacterName { get; set; } = "";
+        // For heartbeat messages
+        public long Timestamp { get; set; }
+    }
+
     public WebRtcService(AudioService audioService, SignalingService signalingService, float maxDistance, DebugLogService debugLog)
     {
         _audioService = audioService;
@@ -90,6 +114,9 @@ public class WebRtcService : IDisposable
 
         // Initialize immediately
         EnsureInitialized();
+        
+        // Start heartbeat timer
+        _heartbeatTimer = new Timer(SendHeartbeats, null, _heartbeatInterval, _heartbeatInterval);
     }
 
     private void EnsureInitialized()
@@ -455,21 +482,52 @@ public class WebRtcService : IDisposable
                     {
                         if (data == null) return;
                         string message = Encoding.UTF8.GetString(data);
-                        // TEMP LOG: Received raw message
-                        _debugLog.LogWebRtc($"[TEMP] DC Message From {peerId}: Raw='{message}'");
-                        var posData = JsonConvert.DeserializeObject<PositionData>(message);
-                        if (posData == null) return;
+                        
+                        // Try to parse as generic data channel message first
+                        var dcMessage = System.Text.Json.JsonSerializer.Deserialize<DataChannelMessage>(message);
+                        if (dcMessage == null) return;
 
-                        // TEMP LOG: Received deserialized position data
-                        _debugLog.LogWebRtc($"[TEMP] DC Position From {peerId}: MapId={posData.MapId}, X={posData.X}, Y={posData.Y}, CharName='{posData.CharacterName}'");
+                        if (dcMessage.Type == "heartbeat")
+                        {
+                            // Update heartbeat tracking
+                            _lastHeartbeatReceived[peerId] = DateTime.UtcNow;
+                            // Don't log heartbeats - too verbose
+                        }
+                        else
+                        {
+                            // Assume it's a position message (legacy format without "type" field)
+                            // TEMP LOG: Received raw message
+                            _debugLog.LogWebRtc($"[TEMP] DC Message From {peerId}: Raw='{message}'");
+                            
+                            // For backwards compatibility, also try the old PositionData format
+                            var posData = JsonConvert.DeserializeObject<PositionData>(message);
+                            if (posData != null)
+                            {
+                                // TEMP LOG: Received deserialized position data
+                                _debugLog.LogWebRtc($"[TEMP] DC Position From {peerId}: MapId={posData.MapId}, X={posData.X}, Y={posData.Y}, CharName='{posData.CharacterName}'");
 
-                        var eventData = (peerId, posData.MapId, posData.X, posData.Y, posData.CharacterName);
-                        PositionReceived?.Invoke(this, eventData);
-                        _debugLog.LogWebRtc($"Received position update from {peerId}: MapId={posData.MapId}, X={posData.X}, Y={posData.Y}");
+                                var eventData = (peerId, posData.MapId, posData.X, posData.Y, posData.CharacterName);
+                                PositionReceived?.Invoke(this, eventData);
+                                _debugLog.LogWebRtc($"Received position update from {peerId}: MapId={posData.MapId}, X={posData.X}, Y={posData.Y}");
+                                
+                                // Update heartbeat tracking when we receive position data too
+                                _lastHeartbeatReceived[peerId] = DateTime.UtcNow;
+                            }
+                            else if (dcMessage.MapId != 0 || !string.IsNullOrEmpty(dcMessage.CharacterName))
+                            {
+                                // New format position message
+                                var eventData = (peerId, dcMessage.MapId, dcMessage.X, dcMessage.Y, dcMessage.CharacterName);
+                                PositionReceived?.Invoke(this, eventData);
+                                _debugLog.LogWebRtc($"Received position update from {peerId}: MapId={dcMessage.MapId}, X={dcMessage.X}, Y={dcMessage.Y}");
+                                
+                                // Update heartbeat tracking when we receive position data too
+                                _lastHeartbeatReceived[peerId] = DateTime.UtcNow;
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _debugLog.LogWebRtc($"Error parsing position data from {peerId}: {ex.Message}");
+                        _debugLog.LogWebRtc($"Error parsing data channel message from {peerId}: {ex.Message}");
                     }
                 });
             };
@@ -655,6 +713,9 @@ public class WebRtcService : IDisposable
         {
             try
             {
+                // Clean up heartbeat tracking
+                _lastHeartbeatReceived.TryRemove(peerId, out _);
+                
                 // Disconnect VirtualAudioSource from this peer connection
                 if (_virtualAudioSource != null)
                 {
@@ -721,6 +782,66 @@ public class WebRtcService : IDisposable
          _debugLog.LogWebRtc($"UpdatePeerVolume is not fully implemented for SIPSorceryMedia yet.");
     }
 
+    private void SendHeartbeats(object? timerState)
+    {
+        try
+        {
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var heartbeat = new HeartbeatMessage { Timestamp = timestamp };
+            var json = System.Text.Json.JsonSerializer.Serialize(heartbeat);
+            
+            var peersToRemove = new List<string>();
+            var now = DateTime.UtcNow;
+            
+            foreach (var kvp in _peerConnections)
+            {
+                var peerId = kvp.Key;
+                var peerState = kvp.Value;
+                
+                // Check for heartbeat timeout
+                if (_lastHeartbeatReceived.TryGetValue(peerId, out var lastHeartbeat))
+                {
+                    if (now - lastHeartbeat > _heartbeatTimeout)
+                    {
+                        _debugLog.LogWebRtc($"Heartbeat timeout for peer {peerId} - last heartbeat {(now - lastHeartbeat).TotalSeconds:F1}s ago");
+                        peersToRemove.Add(peerId);
+                        continue;
+                    }
+                }
+                else
+                {
+                    // First heartbeat - initialize tracking
+                    _lastHeartbeatReceived[peerId] = now;
+                }
+                
+                // Send heartbeat if data channel is ready
+                if (peerState.DataChannel != null && peerState.DataChannel.readyState == RTCDataChannelState.open)
+                {
+                    try
+                    {
+                        peerState.DataChannel.send(json);
+                    }
+                    catch (Exception ex)
+                    {
+                        _debugLog.LogWebRtc($"Error sending heartbeat to {peerId}: {ex.Message}");
+                        peersToRemove.Add(peerId);
+                    }
+                }
+            }
+            
+            // Remove timed out peers
+            foreach (var peerId in peersToRemove)
+            {
+                _debugLog.LogWebRtc($"Removing peer {peerId} due to heartbeat timeout or send error");
+                RemovePeerConnection(peerId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogWebRtc($"Error in SendHeartbeats: {ex.Message}");
+        }
+    }
+
     public void CloseAllConnections()
     {
         var peerIds = _peerConnections.Keys.ToList();
@@ -733,6 +854,9 @@ public class WebRtcService : IDisposable
 
     public void Dispose()
     {
+        // Stop heartbeat timer first  
+        _heartbeatTimer?.Dispose();
+        
         CloseAllConnections();
 
         _signalingService.OfferReceived -= OnOfferReceived;

@@ -72,9 +72,17 @@ impl ServerState {
         }
     }
 
-    // highly optimized proximity calculation for small client counts
-    fn get_nearby_clients(&self, pos: &ClientPosition, range: f32) -> Vec<String> {
-        const RANGE_SQUARED: f32 = 20.0 * 20.0; // pre-calculate to avoid sqrt
+    // hysteresis-based proximity calculation to prevent connection flapping
+    // This prevents the "dicey" behavior when walking around the 20-tile boundary:
+    // - New peers are introduced when ≤20 units apart (INTRODUCTION_RANGE)
+    // - Existing peers stay connected until >25 units apart (DISCONNECTION_RANGE)  
+    // - This 5-unit buffer prevents constant connect/disconnect when hovering near the boundary
+    fn get_nearby_clients_with_hysteresis(&self, pos: &ClientPosition) -> Vec<String> {
+        const INTRODUCTION_RANGE_SQUARED: f32 = 20.0 * 20.0; // introduce new peers at ≤20 units
+        const DISCONNECTION_RANGE_SQUARED: f32 = 25.0 * 25.0; // keep existing peers until >25 units
+        
+        // get current nearby list for this client
+        let current_nearby = self.last_nearby_lists.get(&pos.client_id).cloned().unwrap_or_default();
         
         self.positions
             .iter()
@@ -90,14 +98,28 @@ impl ServerState {
                 let dy = other_pos.y - pos.y;
                 let distance_squared = (dx * dx + dy * dy) as f32;
                 
-                if distance_squared <= RANGE_SQUARED {
-                    Some(id.clone())
+                // hysteresis logic: different ranges for introduction vs disconnection
+                let was_nearby = current_nearby.contains(id);
+                
+                if was_nearby {
+                    // already connected - keep until >25 units (disconnection range)
+                    if distance_squared <= DISCONNECTION_RANGE_SQUARED {
+                        Some(id.clone())
+                    } else {
+                        None
+                    }
                 } else {
-                    None
+                    // not connected - introduce only if ≤20 units (introduction range)
+                    if distance_squared <= INTRODUCTION_RANGE_SQUARED {
+                        Some(id.clone())
+                    } else {
+                        None
+                    }
                 }
             })
             .collect()
     }
+
 
     // remove a client from all other clients' cached nearby lists
     fn remove_from_all_nearby_caches(&mut self, client_id: &str) {
@@ -115,8 +137,8 @@ impl ServerState {
         self.positions.insert(client_id.clone(), new_pos.clone());
         self.last_update_time.insert(client_id.clone(), Instant::now());
         
-        // get new nearby list for this client
-        let nearby_for_sender = self.get_nearby_clients(&new_pos, 20.0);
+        // get new nearby list for this client using hysteresis
+        let nearby_for_sender = self.get_nearby_clients_with_hysteresis(&new_pos);
         let nearby_set: HashSet<String> = nearby_for_sender.iter().cloned().collect();
         
         // only notify for NEW peers (not for position changes of existing peers)
@@ -137,7 +159,7 @@ impl ServerState {
         for new_peer_id in new_peers {
             if let Some(peer_pos) = self.positions.get(&new_peer_id) {
                 // check if this moving client is NEW to the peer's nearby list
-                let peer_nearby = self.get_nearby_clients(peer_pos, 20.0);
+                let peer_nearby = self.get_nearby_clients_with_hysteresis(peer_pos);
                 let peer_nearby_set: HashSet<String> = peer_nearby.iter().cloned().collect();
                 let peer_previous_nearby = self.last_nearby_lists.get(&new_peer_id).cloned().unwrap_or_default();
                 
@@ -313,7 +335,7 @@ async fn handle_connection(
                             // get fresh nearby list for this client
                             let state_read = state.read().await;
                             if let Some(client_pos) = state_read.positions.get(&notify_client_id) {
-                                let nearby_list = state_read.get_nearby_clients(client_pos, 20.0);
+                                let nearby_list = state_read.get_nearby_clients_with_hysteresis(client_pos);
                                 drop(state_read);
                                 
                                 let response = ServerMessage::NearbyPeers(nearby_list);
@@ -325,11 +347,11 @@ async fn handle_connection(
                     }
                     ClientMessage::RequestPeerRefresh => {
                         if let Some(sender_id) = registered_client_id.as_ref() {
-                            // send current nearby peers regardless of cache
-                            let state_read = state.read().await;
-                            if let Some(client_pos) = state_read.positions.get(sender_id) {
-                                let nearby_list = state_read.get_nearby_clients(client_pos, 20.0);
-                                drop(state_read);
+                                                    // send current nearby peers regardless of cache
+                        let state_read = state.read().await;
+                        if let Some(client_pos) = state_read.positions.get(sender_id) {
+                            let nearby_list = state_read.get_nearby_clients_with_hysteresis(client_pos);
+                            drop(state_read);
                                 
                                 let response = ServerMessage::NearbyPeers(nearby_list);
                                 if let Err(e) = tx.send(response).await {
@@ -463,24 +485,40 @@ async fn handle_connection(
     }
 }
 
-// Background task to check for client timeouts
-async fn check_timeouts(state: Arc<RwLock<ServerState>>) {
+// Background task to check for client timeouts and periodic reintroductions
+async fn check_timeouts_and_reintroduce(state: Arc<RwLock<ServerState>>) {
     let mut interval = time::interval(Duration::from_secs(5)); // Check every 5 seconds
     const TIMEOUT_DURATION: Duration = Duration::from_secs(15);
-
+    
     loop {
         interval.tick().await;
         let mut timed_out_clients = Vec::new();
-        let mut state_read = state.read().await; // Read lock to check times
+        let mut reintroduction_notifications = Vec::new();
+        
+        let state_read = state.read().await; // Read lock to check times
 
+        // Check for timeouts
         for (client_id, last_time) in state_read.last_update_time.iter() {
             if last_time.elapsed() > TIMEOUT_DURATION {
                 info!("Client {} timed out (last update {:?})", client_id, last_time.elapsed());
                 timed_out_clients.push(client_id.clone());
             }
         }
+        
+        // Simple periodic reintroductions - send fresh nearby lists to all clients every 5 seconds
+        // This handles stale connection states gracefully - clients ignore duplicate introductions
+        for (client_id, client_pos) in state_read.positions.iter() {
+            if let Some(connection_id) = state_read.client_id_to_connection_id.get(client_id) {
+                if let Some(tx) = state_read.connections.get(connection_id) {
+                    let nearby_list = state_read.get_nearby_clients_with_hysteresis(client_pos);
+                    reintroduction_notifications.push((client_id.clone(), tx.clone(), nearby_list));
+                }
+            }
+        }
+        
         drop(state_read); // Release read lock
 
+        // Handle timeouts
         if !timed_out_clients.is_empty() {
             let mut state_write = state.write().await; // Write lock to remove
             for client_id in timed_out_clients {
@@ -503,6 +541,15 @@ async fn check_timeouts(state: Arc<RwLock<ServerState>>) {
                 }
             }
         }
+        
+        // Send periodic reintroductions to all clients
+        for (client_id, tx, nearby_list) in reintroduction_notifications {
+            let response = ServerMessage::NearbyPeers(nearby_list);
+            if let Err(e) = tx.send(response).await {
+                // Don't log this as error - client may have disconnected, that's normal
+                // warn!("Failed to send periodic reintroduction to {}: {}", client_id, e);
+            }
+        }
     }
 }
 
@@ -517,7 +564,7 @@ async fn main() {
     // Spawn the timeout checking task
     let timeout_state = Arc::clone(&state);
     tokio::spawn(async move {
-        check_timeouts(timeout_state).await;
+        check_timeouts_and_reintroduce(timeout_state).await;
     });
 
     // Create WebSocket server
