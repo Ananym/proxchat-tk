@@ -48,7 +48,7 @@ public class AudioService : IDisposable
 
 
     private readonly DebugLogService _debugLog;
-    private readonly OpusCodecService _opusCodec;
+    private OpusCodecService _opusCodec;
     private OpusCodecService? _fileOpusCodec; // separate codec for file input with different sample rate
     private readonly VolumeTransitionService _volumeTransitionService;
 
@@ -62,6 +62,7 @@ public class AudioService : IDisposable
 
     // Add this field with the other private fields
     private int _audioFileCallbackCount = 0;
+    private volatile bool _isDisposing = false; // Flag to prevent callbacks during disposal
 
     // Static constructor to initialize MediaFoundation for MP3 support
     static AudioService()
@@ -655,6 +656,13 @@ public class AudioService : IDisposable
             _audioFileCallbackCount++;
             _debugLog?.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} started");
             
+            // Early exit if disposing to prevent null reference exceptions
+            if (_isDisposing)
+            {
+                _debugLog?.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} exiting - service is disposing");
+                return;
+            }
+            
             // Basic null checks first
             if (_debugLog == null || _opusCodec == null)
             {
@@ -756,26 +764,32 @@ public class AudioService : IDisposable
             }
 
             // Always show the actual detected audio level (color will indicate if broadcasting)
-            try 
+            if (!_isDisposing) // Don't invoke events if disposing
             {
-                AudioLevelChanged?.Invoke(this, hasValidAudio ? calculatedLevel : 0.0f);
-            }
-            catch (Exception eventEx) 
-            { 
-                _debugLog?.LogAudio($"Error invoking AudioLevelChanged in file callback: {eventEx.Message}"); 
+                try 
+                {
+                    AudioLevelChanged?.Invoke(this, hasValidAudio ? calculatedLevel : 0.0f);
+                }
+                catch (Exception eventEx) 
+                { 
+                    _debugLog?.LogAudio($"Error invoking AudioLevelChanged in file callback: {eventEx.Message}"); 
+                }
             }
 
             // Apply broadcast threshold - if level is below threshold, send silence but still show the level
             if (hasValidAudio && calculatedLevel < _minBroadcastThreshold)
             {
                 var silencePacket = new byte[0]; // Opus silence is empty packet
-                try 
+                if (!_isDisposing)
                 {
-                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
-                }
-                catch (Exception eventEx) 
-                { 
-                    _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (threshold): {eventEx.Message}"); 
+                    try 
+                    {
+                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
+                    }
+                    catch (Exception eventEx) 
+                    { 
+                        _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (threshold): {eventEx.Message}"); 
+                    }
                 }
                 return;
             }
@@ -836,25 +850,31 @@ public class AudioService : IDisposable
                 
                 if (opusPacket.Length > 0)
                 {
-                    try 
+                    if (!_isDisposing)
                     {
-                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
-                    }
-                    catch (Exception eventEx) 
-                    { 
-                        _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (opus): {eventEx.Message}"); 
+                        try 
+                        {
+                            EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
+                        }
+                        catch (Exception eventEx) 
+                        { 
+                            _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (opus): {eventEx.Message}"); 
+                        }
                     }
                     }
                     else
                     {
                         var silencePacket = new byte[0]; // Opus silence is empty packet
-                        try 
+                        if (!_isDisposing)
                         {
-                            EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
-                        }
-                        catch (Exception eventEx) 
-                        { 
-                            _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (silence): {eventEx.Message}"); 
+                            try 
+                            {
+                                EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
+                            }
+                            catch (Exception eventEx) 
+                            { 
+                                _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (silence): {eventEx.Message}"); 
+                            }
                         }
                     }
                 }
@@ -862,26 +882,32 @@ public class AudioService : IDisposable
                 {
                     _debugLog.LogAudio($"[ERROR] Error encoding Opus from file audio: {ex.Message}");
                     var silencePacket = new byte[0]; // Opus silence is empty packet
-                    try 
+                    if (!_isDisposing)
                     {
-                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
-                    }
-                    catch (Exception eventEx) 
-                    { 
-                        _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (encode error): {eventEx.Message}"); 
+                        try 
+                        {
+                            EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
+                        }
+                        catch (Exception eventEx) 
+                        { 
+                            _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (encode error): {eventEx.Message}"); 
+                        }
                     }
                 }
             }
             else
             {
                 var silencePacket = new byte[0]; // Opus silence is empty packet
-                try 
+                if (!_isDisposing)
                 {
-                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
-                }
-                catch (Exception eventEx) 
-                { 
-                    _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (no valid audio): {eventEx.Message}"); 
+                    try 
+                    {
+                        EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silencePacket, 0));
+                    }
+                    catch (Exception eventEx) 
+                    { 
+                        _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (no valid audio): {eventEx.Message}"); 
+                    }
                 }
             }
         }
@@ -889,9 +915,12 @@ public class AudioService : IDisposable
         {
             _debugLog.LogAudio($"[ERROR] Error in audio file playback: {ex.Message}");
             // Send silence on error
-            var silenceBuffer = new byte[0]; // Opus silence is empty packet
-            try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable: {eventEx.Message}"); }
-            try { AudioLevelChanged?.Invoke(this, 0.0f); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking AudioLevelChanged: {eventEx.Message}"); }
+            if (!_isDisposing)
+            {
+                var silenceBuffer = new byte[0]; // Opus silence is empty packet
+                try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable: {eventEx.Message}"); }
+                try { AudioLevelChanged?.Invoke(this, 0.0f); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking AudioLevelChanged: {eventEx.Message}"); }
+            }
         }
         }
         catch (Exception outerEx)
@@ -899,13 +928,16 @@ public class AudioService : IDisposable
             _debugLog?.LogAudio($"[CRITICAL] Unhandled exception in AudioFilePlaybackCallback: {outerEx.Message}");
             _debugLog?.LogAudio($"[CRITICAL] Stack trace: {outerEx.StackTrace}");
             // Try to send silence but don't let this crash either
-            try 
-            { 
-                var silenceBuffer = new byte[0];
-                EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0));
-                AudioLevelChanged?.Invoke(this, 0.0f);
-            } 
-            catch { }
+            if (!_isDisposing)
+            {
+                try 
+                { 
+                    var silenceBuffer = new byte[0];
+                    EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0));
+                    AudioLevelChanged?.Invoke(this, 0.0f);
+                } 
+                catch { }
+            }
         }
     }
 
@@ -985,37 +1017,48 @@ public class AudioService : IDisposable
             {
                 _debugLog.LogAudio($"Error decoding Opus for transmission detection from peer {peerId}: {ex.Message}");
                 
-                // If we get the specific "Negating the minimum value" error, it's likely a corrupted state
+                // If we get the specific "Negating the minimum value" error, replace the corrupted decoder
+                // This error indicates corrupted Opus decoder state during reconnection
                 if (ex.Message.Contains("Negating the minimum value"))
                 {
-                    _debugLog.LogAudio($"Detected Opus decoder corruption for peer {peerId}, attempting to create fresh decoder");
+                    _debugLog.LogAudio($"Opus decoder corruption detected for peer {peerId} - replacing shared decoder");
                     
-                    // Try to create a fresh decoder instance to recover from corruption
+                    // Replace the corrupted shared decoder with a fresh one
                     try
                     {
-                        var freshCodec = new OpusCodecService(_debugLog, DEFAULT_OPUS_SAMPLE_RATE);
-                        pcmSamples = freshCodec.Decode(data, length);
-                        
-                        if (pcmSamples.Length > 0)
+                        lock (_opusCodec) // Ensure thread safety during replacement
                         {
-                            float audioLevel = CalculateAudioLevelFromSamples(pcmSamples);
-                            const float TRANSMISSION_DETECTION_THRESHOLD = 0.001f;
-                            hasAudio = audioLevel > TRANSMISSION_DETECTION_THRESHOLD;
-                            _debugLog.LogAudio($"Fresh decoder succeeded for peer {peerId}");
+                            _opusCodec.Dispose(); // Dispose the corrupted decoder
+                            _opusCodec = new OpusCodecService(_debugLog, DEFAULT_OPUS_SAMPLE_RATE); // Replace with new decoder
+                            _debugLog.LogAudio($"Replaced corrupted Opus decoder with new instance");
+                            
+                            // Try decoding with the replacement decoder
+                            pcmSamples = _opusCodec.Decode(data, length);
+                            
+                            if (pcmSamples.Length > 0)
+                            {
+                                float audioLevel = CalculateAudioLevelFromSamples(pcmSamples);
+                                const float TRANSMISSION_DETECTION_THRESHOLD = 0.001f;
+                                hasAudio = audioLevel > TRANSMISSION_DETECTION_THRESHOLD;
+                                _debugLog.LogAudio($"Replacement decoder succeeded for peer {peerId}");
+                            }
+                            else
+                            {
+                                // Replacement decoder worked but no audio detected
+                                hasAudio = false;
+                            }
                         }
-                        
-                        freshCodec.Dispose(); // Clean up the temporary decoder
                     }
                     catch (Exception retryEx)
                     {
-                        _debugLog.LogAudio($"Fresh decoder also failed for peer {peerId}: {retryEx.Message}");
-                        // Fall back to packet size check
+                        _debugLog.LogAudio($"Replacement decoder also failed for peer {peerId}: {retryEx.Message}");
+                        // Fall back to packet size check if even the replacement decoder fails
                         hasAudio = data.Length > 2;
                     }
                 }
                 else
                 {
-                    // Fall back to packet size check if decoding fails
+                    // Fall back to packet size check for other decode errors
                     hasAudio = data.Length > 2;
                 }
             }
@@ -1424,6 +1467,7 @@ public class AudioService : IDisposable
 
     public void Dispose()
     {
+        _isDisposing = true; // Set flag to prevent callbacks from running
         StopCapture();
 
         foreach (var peerId in _peerPlaybackStreams.Keys.ToList())
