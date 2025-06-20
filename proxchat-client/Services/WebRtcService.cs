@@ -40,8 +40,8 @@ public class WebRtcService : IDisposable
     // Heartbeat mechanism for fast disconnect detection
     private readonly Timer _heartbeatTimer;
     private readonly ConcurrentDictionary<string, DateTime> _lastHeartbeatReceived = new();
-    private readonly TimeSpan _heartbeatInterval = TimeSpan.FromSeconds(1); // Send heartbeat every 1 second
-    private readonly TimeSpan _heartbeatTimeout = TimeSpan.FromSeconds(2); // Disconnect after 2 seconds without heartbeat
+    private readonly TimeSpan _heartbeatInterval = TimeSpan.FromMilliseconds(500); // Send heartbeat every 500ms
+    private readonly TimeSpan _heartbeatTimeout = TimeSpan.FromSeconds(1); // Disconnect after 1 second without heartbeat
     
     // System resource monitoring for performance analysis
     private static void LogSystemResources(string peerId, string phase, DebugLogService debugLog)
