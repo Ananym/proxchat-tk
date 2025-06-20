@@ -21,7 +21,7 @@ namespace ProxChatClient.ViewModels;
 
 public class MainViewModel : INotifyPropertyChanged, IDisposable
 {
-    private readonly NamedPipeGameDataReader _memoryReader;
+    private readonly IGameDataReader _memoryReader;
     private readonly SignalingService _signalingService;
     private readonly WebRtcService _webRtcService;
     private readonly AudioService _audioService;
@@ -42,8 +42,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private Timer? _positionSendTimer; // Renamed from _positionTimer for clarity
     private bool _isMemoryReaderInitialized = false; // Flag for memory reader status
 
-    // Debug Mode Fields
-    private bool _isDebugModeEnabled = false;
+    // Debug Mode Fields - read-only after construction
+    private readonly bool _isDebugModeEnabled;
+    private DebugGameDataReader? _debugReader; // cast reference for debug mode event triggering
     private string _debugCharacterName = Guid.NewGuid().ToString().Substring(0, 8); // Default random string
     private int _debugX = 109; // Changed to int
     private int _debugY = 191; // Changed to int
@@ -98,47 +99,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ObservableCollection<string> InputDevices => _audioService.InputDevices;
     
     // Debug Mode Properties
-    public bool IsDebugModeEnabled
-    {
-        get => _isDebugModeEnabled;
-        set
-        {
-            if (_isDebugModeEnabled != value)
-            {
-                _isDebugModeEnabled = value;
-                OnPropertyChanged();
-                
-                // disable/enable pipe reading based on debug mode
-                _memoryReader?.SetPipeReadingEnabled(!value);
-                _debugLog.LogMain($"Debug mode {(value ? "enabled" : "disabled")} - pipe reading {(value ? "disabled" : "enabled")}");
-                
-                // Refresh UI-bound properties that depend on debug mode
-                OnPropertyChanged(nameof(CurrentCharacterName));
-                OnPropertyChanged(nameof(CurrentX));
-                OnPropertyChanged(nameof(CurrentY));
-                OnPropertyChanged(nameof(CurrentMapId));
-                OnPropertyChanged(nameof(CurrentMapName)); // Map name might also be affected or need a debug version
-                ((RelayCommand)StartCommand).RaiseCanExecuteChanged(); // update start button state
-                // If debug mode is turned on, update the UI immediately with debug values
-                if (_isDebugModeEnabled)
-                {
-                    UpdateUiWithDebugValues();
-                }
-                else
-                {
-                    // when turning off debug mode, trigger property change notifications for current position
-                    OnPropertyChanged(nameof(CurrentMapId));
-                    OnPropertyChanged(nameof(CurrentMapName));
-                    OnPropertyChanged(nameof(CurrentMapDisplay));
-                    OnPropertyChanged(nameof(CurrentX));
-                    OnPropertyChanged(nameof(CurrentY));
-                    OnPropertyChanged(nameof(CurrentCharacterName));
-                    // recalculate distances since we switched from debug to real position
-                    if (IsRunning) RecalculateAllPeerDistances();
-                }
-            }
-        }
-    }
+    public bool IsDebugModeEnabled => _isDebugModeEnabled;
 
     public string DebugCharacterName
     {
@@ -153,6 +114,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 if (IsDebugModeEnabled) 
                 {
                     OnPropertyChanged(nameof(CurrentCharacterName));
+                    
+                    // fire debug game data event when value changes
+                    _debugReader?.FireDebugGameData(_debugMapId, "DebugMap", _debugX, _debugY, value, 0);
                     
                     // handle character name change in debug mode
                     if (!string.IsNullOrEmpty(value) && value != "Player" && IsRunning)
@@ -183,6 +147,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (IsDebugModeEnabled) 
             {
                 OnPropertyChanged(nameof(CurrentX));
+                
+                // fire debug game data event when value changes
+                _debugReader?.FireDebugGameData(_debugMapId, "DebugMap", value, _debugY, _debugCharacterName, 0);
+                
                 // recalculate distances when debug position changes
                 if (IsRunning) RecalculateAllPeerDistances();
             }
@@ -199,6 +167,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (IsDebugModeEnabled) 
             {
                 OnPropertyChanged(nameof(CurrentY));
+                
+                // fire debug game data event when value changes
+                _debugReader?.FireDebugGameData(_debugMapId, "DebugMap", _debugX, value, _debugCharacterName, 0);
+                
                 // recalculate distances when debug position changes
                 if (IsRunning) RecalculateAllPeerDistances();
             }
@@ -215,6 +187,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             if (IsDebugModeEnabled) 
             {
                 OnPropertyChanged(nameof(CurrentMapId));
+                
+                // fire debug game data event when value changes
+                _debugReader?.FireDebugGameData(value, "DebugMap", _debugX, _debugY, _debugCharacterName, 0);
+                
                 // recalculate distances when debug map changes
                 if (IsRunning) RecalculateAllPeerDistances();
             }
@@ -529,9 +505,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public MainViewModel(Config config)
+    public MainViewModel(Config config, bool isDebugModeEnabled = false)
     {
         _config = config;
+        _isDebugModeEnabled = isDebugModeEnabled;
         
         // Initialize audio settings from config
         _volumeScale = _config.AudioSettings.VolumeScale > 0 ? _config.AudioSettings.VolumeScale : 0.5f; // Default to 0.5f if not set
@@ -583,12 +560,21 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            // determine if we should enable pipe reading based on whether we're likely in debug mode
-            // for now, we'll default to enabling pipe reading, but users can override with debug mode checkbox
-            bool enablePipeReading = true;
-            
-            _debugLog.LogMain($"Initializing NamedPipeGameDataReader with enablePipeReading={enablePipeReading}");
-            _memoryReader = new NamedPipeGameDataReader(_config.GameDataIpcChannel, _debugLog, enablePipeReading);
+            // choose appropriate game data reader implementation based on debug mode
+            _debugLog.LogMain($"DEBUG FLAG CHECK: _isDebugModeEnabled = {_isDebugModeEnabled}");
+            if (_isDebugModeEnabled)
+            {
+                _debugLog.LogMain("DEBUG MODE: Creating DebugGameDataReader - no pipe connection will be made");
+                _debugReader = new DebugGameDataReader(_debugLog);
+                _memoryReader = _debugReader;
+                _debugLog.LogMain("DEBUG MODE: DebugGameDataReader successfully created and assigned");
+            }
+            else
+            {
+                _debugLog.LogMain("NORMAL MODE: Creating NamedPipeGameDataReader");
+                _memoryReader = new NamedPipeGameDataReader(_config.GameDataIpcChannel, _debugLog);
+                _debugLog.LogMain("NORMAL MODE: NamedPipeGameDataReader successfully created");
+            }
             
             // Use hardcoded max distance for consistency across all users
             const float HARDCODED_MAX_DISTANCE = 17.0f; // Extended range for more realistic audio falloff
@@ -800,9 +786,19 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void InitializeMemoryReader()
     {
-        StatusMessage = "Attempting to establish connection with game data provider...";
-        // memory reader initialization is now handled by the OnGameDataRead event
-        // when the first successful read occurs, _isMemoryReaderInitialized will be set to true
+        if (_isDebugModeEnabled)
+        {
+            // in debug mode, no pipe connection is attempted - consider it always initialized
+            _isMemoryReaderInitialized = true;
+            StatusMessage = "Debug Mode Active. Game data is being overridden.";
+            _debugLog.LogMain("Debug mode enabled - memory reader marked as initialized, no pipe connection");
+        }
+        else
+        {
+            StatusMessage = "Attempting to establish connection with game data provider...";
+            // memory reader initialization is now handled by the OnGameDataRead event
+            // when the first successful read occurs, _isMemoryReaderInitialized will be set to true
+        }
     }
 
 

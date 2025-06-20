@@ -1,8 +1,5 @@
-﻿using System.IO;
-using System.Text.Json;
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Input;
-using ProxChatClient.Models;
 using ProxChatClient.ViewModels;
 using ProxChatClient.Controls;
 
@@ -13,34 +10,14 @@ namespace ProxChatClient;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private MainViewModel? _viewModel;
-
     public MainWindow()
     {
         InitializeComponent();
-
-        // Load configuration
-        var config = LoadConfiguration();
-        _viewModel = new MainViewModel(config);
-        DataContext = _viewModel;
 
         // Attach handlers using WPF standard events (keep for UI editing)
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         PreviewKeyUp += MainWindow_PreviewKeyUp;
         LostKeyboardFocus += MainWindow_LostKeyboardFocus;
-    }
-
-    private Config LoadConfiguration()
-    {
-        try
-        {
-            var json = File.ReadAllText("config.json");
-            return JsonSerializer.Deserialize<Config>(json) ?? new Config();
-        }
-        catch
-        {
-            return new Config();
-        }
     }
 
     private void PushToTalkKeyEditor_HotkeyChanged(object sender, RoutedEventArgs e)

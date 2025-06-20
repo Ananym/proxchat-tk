@@ -7,7 +7,13 @@ using System.Threading.Tasks;
 
 namespace ProxChatClient.Services;
 
-public class NamedPipeGameDataReader : IDisposable
+// interface for game data reading - allows debug stub implementation
+public interface IGameDataReader : IDisposable
+{
+    event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName, int GameId)>? GameDataRead;
+}
+
+public class NamedPipeGameDataReader : IGameDataReader
 {
     private const string PIPE_NAME = "gamedata";
     private const int MESSAGE_SIZE = 56; // sizeof(GameDataMessage) - gameId field replaced reserved1
@@ -21,8 +27,7 @@ public class NamedPipeGameDataReader : IDisposable
     private Thread? _heartbeatThread;
     private volatile bool _shouldStop = false;
     private volatile bool _connected = false;
-    private volatile bool _pipeReadingEnabled = true;
-    private readonly DebugLogService? _debugLog;
+    private readonly DebugLogService _debugLog;
     private readonly object _pipeLock = new object();
     private DateTime _lastHeartbeatSent = DateTime.MinValue;
     private DateTime _lastDataReceived = DateTime.MinValue;
@@ -30,21 +35,6 @@ public class NamedPipeGameDataReader : IDisposable
     // add event for new game data
     public event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName, int GameId)>? GameDataRead;
     
-    // method to enable/disable pipe reading (e.g., when debug mode is toggled)
-    public void SetPipeReadingEnabled(bool enabled)
-    {
-        if (_pipeReadingEnabled == enabled) return;
-        
-        _pipeReadingEnabled = enabled;
-        _debugLog?.LogNamedPipe($"Pipe reading {(enabled ? "enabled" : "disabled")}");
-        
-        if (!enabled)
-        {
-            // disconnect if we're disabling
-            DisconnectPipe();
-        }
-    }
-
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     struct PipeMessage
     {
@@ -54,66 +44,68 @@ public class NamedPipeGameDataReader : IDisposable
         public byte[] Data;
     }
 
-    public NamedPipeGameDataReader(string ipcChannelName = "game-data-channel", DebugLogService? debugLog = null, bool enablePipeReading = true)
+    public NamedPipeGameDataReader(string ipcChannelName, DebugLogService debugLog)
     {
         _debugLog = debugLog;
-        _debugLog?.LogNamedPipe($"Initializing NamedPipeGameDataReader for pipe '{PIPE_NAME}', enablePipeReading={enablePipeReading}");
+        _debugLog.LogNamedPipe("CONSTRUCTOR CALLED");
+        _debugLog.LogNamedPipe($"STACK TRACE: {Environment.StackTrace}");
         
-        _pipeReadingEnabled = enablePipeReading;
+        // write stack trace to debug file for troubleshooting
+        try
+        {
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            var debugInfo = $"[{timestamp}] NamedPipeGameDataReader Constructor Called\n";
+            debugInfo += new string('-', 80) + "\n\n";
+            File.AppendAllText(@"C:\proxdebug.txt", debugInfo);
+        }
+        catch
+        {
+            // ignore file write errors - don't let debug code break the app
+        }
         
-        if (enablePipeReading)
+        // initialize thread references to null
+        _readThread = null;
+        _heartbeatThread = null;
+        
+        _readThread = new Thread(ReadThreadLoop)
         {
-            // start dedicated threads only if pipe reading is enabled
-            _readThread = new Thread(ReadThreadLoop)
-            {
-                IsBackground = true,
-                Name = "NamedPipeReader"
-            };
-            _readThread.Start();
-            
-            _heartbeatThread = new Thread(HeartbeatThreadLoop)
-            {
-                IsBackground = true,
-                Name = "NamedPipeHeartbeat"
-            };
-            _heartbeatThread.Start();
-            
-            _debugLog?.LogNamedPipe("Started named pipe reader and heartbeat threads");
-        }
-        else
+            IsBackground = true,
+            Name = "NamedPipeReader"
+        };
+        _readThread.Start();
+        
+        _heartbeatThread = new Thread(HeartbeatThreadLoop)
         {
-            _debugLog?.LogNamedPipe("Pipe reading disabled - threads not started");
-        }
+            IsBackground = true,
+            Name = "NamedPipeHeartbeat"
+        };
+        _heartbeatThread.Start();
+        
+        _debugLog.LogNamedPipe("Started named pipe reader and heartbeat threads");
     }
 
     private void ReadThreadLoop()
     {
+        // read thread active
         int messageCount = 0;
         int validMessageCount = 0;
         int eventFireCount = 0;
         int invalidMessageCount = 0;
         int connectionAttempts = 0;
         
-        _debugLog?.LogNamedPipe("Named pipe reader thread started");
+        _debugLog.LogNamedPipe("Named pipe reader thread started");
         
         while (!_shouldStop && !_disposed)
         {
             try
             {
-                // if pipe reading is disabled, just sleep and continue
-                if (!_pipeReadingEnabled)
-                {
-                    Thread.Sleep(1000);
-                    continue;
-                }
-                
                 // ensure we have a connection
                 if (!_connected && !EnsureConnection())
                 {
                     connectionAttempts++;
                     if (connectionAttempts % 5 == 1) // log every 5 attempts (every ~25 seconds)
                     {
-                        _debugLog?.LogNamedPipe($"Connection attempt #{connectionAttempts} failed");
+                        _debugLog.LogNamedPipe($"Connection attempt #{connectionAttempts} failed");
                     }
                     Thread.Sleep(5000); // 5-second intervals for reliable, non-interfering reconnections
                     continue;
@@ -121,7 +113,7 @@ public class NamedPipeGameDataReader : IDisposable
                 
                 if (connectionAttempts > 0)
                 {
-                    _debugLog?.LogNamedPipe($"Connected to server after {connectionAttempts} attempts");
+                    _debugLog.LogNamedPipe($"Connected to server after {connectionAttempts} attempts");
                     connectionAttempts = 0;
                 }
 
@@ -145,13 +137,13 @@ public class NamedPipeGameDataReader : IDisposable
                         // log 2% of messages to track reception without excessive verbosity
                         if (messageCount % 50 == 0) // log every 50th message = 2%
                         {
-                            _debugLog?.LogNamedPipe($"Received game data message #{messageCount} (2% sample)");
+                            _debugLog.LogNamedPipe($"Received game data message #{messageCount} (2% sample)");
                         }
                         
                         // log only first message and every 100th for overall count
                         if (messageCount == 1 || messageCount % 100 == 0)
                         {
-                            _debugLog?.LogNamedPipe($"Received {messageCount} game data messages");
+                            _debugLog.LogNamedPipe($"Received {messageCount} game data messages");
                         }
                         
                         var result = ParseGameDataMessage(pipeMsg.Data);
@@ -163,7 +155,7 @@ public class NamedPipeGameDataReader : IDisposable
                             // log only first valid message
                             if (validMessageCount == 1)
                             {
-                                _debugLog?.LogNamedPipe($"First valid message");
+                                _debugLog.LogNamedPipe($"First valid message");
                             }
                             
                             // validate timestamp (must be within 10 seconds)
@@ -182,13 +174,13 @@ public class NamedPipeGameDataReader : IDisposable
                                 
                                 if (eventFireCount == 1)
                                 {
-                                    _debugLog?.LogNamedPipe($"Game data events started: Map={msg.MapId}({mapName}), Pos=({msg.X},{msg.Y}), Char='{characterName}', Flags=0x{msg.Flags:X2}");
+                                    _debugLog.LogNamedPipe($"Game data events started: Map={msg.MapId}({mapName}), Pos=({msg.X},{msg.Y}), Char='{characterName}', Flags=0x{msg.Flags:X2}");
                                 }
                                 
                                 // detailed logging for first few events to debug UI issues
                                 if (eventFireCount <= 3)
                                 {
-                                    _debugLog?.LogNamedPipe($"Firing GameDataRead event #{eventFireCount}: Success=true, MapId={msg.MapId}, MapName='{mapName}', X={msg.X}, Y={msg.Y}, CharacterName='{characterName}'");
+                                    _debugLog.LogNamedPipe($"Firing GameDataRead event #{eventFireCount}: Success=true, MapId={msg.MapId}, MapName='{mapName}', X={msg.X}, Y={msg.Y}, CharacterName='{characterName}'");
                                 }
                                 
                                 // fire event with game data
@@ -201,7 +193,7 @@ public class NamedPipeGameDataReader : IDisposable
                                 // log 2% of invalid messages to avoid spam (every 50th = 2%)
                                 if (invalidMessageCount % 50 == 0)
                                 {
-                                    _debugLog?.LogNamedPipe($"Invalid game data #{invalidMessageCount} (2% sample): Success={msg.IsSuccess}, Flags=0x{msg.Flags:X2}, MapId={msg.MapId}, Pos=({msg.X},{msg.Y}), Name='{msg.CharacterName}'");
+                                    _debugLog.LogNamedPipe($"Invalid game data #{invalidMessageCount} (2% sample): Success={msg.IsSuccess}, Flags=0x{msg.Flags:X2}, MapId={msg.MapId}, Pos=({msg.X},{msg.Y}), Name='{msg.CharacterName}'");
                                 }
                                 
                                 // fire event indicating failure
@@ -216,7 +208,7 @@ public class NamedPipeGameDataReader : IDisposable
                     var timeSinceLastData = DateTime.UtcNow - _lastDataReceived;
                     if (timeSinceLastData.TotalMilliseconds > HEARTBEAT_INTERVAL_MS * 3)
                     {
-                        _debugLog?.LogNamedPipe("No data received for too long - connection may be dead");
+                        _debugLog.LogNamedPipe("No data received for too long - connection may be dead");
                         DisconnectPipe();
                     }
                     
@@ -225,30 +217,24 @@ public class NamedPipeGameDataReader : IDisposable
             }
             catch (Exception ex)
             {
-                _debugLog?.LogNamedPipe($"Read thread error: {ex.Message}");
+                _debugLog.LogNamedPipe($"Read thread error: {ex.Message}");
                 DisconnectPipe();
                 Thread.Sleep(5000); // 5-second intervals for reliable, non-interfering reconnections
             }
         }
         
-        _debugLog?.LogNamedPipe($"Reader stopped. Messages: {messageCount}, Valid: {validMessageCount}, Invalid: {invalidMessageCount}, Events: {eventFireCount}");
+        _debugLog.LogNamedPipe($"Reader stopped. Messages: {messageCount}, Valid: {validMessageCount}, Invalid: {invalidMessageCount}, Events: {eventFireCount}");
     }
 
     private void HeartbeatThreadLoop()
     {
-        _debugLog?.LogNamedPipe("Heartbeat thread started");
+        // heartbeat thread active
+        _debugLog.LogNamedPipe("Heartbeat thread started");
         
         while (!_shouldStop && !_disposed)
         {
             try
             {
-                // if pipe reading is disabled, just sleep and continue
-                if (!_pipeReadingEnabled)
-                {
-                    Thread.Sleep(1000);
-                    continue;
-                }
-                
                 if (_connected)
                 {
                     var timeSinceLastHeartbeat = DateTime.UtcNow - _lastHeartbeatSent;
@@ -260,7 +246,7 @@ public class NamedPipeGameDataReader : IDisposable
                         }
                         else
                         {
-                            _debugLog?.LogNamedPipe("Heartbeat failed - disconnecting");
+                            _debugLog.LogNamedPipe("Heartbeat failed - disconnecting");
                             DisconnectPipe();
                         }
                     }
@@ -270,17 +256,18 @@ public class NamedPipeGameDataReader : IDisposable
             }
             catch (Exception ex)
             {
-                _debugLog?.LogNamedPipe($"Heartbeat thread error: {ex.Message}");
+                _debugLog.LogNamedPipe($"Heartbeat thread error: {ex.Message}");
                 DisconnectPipe();
                 Thread.Sleep(1000);
             }
         }
         
-        _debugLog?.LogNamedPipe("Heartbeat thread stopped");
+        _debugLog.LogNamedPipe("Heartbeat thread stopped");
     }
 
     private bool EnsureConnection()
     {
+        // attempt connection
         if (_connected || _disposed) return _connected;
         
         lock (_pipeLock)
@@ -289,7 +276,7 @@ public class NamedPipeGameDataReader : IDisposable
             
             try
             {
-                _debugLog?.LogNamedPipe($"Attempting to connect to named pipe '{PIPE_NAME}'...");
+                _debugLog.LogNamedPipe($"Attempting to connect to named pipe '{PIPE_NAME}'...");
                 
                 _pipeClient = new NamedPipeClientStream(".", PIPE_NAME, PipeDirection.InOut, PipeOptions.Asynchronous);
                 
@@ -306,12 +293,12 @@ public class NamedPipeGameDataReader : IDisposable
                 _lastDataReceived = DateTime.UtcNow;
                 _lastHeartbeatSent = DateTime.MinValue; // force immediate heartbeat
                 
-                _debugLog?.LogNamedPipe("Successfully connected to named pipe server");
+                _debugLog.LogNamedPipe("Successfully connected to named pipe server");
                 return true;
             }
             catch (Exception ex)
             {
-                _debugLog?.LogNamedPipe($"Connection failed: {ex.Message}");
+                _debugLog.LogNamedPipe($"Connection failed: {ex.Message}");
                 _pipeClient?.Dispose();
                 _pipeClient = null;
                 return false;
@@ -325,7 +312,7 @@ public class NamedPipeGameDataReader : IDisposable
         {
             if (_connected)
             {
-                _debugLog?.LogNamedPipe("Disconnecting from named pipe");
+                _debugLog.LogNamedPipe("Disconnecting from named pipe");
                 _connected = false;
             }
             
@@ -364,7 +351,7 @@ public class NamedPipeGameDataReader : IDisposable
             }
             catch (Exception ex)
             {
-                _debugLog?.LogNamedPipe($"Failed to send heartbeat: {ex.Message}");
+                _debugLog.LogNamedPipe($"Failed to send heartbeat: {ex.Message}");
                 return false;
             }
         }
@@ -408,7 +395,7 @@ public class NamedPipeGameDataReader : IDisposable
             }
             catch (Exception ex)
             {
-                _debugLog?.LogNamedPipe($"Failed to read from pipe: {ex.Message}");
+                _debugLog.LogNamedPipe($"Failed to read from pipe: {ex.Message}");
                 return null;
             }
         }
@@ -454,7 +441,7 @@ public class NamedPipeGameDataReader : IDisposable
         }
         catch (Exception ex)
         {
-            _debugLog?.LogNamedPipe($"ParseGameDataMessage error: {ex.Message}");
+            _debugLog.LogNamedPipe($"ParseGameDataMessage error: {ex.Message}");
             return null;
         }
     }
@@ -498,5 +485,39 @@ public class NamedPipeGameDataReader : IDisposable
     ~NamedPipeGameDataReader()
     {
         Dispose(disposing: false);
+    }
+}
+
+// debug stub implementation - never connects to pipe, provides events for debug data
+public class DebugGameDataReader : IGameDataReader
+{
+    public event EventHandler<(bool Success, int MapId, string MapName, int X, int Y, string CharacterName, int GameId)>? GameDataRead;
+    
+    private readonly DebugLogService _debugLog;
+    private bool _disposed = false;
+
+    public DebugGameDataReader(DebugLogService debugLog)
+    {
+        _debugLog = debugLog;
+        _debugLog.LogMain("DebugGameDataReader created - no pipe connection will ever be attempted");
+    }
+
+    // method to manually fire game data event from debug UI
+    public void FireDebugGameData(int mapId, string mapName, int x, int y, string characterName, int gameId)
+    {
+        if (!_disposed)
+        {
+            GameDataRead?.Invoke(this, (true, mapId, mapName, x, y, characterName, gameId));
+        }
+    }
+
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            _debugLog.LogMain("DebugGameDataReader disposed");
+            _disposed = true;
+        }
+        GC.SuppressFinalize(this);
     }
 } 

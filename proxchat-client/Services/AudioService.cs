@@ -1478,27 +1478,27 @@ public class AudioService : IDisposable
     {
         try
         {
-            // Validate input data
+            // validate input data
             if (sourcePcmData == null || validBytes <= 0 || sourceFormat == null)
             {
                 _debugLog.LogAudio($"Invalid input to ConvertToMonoAndResample: data={sourcePcmData != null}, validBytes={validBytes}, format={sourceFormat != null}");
                 return (new byte[0], 0.0f);
             }
             
-            // Calculate level from source PCM
+            // calculate level from source PCM
             float sourceLevel = CalculateLevelFromPcm(sourcePcmData, validBytes);
             
-            // Target format for the codec
+            // target format for the codec
             var targetFormat = new WaveFormat(codec.SampleRate, 16, 1); // mono at codec sample rate
             int targetBytes = codec.FrameSize * 2; // target frame size in bytes
             
-            // Check if we need resampling
+            // check if we need resampling
             bool needsResampling = sourceFormat.SampleRate != codec.SampleRate;
             bool needsChannelConversion = sourceFormat.Channels != 1;
             
             if (!needsResampling && !needsChannelConversion)
             {
-                // Already correct format - just take what we need
+                // already correct format - just take what we need
                 int bytesToTake = Math.Min(validBytes, targetBytes);
                 byte[] monoData = new byte[targetBytes];
                 Array.Copy(sourcePcmData, monoData, bytesToTake);
@@ -1506,10 +1506,10 @@ public class AudioService : IDisposable
                 return (monoData, sourceLevel);
             }
             
-            // Use NAudio for format conversion with proper buffering
+            // use NAudio for format conversion with proper buffering
             try
             {
-                // Validate source format before attempting conversion
+                // validate source format before attempting conversion
                 if (sourceFormat.SampleRate <= 0 || sourceFormat.Channels <= 0 || sourceFormat.BitsPerSample <= 0)
                 {
                     _debugLog.LogAudio($"Invalid source format for conversion: {sourceFormat.SampleRate}Hz, {sourceFormat.Channels}ch, {sourceFormat.BitsPerSample}bit");
@@ -1518,7 +1518,7 @@ public class AudioService : IDisposable
                     return (invalidFormatSilence, 0.0f);
                 }
                 
-                // Additional validation for NAudio compatibility
+                // additional validation for NAudio compatibility
                 if (sourceFormat.Encoding != WaveFormatEncoding.Pcm && sourceFormat.Encoding != WaveFormatEncoding.IeeeFloat)
                 {
                     _debugLog.LogAudio($"Unsupported audio encoding for conversion: {sourceFormat.Encoding}");
@@ -1530,23 +1530,23 @@ public class AudioService : IDisposable
                 using var rawSourceStream = new RawSourceWaveStream(sourcePcmData, 0, validBytes, sourceFormat);
                 using var convertedStream = new WaveFormatConversionStream(targetFormat, rawSourceStream);
                 
-                // Read in smaller chunks to avoid timing issues
+                // read in smaller chunks to avoid timing issues
                 byte[] convertedData = new byte[targetBytes];
                 int totalBytesRead = 0;
-                int chunkSize = Math.Min(targetBytes, 4096); // Read in 4KB chunks max
+                int chunkSize = Math.Min(targetBytes, 4096); // read in 4KB chunks max
                 
                 while (totalBytesRead < targetBytes)
                 {
                     int bytesToRead = Math.Min(chunkSize, targetBytes - totalBytesRead);
                     int bytesRead = convertedStream.Read(convertedData, totalBytesRead, bytesToRead);
                     
-                    if (bytesRead == 0) break; // End of stream
+                    if (bytesRead == 0) break; // end of stream
                     totalBytesRead += bytesRead;
                 }
                 
                 if (totalBytesRead > 0)
                 {
-                    // Pad with silence if we didn't get enough data
+                    // pad with silence if we didn't get enough data
                     if (totalBytesRead < targetBytes)
                     {
                         Array.Fill(convertedData, (byte)0, totalBytesRead, targetBytes - totalBytesRead);
@@ -1557,30 +1557,34 @@ public class AudioService : IDisposable
                 else
                 {
                     _debugLog.LogAudio($"Format conversion failed: no data read from conversion stream");
+                    // fallback: return silence of correct size
+                    byte[] silenceData = new byte[targetBytes];
+                    Array.Fill(silenceData, (byte)0);
+                    return (silenceData, 0.0f);
+                }
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogAudio($"Error in format conversion: {ex.Message}");
+                _debugLog.LogAudio($"Source format details: {sourceFormat.SampleRate}Hz, {sourceFormat.Channels}ch, {sourceFormat.BitsPerSample}bit, {sourceFormat.Encoding}");
+                _debugLog.LogAudio($"Target format details: {targetFormat.SampleRate}Hz, {targetFormat.Channels}ch, {targetFormat.BitsPerSample}bit");
+                
+                // fallback: return silence of correct size
+                byte[] silenceData = new byte[targetBytes];
+                Array.Fill(silenceData, (byte)0);
+                return (silenceData, 0.0f);
             }
         }
         catch (Exception ex)
         {
-                _debugLog.LogAudio($"Error in format conversion: {ex.Message}");
-                _debugLog.LogAudio($"Source format details: {sourceFormat.SampleRate}Hz, {sourceFormat.Channels}ch, {sourceFormat.BitsPerSample}bit, {sourceFormat.Encoding}");
-                _debugLog.LogAudio($"Target format details: {targetFormat.SampleRate}Hz, {targetFormat.Channels}ch, {targetFormat.BitsPerSample}bit");
-        }
-        
-            // Fallback: return silence of correct size
-            byte[] silenceData = new byte[targetBytes];
-        Array.Fill(silenceData, (byte)0);
-        return (silenceData, 0.0f);
-    }
-        catch (Exception ex)
-        {
-            _debugLog.LogAudio($"Error in simple mono conversion: {ex.Message}");
+            _debugLog.LogAudio($"Error in ConvertToMonoAndResample: {ex.Message}");
             _debugLog.LogAudio($"Source format: {sourceFormat?.SampleRate}Hz, {sourceFormat?.Channels}ch, {sourceFormat?.BitsPerSample}bit, validBytes={validBytes}");
+            
+            // fallback: return silence of correct size
+            byte[] fallbackSilence = new byte[codec.FrameSize * 2];
+            Array.Fill(fallbackSilence, (byte)0);
+            return (fallbackSilence, 0.0f);
         }
-        
-        // fallback: return silence of correct size (will be handled as no valid audio)
-        byte[] fallbackSilence = new byte[codec.FrameSize * 2];
-        Array.Fill(fallbackSilence, (byte)0);
-        return (fallbackSilence, 0.0f);
     }
 
 

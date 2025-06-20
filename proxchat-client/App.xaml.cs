@@ -19,8 +19,6 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        ConfigureTraceListener();
-
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
@@ -28,15 +26,15 @@ public partial class App : Application
         // Load configuration
         Config config = LoadConfig();
 
-        // Create MainViewModel
-        _mainViewModel = new MainViewModel(config);
-
-        // Check for debug flag
-        if (e.Args.Contains("--debug"))
+        // Check for debug flag before creating MainViewModel
+        bool isDebugModeEnabled = e.Args.Contains("--debug");
+        if (isDebugModeEnabled)
         {
-            _mainViewModel.IsDebugModeEnabled = true;
             Trace.TraceInformation("Debug mode activated via command line.");
         }
+
+        // Create MainViewModel with debug mode status
+        _mainViewModel = new MainViewModel(config, isDebugModeEnabled);
 
         var mainWindow = new MainWindow
         {
@@ -82,29 +80,6 @@ public partial class App : Application
             Trace.TraceError($"Failed to create default config.json: {ex.Message}");
         }
         return defaultConfig;
-    }
-
-    private void ConfigureTraceListener()
-    {
-        string logFileName = "proxchat.log";
-        string logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, logFileName);
-        
-        Trace.Listeners.Remove("Default");
-        
-        var fileListener = new TextWriterTraceListener(logFilePath)
-        {
-            Name = "FileLogger",
-            TraceOutputOptions = TraceOptions.DateTime | TraceOptions.ProcessId | TraceOptions.ThreadId
-        };
-        Trace.Listeners.Add(fileListener);
-        
-#if DEBUG
-        Trace.Listeners.Add(new ConsoleTraceListener());
-#endif
-
-        Trace.AutoFlush = true;
-
-        Trace.TraceInformation("Application started. Logging configured to: " + logFilePath);
     }
 
     private void LogFatalException(Exception? ex, string source)

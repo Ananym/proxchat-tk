@@ -49,7 +49,7 @@ Write-Host ""
 $projectRoot = $PSScriptRoot
 $clientNormalLogPath = "$projectRoot\normalmode.log"
 $clientDebugLogPath = "$projectRoot\debugmode.log"
-$dllLogPath = "E:\NexusTK\memoryreadingdll_log.txt"
+$dllLogPath = "$projectRoot\memoryreadingdll_log.txt"
 $sourceDll = "$projectRoot\memoryreadingdll\build\Release\VERSION.dll"
 $targetDll = "E:\NexusTK\VERSION.dll"
 $clientExe = "$projectRoot\proxchat-client\bin\Debug\net9.0-windows10.0.17763.0\win-x64\ProxChatClient.exe"
@@ -113,11 +113,8 @@ if ($b) {
 if ($s -or $bs) {
     Write-Host "Cleaning server log..." -ForegroundColor Yellow
     if (Test-Path $dllLogPath) {
-        "" | Out-File $dllLogPath -Encoding UTF8
-        Write-Host "Cleared: $dllLogPath"
-    } else {
-        "" | Out-File $dllLogPath -Encoding UTF8
-        Write-Host "Created: $dllLogPath"
+        Remove-Item $dllLogPath -Force
+        Write-Host "Deleted: $dllLogPath"
     }
 }
 

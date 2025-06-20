@@ -111,34 +111,13 @@ public class DebugLogService : IDisposable
                 Log(message, "AUDIO");
     }
 
-    // main events - only log important state changes
+    // main events
     public void LogMain(string message)
     {
-        // only log important main events
-        if (message.Contains("character name change") ||
-            message.Contains("connection") ||
-            message.Contains("failed") ||
-            message.Contains("ERROR") ||
-            message.Contains("established") ||
-            message.Contains("Auto-disconnecting") ||
-            message.Contains("Debug") ||
-            message.Contains("Adding peer") ||
-            message.Contains("Distance calc") ||
-            message.Contains("Peer") && message.Contains("transmission") ||
-            message.Contains("OnGameDataRead") ||
-            message.Contains("NamedPipe") ||
-            message.Contains("GameData") ||
-            message.Contains("MMF") ||
-            message.Contains("memory") ||
-            message.Contains("pipe") ||
-            message.Contains("Success recovered") ||
-            message.Contains("First failure"))
+        string key = $"MAIN_{message.Substring(0, Math.Min(40, message.Length))}";
+        if (ShouldLog(key))
         {
-            string key = $"MAIN_{message.Substring(0, Math.Min(40, message.Length))}";
-            if (ShouldLog(key))
-            {
-                Log(message, "MAIN");
-            }
+            Log(message, "MAIN");
         }
     }
 
