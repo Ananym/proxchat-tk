@@ -220,7 +220,7 @@ async fn handle_connection(
         while let Some(msg) = rx.recv().await {
             match serde_json::to_string(&msg) {
                 Ok(msg_str) => {
-                    if ws_sender.send(Message::Text(msg_str)).await.is_err() {
+                    if ws_sender.send(Message::Text(msg_str.into())).await.is_err() {
                         // Error sending, client likely disconnected
                         // Log with connection_id as client_id might not be known/relevant here
                         error!("Failed to send message to {}: WebSocket send error.", send_task_connection_id);
@@ -354,8 +354,8 @@ async fn handle_connection(
                             drop(state_read);
                                 
                                 let response = ServerMessage::NearbyPeers(nearby_list);
-                                if let Err(e) = tx.send(response).await {
-                                    warn!("Failed to send peer refresh to {}: {}", sender_id, e);
+                                                                 if let Err(_e) = tx.send(response).await {
+                                     warn!("Failed to send peer refresh to {}: {}", sender_id, _e);
                                 } else {
                                     info!("Sent peer refresh to {} (explicit request)", sender_id);
                                 }
@@ -415,7 +415,7 @@ async fn handle_connection(
                             if let Some(target_connection_id) = state_read.client_id_to_connection_id.get(&target_id) {
                                 if let Some(target_tx) = state_read.connections.get(target_connection_id) {
                                     let candidate_msg = ServerMessage::ReceiveIceCandidate { sender_id: sender_id.clone(), candidate };
-                                    if let Err(e) = target_tx.send(candidate_msg).await {
+                                    if let Err(_e) = target_tx.send(candidate_msg).await {
                                         // Don't log error for every ICE candidate failure, might be too noisy
                                         // Don't notify sender either, usually transient
                                     }
@@ -543,9 +543,9 @@ async fn check_timeouts_and_reintroduce(state: Arc<RwLock<ServerState>>) {
         }
         
         // Send periodic reintroductions to all clients
-        for (client_id, tx, nearby_list) in reintroduction_notifications {
+        for (_client_id, tx, nearby_list) in reintroduction_notifications {
             let response = ServerMessage::NearbyPeers(nearby_list);
-            if let Err(e) = tx.send(response).await {
+            if let Err(_e) = tx.send(response).await {
                 // Don't log this as error - client may have disconnected, that's normal
                 // warn!("Failed to send periodic reintroduction to {}: {}", client_id, e);
             }
