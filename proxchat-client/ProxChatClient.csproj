@@ -43,6 +43,7 @@
     <PackageReference Include="SIPSorcery" Version="6.0.4" />
     <PackageReference Include="SIPSorceryMedia.Windows" Version="6.0.4" />
     <PackageReference Include="Websocket.Client" Version="5.1.1" />
+    <PackageReference Include="Velopack" Version="0.0.1298" />
   </ItemGroup>
 
   <ItemGroup>

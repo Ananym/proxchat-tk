@@ -1,41 +1,42 @@
-# Build script for ProxChat Client (Windows only)
+# Build script for ProxChat Client - Creates deployment-ready artifacts
 
 param(
-    [switch]$Release,
-    [switch]$Debug,
-    [switch]$Run,
     [switch]$Clean,
-    [string]$Output = ".\dist",
     [switch]$NoTrim,
     [switch]$Verbose
 )
 
 $ErrorActionPreference = "Stop"
+$Output = ".\dist"
 
 function Show-Help {
     Write-Host @"
-ProxChat Client Build Script (Windows x64)
+ProxChat Client Deployment Build Script
+
+Creates deployment-ready artifacts in a single versioned directory:
 
 Usage:
   .\build.ps1 [options]
 
 Options:
-  -Release         Build optimized release version (single-file)
-  -Debug           Build debug version for development
-  -Run             Run the application after building
   -Clean           Clean build artifacts before building
-  -Output <path>   Output directory (default: .\dist)
   -NoTrim          Disable trimming (recommended, safer but larger file)
   -Verbose         Show detailed build output
 
 Examples:
-  .\build.ps1 -Release -NoTrim          # Single-file build (~44MB, requires .NET 8)
-  .\build.ps1 -Debug -Run               # Debug build and run
-  .\build.ps1 -Clean -Release -NoTrim   # Clean and release build
+  .\build.ps1                    # Standard deployment build
+  .\build.ps1 -Clean -NoTrim     # Clean build without trimming
 
-Output:
-  Release builds create a single executable in the dist folder
-  Debug builds use the standard bin/Debug folder
+Output Structure:
+  deployment/
+    ├── proxchattk v0.1.0/       # Portable app folder
+    ├── proxchattk v0.1.0.zip    # Distribution zip
+    ├── proxchattk v0.1.0.nupkg  # Update package
+    └── RELEASES                 # Update index file
+
+Deployment:
+  • Upload RELEASES + .nupkg to your update server
+  • Distribute .zip or app folder to users
 "@
 }
 
@@ -58,22 +59,7 @@ function Clean-BuildArtifacts {
     }
 }
 
-function Build-Debug {
-    Write-Host "Building debug version..." -ForegroundColor Green
-    
-    $buildArgs = @("build", "--configuration", "Debug")
-    if ($Verbose) { $buildArgs += "--verbosity", "detailed" }
-    
-    & dotnet $buildArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "Debug build failed"
-    }
-    
-    Write-Host "Debug build completed successfully!" -ForegroundColor Green
-    Write-Host "Executable location: .\bin\Debug\net8.0-windows10.0.17763.0\win-x64\ProxChatClient.exe"
-}
-
-function Build-Release {
+function Build-For-Release {
     Write-Host "Building optimized release version..." -ForegroundColor Green
     Write-Host "This may take a few minutes due to optimization..." -ForegroundColor Yellow
     
@@ -107,7 +93,7 @@ function Build-Release {
         if (-not $NoTrim) {
             Write-Host ""
             Write-Host "❌ Build failed with trimming enabled." -ForegroundColor Red
-            Write-Host "💡 Try building without trimming: .\build.ps1 -Release -NoTrim" -ForegroundColor Yellow
+            Write-Host "💡 Try building without trimming: .\build.ps1 -NoTrim" -ForegroundColor Yellow
         }
         throw "Release build failed"
     }
@@ -126,24 +112,8 @@ function Build-Release {
         Write-Host "📦 Framework-dependent build - requires .NET 8 runtime" -ForegroundColor Yellow
         Write-Host "🚀 Single-file executable ready!" -ForegroundColor Green
         
-        # Copy config files to output
-        if (Test-Path "config.json") {
-            Copy-Item "config.json" $Output -Force
-            Write-Host "📋 Config file copied to output directory" -ForegroundColor Cyan
-        }
-        
-        if (Test-Path "config.json.default") {
-            Copy-Item "config.json.default" $Output -Force
-            Write-Host "📋 Default config template copied to output directory" -ForegroundColor Cyan
-        }
-        
-        # Provide user guidance about configuration
-        if (-not (Test-Path (Join-Path $Output "config.json"))) {
-            Write-Host ""
-            Write-Host "💡 No config.json found. Users should:" -ForegroundColor Yellow
-            Write-Host "   1. Copy config.json.default to config.json" -ForegroundColor Yellow
-            Write-Host "   2. Edit config.json with their server settings" -ForegroundColor Yellow
-        }
+        # Note: Config files are NOT copied to output directory
+        # They will be added to distribution packages only (not update packages)
         
         return $exePath
     } else {
@@ -151,25 +121,250 @@ function Build-Release {
     }
 }
 
-function Run-Application {
-    param($ExecutablePath)
-    
-    if ($Release) {
-        if ($ExecutablePath -and (Test-Path $ExecutablePath)) {
-            Write-Host "Running release build..." -ForegroundColor Green
-            & $ExecutablePath
-        } else {
-            throw "Release executable not found. Build may have failed."
-        }
+function Get-ProjectVersion {
+    # get version from project file
+    $csprojContent = Get-Content "ProxChatClient.csproj" -Raw
+    if ($csprojContent -match '<Version>([^<]+)</Version>') {
+        return $matches[1]
     } else {
-        Write-Host "Running debug build..." -ForegroundColor Green
-        & dotnet run --configuration Debug
+        Write-Host "Warning: Could not determine version from project, using default: 1.0.0" -ForegroundColor Yellow
+        return "1.0.0"
     }
+}
+
+function Build-VelopackPackage {
+    param($PublishPath, $Version)
+    
+    Write-Host "Creating Velopack update package..." -ForegroundColor Green
+    
+    # ensure we have vpk tool
+    $vpkPath = Get-Command "vpk" -ErrorAction SilentlyContinue
+    if (-not $vpkPath) {
+        Write-Host "Installing Velopack tools..." -ForegroundColor Yellow
+        & dotnet tool install -g vpk
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to install Velopack tools"
+        }
+    }
+    
+    # create temp releases directory for vpk
+    $tempReleasesDir = ".\temp_releases"
+    if (Test-Path $tempReleasesDir) {
+        Remove-Item $tempReleasesDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $tempReleasesDir -Force | Out-Null
+    
+    # build vpk command
+    $vpkArgs = @(
+        "pack",
+        "--packId", "ProxChatTK",
+        "--packDir", $PublishPath,
+        "--outputDir", $tempReleasesDir
+    )
+    
+    Write-Host "Running: vpk $($vpkArgs -join ' ')" -ForegroundColor Cyan
+    & vpk $vpkArgs
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "Velopack packaging failed"
+    }
+    
+    return $tempReleasesDir
+}
+
+function Organize-Artifacts {
+    param($PublishPath, $TempReleasesPath, $Version)
+    
+    Write-Host "Organizing deployment artifacts..." -ForegroundColor Green
+    
+    # create main deployment directory
+    $deploymentDir = ".\deployment"
+    if (Test-Path $deploymentDir) {
+        Remove-Item $deploymentDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $deploymentDir -Force | Out-Null
+    
+    # find the velopack-generated portable package
+    $portableZip = Get-ChildItem -Path $TempReleasesPath -Filter "*-Portable.zip" | Select-Object -First 1
+    if (-not $portableZip) {
+        throw "Velopack portable package not found in $TempReleasesPath"
+    }
+    
+    # extract the portable package as our base (contains Update.exe stub launcher)
+    $versionedAppDir = Join-Path $deploymentDir "proxchattk v$Version"
+    Write-Host "Extracting Velopack portable package..." -ForegroundColor Green
+    Expand-Archive -Path $portableZip.FullName -DestinationPath $versionedAppDir -Force
+    Write-Host "  ✓ Extracted with Update.exe stub launcher" -ForegroundColor Cyan
+    
+    # add distribution-only files that shouldn't be in update packages
+    Write-Host "Adding distribution-only files..." -ForegroundColor Green
+    
+    # add config.json from config.json.default (for app root, persistent across updates)
+    if (Test-Path "config.json.default") {
+        $targetConfig = Join-Path $versionedAppDir "config.json"
+        Copy-Item "config.json.default" $targetConfig -Force
+        Write-Host "  ✓ config.json (from config.json.default) - persistent across updates" -ForegroundColor Cyan
+    } else {
+        Write-Host "  ⚠️  config.json.default not found" -ForegroundColor Yellow
+    }
+    
+    # add VERSION.dll from memoryreadingdll build (app root level)
+    $versionDllPath = "..\memoryreadingdll\build\Release\VERSION.dll"
+    if (Test-Path $versionDllPath) {
+        $targetVersionDll = Join-Path $versionedAppDir "VERSION.dll"
+        Copy-Item $versionDllPath $targetVersionDll -Force
+        $dllSize = [math]::Round((Get-Item $targetVersionDll).Length / 1KB, 2)
+        Write-Host "  ✓ VERSION.dll ($dllSize KB) - for game directory" -ForegroundColor Cyan
+    } else {
+        Write-Host "  ⚠️  VERSION.dll not found at: $versionDllPath" -ForegroundColor Yellow
+        Write-Host "     Run the main build_package.ps1 script first to build the DLL" -ForegroundColor Yellow
+    }
+    
+    # add user guide (app root level)
+    if (Test-Path "user_guide.txt") {
+        $targetUserGuide = Join-Path $versionedAppDir "user_guide.txt"
+        Copy-Item "user_guide.txt" $targetUserGuide -Force
+        Write-Host "  ✓ user_guide.txt - usage instructions" -ForegroundColor Cyan
+    } else {
+        Write-Host "  ⚠️  user_guide.txt not found" -ForegroundColor Yellow
+    }
+    
+    # add readme files if they exist (app root level)
+    $readmeFiles = @("DISTRIBUTION-README.md", "CONFIG-README.md")
+    foreach ($readme in $readmeFiles) {
+        if (Test-Path $readme) {
+            $targetReadme = Join-Path $versionedAppDir $readme
+            Copy-Item $readme $targetReadme -Force
+            Write-Host "  ✓ $readme" -ForegroundColor Cyan
+        }
+    }
+    
+    # create versioned zip (now includes all distribution files + stub launcher)
+    $zipPath = Join-Path $deploymentDir "proxchattk v$Version.zip"
+    try {
+        Compress-Archive -Path "$versionedAppDir\*" -DestinationPath $zipPath -CompressionLevel Optimal
+        Write-Host "  ✓ Created distribution zip with stub launcher and all files" -ForegroundColor Cyan
+    }
+    catch {
+        Write-Host "⚠️  Failed to create zip: $_" -ForegroundColor Yellow
+    }
+    
+    # move and rename nupkg file (contains only core app files)
+    $sourceNupkg = Get-ChildItem -Path $TempReleasesPath -Filter "*.nupkg" | Select-Object -First 1
+    if ($sourceNupkg) {
+        $targetNupkg = Join-Path $deploymentDir "proxchattk v$Version.nupkg"
+        Copy-Item $sourceNupkg.FullName $targetNupkg -Force
+        Write-Host "  ✓ Update package (.nupkg) - core app files only" -ForegroundColor Cyan
+    }
+    
+    # move modern releases file (releases.win.json)
+    $sourceReleases = Join-Path $TempReleasesPath "releases.win.json"
+    if (Test-Path $sourceReleases) {
+        $targetReleases = Join-Path $deploymentDir "releases.win.json"
+        Copy-Item $sourceReleases $targetReleases -Force
+        Write-Host "  ✓ Update index (releases.win.json) - modern format" -ForegroundColor Cyan
+    } else {
+        Write-Host "  ⚠️  releases.win.json not found" -ForegroundColor Yellow
+    }
+    
+    # cleanup temp directory
+    if (Test-Path $TempReleasesPath) {
+        Remove-Item $TempReleasesPath -Recurse -Force
+    }
+    
+    return $deploymentDir
+}
+
+function Show-Results {
+    param($DeploymentPath, $Version)
+    
+    Write-Host ""
+    Write-Host "✅ Deployment artifacts created successfully!" -ForegroundColor Green
+    Write-Host ""
+    
+    $versionedAppDir = Join-Path $DeploymentPath "proxchattk v$Version"
+    $zipPath = Join-Path $DeploymentPath "proxchattk v$Version.zip"
+    $nupkgPath = Join-Path $DeploymentPath "proxchattk v$Version.nupkg"
+    $releasesPath = Join-Path $DeploymentPath "releases.win.json"
+    
+    # show portable app folder
+    if (Test-Path $versionedAppDir) {
+        # check for stub launcher
+        $stubPath = Join-Path $versionedAppDir "Update.exe"
+        $currentDir = Join-Path $versionedAppDir "current"
+        $exePath = Join-Path $currentDir "ProxChatClient.exe"
+        
+        if (Test-Path $stubPath) {
+            Write-Host "📁 Portable app: proxchattk v$Version/" -ForegroundColor Cyan
+            Write-Host "🚀 Update.exe (stub launcher) - users run this" -ForegroundColor Green
+            
+            if (Test-Path $exePath) {
+                $exeInfo = Get-Item $exePath
+                Write-Host "📊 Main app size: $([math]::Round($exeInfo.Length / 1MB, 2)) MB (in current/ folder)" -ForegroundColor Cyan
+            }
+        } else {
+            # fallback for non-velopack structure
+            $directExePath = Join-Path $versionedAppDir "ProxChatClient.exe"
+            if (Test-Path $directExePath) {
+                $exeInfo = Get-Item $directExePath
+                Write-Host "📁 Portable app: proxchattk v$Version/" -ForegroundColor Cyan
+                Write-Host "📊 Main exe size: $([math]::Round($exeInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
+            }
+        }
+        
+        # show key distribution files at app root
+        $versionDll = Join-Path $versionedAppDir "VERSION.dll"
+        $userGuide = Join-Path $versionedAppDir "user_guide.txt"
+        $configFile = Join-Path $versionedAppDir "config.json"
+        
+        if (Test-Path $versionDll) {
+            $dllSize = [math]::Round((Get-Item $versionDll).Length / 1KB, 2)
+            Write-Host "📄 Includes VERSION.dll ($dllSize KB) - copy to game directory" -ForegroundColor Cyan
+        }
+        
+        if (Test-Path $userGuide) {
+            Write-Host "📄 Includes user_guide.txt - setup instructions" -ForegroundColor Cyan
+        }
+        
+        if (Test-Path $configFile) {
+            Write-Host "📄 Includes config.json - persistent across updates" -ForegroundColor Cyan
+        }
+    }
+    
+    # show zip
+    if (Test-Path $zipPath) {
+        $zipInfo = Get-Item $zipPath
+        Write-Host "📦 Distribution zip: proxchattk v$Version.zip" -ForegroundColor Cyan
+        Write-Host "📊 Zip size: $([math]::Round($zipInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
+        Write-Host "   → Contains: Update.exe (stub) + app + VERSION.dll + user guide + config.json" -ForegroundColor Gray
+    }
+    
+    # show update package
+    if (Test-Path $nupkgPath) {
+        $nupkgInfo = Get-Item $nupkgPath
+        Write-Host "📦 Update package: proxchattk v$Version.nupkg" -ForegroundColor Cyan
+        Write-Host "📊 Package size: $([math]::Round($nupkgInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
+        Write-Host "   → Contains: Core app files only (no VERSION.dll)" -ForegroundColor Gray
+    }
+    
+    # show RELEASES file
+    if (Test-Path $releasesPath) {
+        Write-Host "📄 Update index: releases.win.json" -ForegroundColor Cyan
+        Write-Host "   → Required for auto-updates" -ForegroundColor Gray
+    }
+    
+    Write-Host ""
+    Write-Host "📁 All artifacts in: $DeploymentPath" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "🚀 Ready to deploy!" -ForegroundColor Yellow
+    Write-Host "• Upload RELEASES + .nupkg to your update server" -ForegroundColor White
+    Write-Host "• Distribute .zip or app folder to users" -ForegroundColor White
+    Write-Host "• Users copy VERSION.dll to their game directory" -ForegroundColor White
 }
 
 try {
     # Show help if no parameters
-    if (-not ($Release -or $Debug -or $Clean -or $PSBoundParameters.Count -gt 0)) {
+    if (-not ($Clean -or $NoTrim -or $Verbose -or $PSBoundParameters.Count -gt 0)) {
         Show-Help
         return
     }
@@ -179,23 +374,12 @@ try {
         Clean-BuildArtifacts
     }
     
-    $builtExecutable = $null
-    
-    # Build based on configuration
-    if ($Release) {
-        $builtExecutable = Build-Release
-    } elseif ($Debug) {
-        Build-Debug
-    } else {
-        # Default to release if neither specified but other options given
-        Write-Host "No build type specified, defaulting to Release build..." -ForegroundColor Yellow
-        $builtExecutable = Build-Release
-    }
-    
-    # Run if requested
-    if ($Run) {
-        Run-Application -ExecutablePath $builtExecutable
-    }
+    # Build release and create deployment artifacts
+    Build-For-Release
+    $version = Get-ProjectVersion
+    $releasesDir = Build-VelopackPackage -PublishPath $Output -Version $version
+    $deploymentDir = Organize-Artifacts -PublishPath $Output -TempReleasesPath $releasesDir -Version $version
+    Show-Results -DeploymentPath $deploymentDir -Version $version
     
 } catch {
     Write-Host "Build failed: $_" -ForegroundColor Red

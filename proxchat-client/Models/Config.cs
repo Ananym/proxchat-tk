@@ -15,6 +15,7 @@ public class Config
     public int Channel { get; set; } = 0;
     public string GameDataIpcChannel { get; set; } = "gamedata";
     public AudioConfig AudioSettings { get; set; } = new();
+    public UpdateConfig UpdateSettings { get; set; } = new();
     public Dictionary<string, PeerPersistentState> PeerSettings { get; set; } = new Dictionary<string, PeerPersistentState>();
 }
 
@@ -33,4 +34,11 @@ public class AudioConfig
     public bool IsPushToTalk { get; set; } = false;
     public string PushToTalkKey { get; set; } = "F12";
     public string MuteSelfKey { get; set; } = "F11";
+}
+
+public class UpdateConfig
+{
+    public bool CheckForUpdates { get; set; } = true;
+    public string UpdateUrl { get; set; } = "https://github.com/yourusername/prox-chat-tk/releases/latest/download";
+    public int CheckIntervalMinutes { get; set; } = 60;
 } 
