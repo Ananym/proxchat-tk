@@ -60,6 +60,7 @@ nupkg/
 # ide specific
 .idea/
 .vscode/
+.cursor/
 *.sln.iml
 *.suo
 *.ntvs*
@@ -72,8 +73,25 @@ Thumbs.db
 
 # build artifacts
 dist/
+deployment/
+temp_releases/
+
+# windows shortcuts
+*.lnk
+
+# audio files
+*.mp3
+*.wav
+
+# vcpkg (huge dependency manager - shouldn't be in repo)
+vcpkg/
+
+# logs
+*.log
+*_log.txt
+
+# personal config (use config.json.default as template)
+config.json
 
 # allow .def files in memoryreadingdll/
 !memoryreadingdll/*.def
-
-*.log
