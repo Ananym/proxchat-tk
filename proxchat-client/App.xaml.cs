@@ -27,11 +27,12 @@ public partial class App : Application
         Config config = LoadConfig();
 
         // Check for debug flag before creating MainViewModel
+#if DEBUG
         bool isDebugModeEnabled = e.Args.Contains("--debug");
-        if (isDebugModeEnabled)
-        {
-            Trace.TraceInformation("Debug mode activated via command line.");
-        }
+#else
+        // in release builds, debug mode is never available
+        bool isDebugModeEnabled = false;
+#endif
 
         // Create MainViewModel with debug mode status
         _mainViewModel = new MainViewModel(config, isDebugModeEnabled);
