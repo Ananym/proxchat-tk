@@ -22,7 +22,9 @@ public class VirtualAudioSource : IAudioSource
     private readonly List<AudioFormat> _supportedFormats;
 
     public event EncodedSampleDelegate? OnAudioSourceEncodedSample;
+#pragma warning disable CS0067 // event is required by interface but not used in this implementation
     public event RawAudioSampleDelegate? OnAudioSourceRawSample;
+#pragma warning restore CS0067
     public event SourceErrorDelegate? OnAudioSourceError;
 
     public VirtualAudioSource(AudioService audioService, DebugLogService debugLog)

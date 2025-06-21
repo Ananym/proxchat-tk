@@ -2,12 +2,12 @@
 
 param(
     [switch]$Clean,
-    [switch]$NoTrim,
-    [switch]$Verbose
+    [switch]$Verbose,
+    [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
-$Output = ".\dist"
+$TempOutput = ".\deployment\temp\publish"  # temporary dotnet publish output
 
 function Show-Help {
     Write-Host @"
@@ -20,22 +20,26 @@ Usage:
 
 Options:
   -Clean           Clean build artifacts before building
-  -NoTrim          Disable trimming (recommended, safer but larger file)
   -Verbose         Show detailed build output
+  -Help            Show this help message
 
 Examples:
-  .\build.ps1                    # Standard deployment build
-  .\build.ps1 -Clean -NoTrim     # Clean build without trimming
+  .\build-deployment.ps1                    # Standard deployment build
+  .\build-deployment.ps1 -Clean             # Clean build
+  .\build-deployment.ps1 -Help              # Show this help
 
 Output Structure:
   deployment/
     ├── proxchattk v0.1.0/       # Portable app folder
     ├── proxchattk v0.1.0.zip    # Distribution zip
     ├── proxchattk v0.1.0.nupkg  # Update package
-    └── RELEASES                 # Update index file
+    └── releases.win.json        # Update index file
+
+Temporary files (cleaned up automatically):
+  deployment/temp/               # Temporary build files
 
 Deployment:
-  • Upload RELEASES + .nupkg to your update server
+  • Upload releases.win.json + .nupkg to your update server
   • Distribute .zip or app folder to users
 "@
 }
@@ -53,9 +57,15 @@ function Clean-BuildArtifacts {
         Write-Host "Removed obj directory"
     }
     
-    if (Test-Path $Output) {
-        Remove-Item -Recurse -Force $Output
-        Write-Host "Removed output directory: $Output"
+    if (Test-Path $TempOutput) {
+        Remove-Item -Recurse -Force $TempOutput
+        Write-Host "Removed temp output directory: $TempOutput"
+    }
+    
+    # also clean any deployment temp files
+    if (Test-Path ".\deployment\temp") {
+        Remove-Item -Recurse -Force ".\deployment\temp"
+        Write-Host "Removed deployment temp directory"
     }
 }
 
@@ -63,9 +73,9 @@ function Build-For-Release {
     Write-Host "Building optimized release version..." -ForegroundColor Green
     Write-Host "This may take a few minutes due to optimization..." -ForegroundColor Yellow
     
-    # Ensure output directory exists
-    if (-not (Test-Path $Output)) {
-        New-Item -ItemType Directory -Path $Output -Force | Out-Null
+    # Ensure temp output directory exists
+    if (-not (Test-Path $TempOutput)) {
+        New-Item -ItemType Directory -Path $TempOutput -Force | Out-Null
     }
     
     $publishArgs = @(
@@ -73,16 +83,11 @@ function Build-For-Release {
         "--configuration", "Release",
         "--runtime", "win-x64",
         "--self-contained", "false",
-        "--output", $Output
+        "--output", $TempOutput
     )
     
-    if (-not $NoTrim) {
-        $publishArgs += "--property:EnableTrimming=true"
-        Write-Host "⚠️  Trimming enabled - Note: WPF trimming is experimental and may cause issues" -ForegroundColor Yellow
-        Write-Host "   If you encounter problems, use -NoTrim flag to disable trimming" -ForegroundColor Yellow
-    } else {
-        Write-Host "Trimming disabled - safer for WPF but larger file size" -ForegroundColor Cyan
-    }
+    # Trimming is disabled by default for WPF apps (not recommended/supported)
+    Write-Host "Trimming disabled - recommended for WPF apps" -ForegroundColor Cyan
     
     if ($Verbose) { 
         $publishArgs += "--verbosity", "detailed" 
@@ -90,16 +95,11 @@ function Build-For-Release {
     
     & dotnet $publishArgs
     if ($LASTEXITCODE -ne 0) {
-        if (-not $NoTrim) {
-            Write-Host ""
-            Write-Host "❌ Build failed with trimming enabled." -ForegroundColor Red
-            Write-Host "💡 Try building without trimming: .\build.ps1 -NoTrim" -ForegroundColor Yellow
-        }
         throw "Release build failed"
     }
     
     # Find the executable
-    $exePath = Join-Path $Output "ProxChatClient.exe"
+    $exePath = Join-Path $TempOutput "ProxChatClient.exe"
     
     if (Test-Path $exePath) {
         $fileInfo = Get-Item $exePath
@@ -109,7 +109,7 @@ function Build-For-Release {
         Write-Host "✅ Release build completed successfully!" -ForegroundColor Green
         Write-Host "📁 Location: $exePath" -ForegroundColor Cyan
         Write-Host "📊 File size: $fileSizeMB MB" -ForegroundColor Cyan
-        Write-Host "📦 Framework-dependent build - requires .NET 8 runtime" -ForegroundColor Yellow
+        Write-Host "📦 Framework-dependent build - requires .NET 9 runtime" -ForegroundColor Yellow
         Write-Host "🚀 Single-file executable ready!" -ForegroundColor Green
         
         # Note: Config files are NOT copied to output directory
@@ -148,7 +148,7 @@ function Build-VelopackPackage {
     }
     
     # create temp releases directory for vpk
-    $tempReleasesDir = ".\temp_releases"
+    $tempReleasesDir = ".\deployment\temp\vpk"
     if (Test-Path $tempReleasesDir) {
         Remove-Item $tempReleasesDir -Recurse -Force
     }
@@ -158,14 +158,17 @@ function Build-VelopackPackage {
     $vpkArgs = @(
         "pack",
         "--packId", "ProxChatTK",
+        "--packVersion", $Version,
         "--packDir", $PublishPath,
-        "--outputDir", $tempReleasesDir
+        "--outputDir", $tempReleasesDir,
+        "--mainExe", "ProxChatClient.exe"
     )
     
     Write-Host "Running: vpk $($vpkArgs -join ' ')" -ForegroundColor Cyan
-    & vpk $vpkArgs
+    $vpkOutput = & vpk $vpkArgs 2>&1
     
     if ($LASTEXITCODE -ne 0) {
+        Write-Host "VPK Error Output: $vpkOutput" -ForegroundColor Red
         throw "Velopack packaging failed"
     }
     
@@ -180,20 +183,24 @@ function Organize-Artifacts {
     # create main deployment directory
     $deploymentDir = ".\deployment"
     if (Test-Path $deploymentDir) {
-        Remove-Item $deploymentDir -Recurse -Force
+        # only remove non-temp files to preserve temp directory structure
+        Get-ChildItem $deploymentDir | Where-Object { $_.Name -ne "temp" } | Remove-Item -Recurse -Force
+    } else {
+        New-Item -ItemType Directory -Path $deploymentDir -Force | Out-Null
     }
-    New-Item -ItemType Directory -Path $deploymentDir -Force | Out-Null
     
     # find the velopack-generated portable package
-    $portableZip = Get-ChildItem -Path $TempReleasesPath -Filter "*-Portable.zip" | Select-Object -First 1
-    if (-not $portableZip) {
+    $portableZipPath = Join-Path $TempReleasesPath "*-Portable.zip"
+    $portableZipFiles = Get-ChildItem -Path $portableZipPath -ErrorAction SilentlyContinue
+    if (-not $portableZipFiles -or $portableZipFiles.Count -eq 0) {
         throw "Velopack portable package not found in $TempReleasesPath"
     }
     
     # extract the portable package as our base (contains Update.exe stub launcher)
     $versionedAppDir = Join-Path $deploymentDir "proxchattk v$Version"
     Write-Host "Extracting Velopack portable package..." -ForegroundColor Green
-    Expand-Archive -Path $portableZip.FullName -DestinationPath $versionedAppDir -Force
+    $portableZipFile = $portableZipFiles[0]
+    Expand-Archive -Path $portableZipFile.FullName -DestinationPath $versionedAppDir -Force
     Write-Host "  ✓ Extracted with Update.exe stub launcher" -ForegroundColor Cyan
     
     # add distribution-only files that shouldn't be in update packages
@@ -250,8 +257,10 @@ function Organize-Artifacts {
     }
     
     # move and rename nupkg file (contains only core app files)
-    $sourceNupkg = Get-ChildItem -Path $TempReleasesPath -Filter "*.nupkg" | Select-Object -First 1
-    if ($sourceNupkg) {
+    $nupkgPath = Join-Path $TempReleasesPath "*.nupkg"
+    $nupkgFiles = Get-ChildItem -Path $nupkgPath -ErrorAction SilentlyContinue
+    if ($nupkgFiles -and $nupkgFiles.Count -gt 0) {
+        $sourceNupkg = $nupkgFiles[0]
         $targetNupkg = Join-Path $deploymentDir "proxchattk v$Version.nupkg"
         Copy-Item $sourceNupkg.FullName $targetNupkg -Force
         Write-Host "  ✓ Update package (.nupkg) - core app files only" -ForegroundColor Cyan
@@ -267,10 +276,8 @@ function Organize-Artifacts {
         Write-Host "  ⚠️  releases.win.json not found" -ForegroundColor Yellow
     }
     
-    # cleanup temp directory
-    if (Test-Path $TempReleasesPath) {
-        Remove-Item $TempReleasesPath -Recurse -Force
-    }
+    # cleanup temp directories at the end (keep them during build for debugging)
+    # Note: temp files are cleaned up automatically during next build or with -Clean flag
     
     return $deploymentDir
 }
@@ -357,14 +364,14 @@ function Show-Results {
     Write-Host "📁 All artifacts in: $DeploymentPath" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "🚀 Ready to deploy!" -ForegroundColor Yellow
-    Write-Host "• Upload RELEASES + .nupkg to your update server" -ForegroundColor White
+    Write-Host "• Upload releases.win.json + .nupkg to your update server" -ForegroundColor White
     Write-Host "• Distribute .zip or app folder to users" -ForegroundColor White
     Write-Host "• Users copy VERSION.dll to their game directory" -ForegroundColor White
 }
 
 try {
-    # Show help if no parameters
-    if (-not ($Clean -or $NoTrim -or $Verbose -or $PSBoundParameters.Count -gt 0)) {
+    # Show help if explicitly requested
+    if ($Help) {
         Show-Help
         return
     }
@@ -377,8 +384,8 @@ try {
     # Build release and create deployment artifacts
     Build-For-Release
     $version = Get-ProjectVersion
-    $releasesDir = Build-VelopackPackage -PublishPath $Output -Version $version
-    $deploymentDir = Organize-Artifacts -PublishPath $Output -TempReleasesPath $releasesDir -Version $version
+    $releasesDir = Build-VelopackPackage -PublishPath $TempOutput -Version $version
+    $deploymentDir = Organize-Artifacts -PublishPath $TempOutput -TempReleasesPath $releasesDir -Version $version
     Show-Results -DeploymentPath $deploymentDir -Version $version
     
 } catch {

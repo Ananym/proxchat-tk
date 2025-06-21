@@ -11,9 +11,9 @@ public class UpdateService
 {
     private readonly UpdateManager _updateManager;
     private readonly Config _config;
-    private readonly Timer _updateTimer;
+    private readonly System.Timers.Timer _updateTimer;
     private bool _hasUpdateAvailable = false;
-    private VelopackAsset? _pendingUpdate = null;
+    private UpdateInfo? _pendingUpdate = null;
 
     public event EventHandler<bool>? UpdateAvailabilityChanged;
 
@@ -25,7 +25,7 @@ public class UpdateService
         _updateManager = new UpdateManager(_config.UpdateSettings.UpdateUrl);
         
         // setup periodic update checking
-        _updateTimer = new Timer(_config.UpdateSettings.CheckIntervalMinutes * 60 * 1000); // convert to ms
+        _updateTimer = new System.Timers.Timer(_config.UpdateSettings.CheckIntervalMinutes * 60 * 1000); // convert to ms
         _updateTimer.Elapsed += async (s, e) => await CheckForUpdatesAsync();
         _updateTimer.AutoReset = true;
         
@@ -53,7 +53,7 @@ public class UpdateService
                 
                 // download in background
                 await _updateManager.DownloadUpdatesAsync(_pendingUpdate);
-                Trace.TraceInformation($"Update downloaded: {newVersion.Version}");
+                Trace.TraceInformation($"Update downloaded: {newVersion.TargetFullRelease?.Version}");
             }
             else
             {
@@ -71,7 +71,7 @@ public class UpdateService
     {
         if (_pendingUpdate != null)
         {
-            Trace.TraceInformation($"Applying update: {_pendingUpdate.Version}");
+            Trace.TraceInformation($"Applying update: {_pendingUpdate.TargetFullRelease?.Version}");
             _updateManager.ApplyUpdatesAndRestart(_pendingUpdate);
         }
     }

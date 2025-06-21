@@ -179,11 +179,11 @@ public class AudioService : IDisposable
         }
     }
 
-    public AudioService(float maxDistance = 100.0f, Config? config = null, DebugLogService? debugLog = null)
+    public AudioService(DebugLogService debugLog, float maxDistance = 100.0f, Config? config = null)
     {
+        _debugLog = debugLog ?? throw new ArgumentNullException(nameof(debugLog));
         _maxDistance = maxDistance;
         _config = config ?? new Config();
-        _debugLog = debugLog ?? new DebugLogService();
         
         // Initialize Opus codec service with default 48kHz for microphone
         _opusCodec = new OpusCodecService(_debugLog, DEFAULT_OPUS_SAMPLE_RATE);
@@ -654,12 +654,12 @@ public class AudioService : IDisposable
         try
         {
             _audioFileCallbackCount++;
-            _debugLog?.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} started");
+            _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} started");
             
             // Early exit if disposing to prevent null reference exceptions
             if (_isDisposing)
             {
-                _debugLog?.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} exiting - service is disposing");
+                _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} exiting - service is disposing");
                 return;
             }
             
@@ -674,8 +674,8 @@ public class AudioService : IDisposable
             {
                 _debugLog.LogAudio($"[ERROR] File-specific Opus codec is null in callback - this should not happen");
                 var silenceBuffer = new byte[0];
-                try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (null codec): {eventEx.Message}"); }
-                try { AudioLevelChanged?.Invoke(this, 0.0f); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking AudioLevelChanged (null codec): {eventEx.Message}"); }
+                                    try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch (Exception eventEx) { _debugLog.LogAudio($"Error invoking EncodedAudioPacketAvailable (null codec): {eventEx.Message}"); }
+                    try { AudioLevelChanged?.Invoke(this, 0.0f); } catch (Exception eventEx) { _debugLog.LogAudio($"Error invoking AudioLevelChanged (null codec): {eventEx.Message}"); }
                 return;
             }
             
@@ -688,8 +688,8 @@ public class AudioService : IDisposable
             _debugLog.LogAudio($"[FILE] Callback #{_audioFileCallbackCount} sending silence - muted={_isSelfMuted}, ptt={_isPushToTalk && !_isPushToTalkActive}, nostream={_audioFileStream == null}");
             // Send silence when muted or push-to-talk is not active
             var silenceBuffer = new byte[0]; // Opus silence is empty packet
-            try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (muted): {eventEx.Message}"); }
-            try { AudioLevelChanged?.Invoke(this, 0.0f); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking AudioLevelChanged (muted): {eventEx.Message}"); }
+                                try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch (Exception eventEx) { _debugLog.LogAudio($"Error invoking EncodedAudioPacketAvailable (muted): {eventEx.Message}"); }
+                    try { AudioLevelChanged?.Invoke(this, 0.0f); } catch (Exception eventEx) { _debugLog.LogAudio($"Error invoking AudioLevelChanged (muted): {eventEx.Message}"); }
             return;
         }
 

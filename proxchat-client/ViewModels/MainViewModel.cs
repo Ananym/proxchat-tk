@@ -580,7 +580,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             const float HARDCODED_MAX_DISTANCE = 25.0f; // Match server's disconnection range for consistency
             
             _debugLog.LogMain("Initializing AudioService");
-            _audioService = new AudioService(HARDCODED_MAX_DISTANCE, config, debugLog);
+            _audioService = new AudioService(debugLog, HARDCODED_MAX_DISTANCE, config);
             
             _debugLog.LogMain("Initializing SignalingService");
             _signalingService = new SignalingService(config.WebSocketServer, debugLog);
@@ -1381,11 +1381,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     // handler for the new DataChannelOpened event
-    private async void HandleDataChannelOpened(object? sender, string peerId)
+    private void HandleDataChannelOpened(object? sender, string peerId)
     {
         // send our current position to the peer whose data channel just opened,
         // so they become aware of us and can send their position back
-        await Task.Run(() => SendPositionUpdateForPeer(peerId));
+        SendPositionUpdateForPeer(peerId);
     }
     
     // send position update to a specific peer
