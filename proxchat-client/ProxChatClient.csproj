@@ -22,6 +22,11 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
+  <!-- Ensure native libraries are included even in framework-dependent builds -->
+  <PropertyGroup>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
   <!-- Conditional trimming for release builds only -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release' AND '$(EnableTrimming)' == 'true'">
     <PublishTrimmed>true</PublishTrimmed>
