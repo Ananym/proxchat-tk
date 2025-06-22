@@ -196,54 +196,61 @@ function Organize-Artifacts {
         throw "Velopack portable package not found in $TempReleasesPath"
     }
     
-    # extract the portable package as our base (contains Update.exe stub launcher)
+    # create the versioned root directory structure
     $versionedAppDir = Join-Path $deploymentDir "proxchattk v$Version"
+    $proxChatTKDir = Join-Path $versionedAppDir "ProxChatTK"
+    
+    # create directories
+    New-Item -ItemType Directory -Path $versionedAppDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $proxChatTKDir -Force | Out-Null
+    
+    # extract the portable package into the ProxChatTK subfolder
     Write-Host "Extracting Velopack portable package..." -ForegroundColor Green
     $portableZipFile = $portableZipFiles[0]
-    Expand-Archive -Path $portableZipFile.FullName -DestinationPath $versionedAppDir -Force
-    Write-Host "  ✓ Extracted with Update.exe stub launcher" -ForegroundColor Cyan
+    Expand-Archive -Path $portableZipFile.FullName -DestinationPath $proxChatTKDir -Force
+    Write-Host "  ✓ Extracted Velopack app to ProxChatTK subfolder" -ForegroundColor Cyan
     
-    # add distribution-only files that shouldn't be in update packages
-    Write-Host "Adding distribution-only files..." -ForegroundColor Green
+    # add distribution-only files to the root level (not in update packages)
+    Write-Host "Adding distribution-only files to root level..." -ForegroundColor Green
     
-    # add config.json from config.json.default (for app root, persistent across updates)
-    if (Test-Path "config.json.default") {
-        $targetConfig = Join-Path $versionedAppDir "config.json"
-        Copy-Item "config.json.default" $targetConfig -Force
-        Write-Host "  ✓ config.json (from config.json.default) - persistent across updates" -ForegroundColor Cyan
-    } else {
-        Write-Host "  ⚠️  config.json.default not found" -ForegroundColor Yellow
-    }
-    
-    # add VERSION.dll from memoryreadingdll build (app root level)
+    # add VERSION.dll from memoryreadingdll build (root level)
     $versionDllPath = "..\memoryreadingdll\build\Release\VERSION.dll"
     if (Test-Path $versionDllPath) {
         $targetVersionDll = Join-Path $versionedAppDir "VERSION.dll"
         Copy-Item $versionDllPath $targetVersionDll -Force
         $dllSize = [math]::Round((Get-Item $targetVersionDll).Length / 1KB, 2)
-        Write-Host "  ✓ VERSION.dll ($dllSize KB) - for game directory" -ForegroundColor Cyan
+        Write-Host "  ✓ VERSION.dll ($dllSize KB) - for game directory (root level)" -ForegroundColor Cyan
     } else {
         Write-Host "  ⚠️  VERSION.dll not found at: $versionDllPath" -ForegroundColor Yellow
         Write-Host "     Run the main build_package.ps1 script first to build the DLL" -ForegroundColor Yellow
     }
     
-    # add user guide (app root level)
+    # add user guide (root level)
     if (Test-Path "user_guide.txt") {
         $targetUserGuide = Join-Path $versionedAppDir "user_guide.txt"
         Copy-Item "user_guide.txt" $targetUserGuide -Force
-        Write-Host "  ✓ user_guide.txt - usage instructions" -ForegroundColor Cyan
+        Write-Host "  ✓ user_guide.txt - usage instructions (root level)" -ForegroundColor Cyan
     } else {
         Write-Host "  ⚠️  user_guide.txt not found" -ForegroundColor Yellow
     }
     
-    # add readme files if they exist (app root level)
+    # add readme files if they exist (root level)
     $readmeFiles = @("DISTRIBUTION-README.md", "CONFIG-README.md")
     foreach ($readme in $readmeFiles) {
         if (Test-Path $readme) {
             $targetReadme = Join-Path $versionedAppDir $readme
             Copy-Item $readme $targetReadme -Force
-            Write-Host "  ✓ $readme" -ForegroundColor Cyan
+            Write-Host "  ✓ $readme (root level)" -ForegroundColor Cyan
         }
+    }
+    
+    # add config.json from config.json.default (inside ProxChatTK folder, persistent across updates)
+    if (Test-Path "config.json.default") {
+        $targetConfig = Join-Path $proxChatTKDir "config.json"
+        Copy-Item "config.json.default" $targetConfig -Force
+        Write-Host "  ✓ config.json (from config.json.default) - persistent across updates" -ForegroundColor Cyan
+    } else {
+        Write-Host "  ⚠️  config.json.default not found" -ForegroundColor Yellow
     }
     
     # create versioned zip (now includes all distribution files + stub launcher)
@@ -294,47 +301,53 @@ function Show-Results {
     $nupkgPath = Join-Path $DeploymentPath "proxchattk v$Version.nupkg"
     $releasesPath = Join-Path $DeploymentPath "releases.win.json"
     
-    # show portable app folder
+    # show portable app folder structure
     if (Test-Path $versionedAppDir) {
-        # check for stub launcher
-        $stubPath = Join-Path $versionedAppDir "Update.exe"
-        $currentDir = Join-Path $versionedAppDir "current"
-        $exePath = Join-Path $currentDir "ProxChatClient.exe"
+        Write-Host "📁 Distribution: proxchattk v$Version/" -ForegroundColor Cyan
         
-        if (Test-Path $stubPath) {
-            Write-Host "📁 Portable app: proxchattk v$Version/" -ForegroundColor Cyan
-            Write-Host "🚀 Update.exe (stub launcher) - users run this" -ForegroundColor Green
-            
-            if (Test-Path $exePath) {
-                $exeInfo = Get-Item $exePath
-                Write-Host "📊 Main app size: $([math]::Round($exeInfo.Length / 1MB, 2)) MB (in current/ folder)" -ForegroundColor Cyan
-            }
-        } else {
-            # fallback for non-velopack structure
-            $directExePath = Join-Path $versionedAppDir "ProxChatClient.exe"
-            if (Test-Path $directExePath) {
-                $exeInfo = Get-Item $directExePath
-                Write-Host "📁 Portable app: proxchattk v$Version/" -ForegroundColor Cyan
-                Write-Host "📊 Main exe size: $([math]::Round($exeInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
-            }
-        }
-        
-        # show key distribution files at app root
+        # show root level files
         $versionDll = Join-Path $versionedAppDir "VERSION.dll"
         $userGuide = Join-Path $versionedAppDir "user_guide.txt"
-        $configFile = Join-Path $versionedAppDir "config.json"
         
         if (Test-Path $versionDll) {
             $dllSize = [math]::Round((Get-Item $versionDll).Length / 1KB, 2)
-            Write-Host "📄 Includes VERSION.dll ($dllSize KB) - copy to game directory" -ForegroundColor Cyan
+            Write-Host "📄 VERSION.dll ($dllSize KB) - copy to game directory" -ForegroundColor Cyan
         }
         
         if (Test-Path $userGuide) {
-            Write-Host "📄 Includes user_guide.txt - setup instructions" -ForegroundColor Cyan
+            Write-Host "📄 user_guide.txt - setup instructions" -ForegroundColor Cyan
         }
         
-        if (Test-Path $configFile) {
-            Write-Host "📄 Includes config.json - persistent across updates" -ForegroundColor Cyan
+        # show ProxChatTK app subfolder
+        $proxChatTKDir = Join-Path $versionedAppDir "ProxChatTK"
+        if (Test-Path $proxChatTKDir) {
+            Write-Host "📂 ProxChatTK/ - Velopack app folder" -ForegroundColor Cyan
+            
+            # check for stub launcher in subfolder
+            $stubPath = Join-Path $proxChatTKDir "Update.exe"
+            $currentDir = Join-Path $proxChatTKDir "current"
+            $exePath = Join-Path $currentDir "ProxChatClient.exe"
+            $configFile = Join-Path $proxChatTKDir "config.json"
+            
+            if (Test-Path $stubPath) {
+                Write-Host "🚀 ProxChatTK/Update.exe (stub launcher) - users run this" -ForegroundColor Green
+                
+                if (Test-Path $exePath) {
+                    $exeInfo = Get-Item $exePath
+                    Write-Host "📊 Main app size: $([math]::Round($exeInfo.Length / 1MB, 2)) MB (in current/ folder)" -ForegroundColor Cyan
+                }
+            } else {
+                # fallback for non-velopack structure
+                $directExePath = Join-Path $proxChatTKDir "ProxChatClient.exe"
+                if (Test-Path $directExePath) {
+                    $exeInfo = Get-Item $directExePath
+                    Write-Host "📊 Main exe size: $([math]::Round($exeInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
+                }
+            }
+            
+            if (Test-Path $configFile) {
+                Write-Host "📄 ProxChatTK/config.json - persistent across updates" -ForegroundColor Cyan
+            }
         }
     }
     
@@ -343,7 +356,7 @@ function Show-Results {
         $zipInfo = Get-Item $zipPath
         Write-Host "📦 Distribution zip: proxchattk v$Version.zip" -ForegroundColor Cyan
         Write-Host "📊 Zip size: $([math]::Round($zipInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
-        Write-Host "   → Contains: Update.exe (stub) + app + VERSION.dll + user guide + config.json" -ForegroundColor Gray
+        Write-Host "   → Contains: VERSION.dll + user guide + ProxChatTK/ (with Update.exe stub + app)" -ForegroundColor Gray
     }
     
     # show update package

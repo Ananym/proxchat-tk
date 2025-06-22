@@ -6,7 +6,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishReadyToRun>true</PublishReadyToRun>
@@ -22,10 +21,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
-  <!-- Ensure native libraries are included even in framework-dependent builds -->
-  <PropertyGroup>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-  </PropertyGroup>
+
 
   <!-- Conditional trimming for release builds only -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release' AND '$(EnableTrimming)' == 'true'">
@@ -49,15 +45,6 @@
     <PackageReference Include="SIPSorceryMedia.Windows" Version="6.0.4" />
     <PackageReference Include="Websocket.Client" Version="5.1.1" />
     <PackageReference Include="Velopack" Version="0.0.1298" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="config.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="config.json.default">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>

@@ -8,7 +8,10 @@ This application requires the .NET 9 runtime. Get it here (win x64): https://dot
 Copy the VERSION.dll into the same directory as NexusTK.exe (probably C:\Program Files (x86)\Kru\NexusTK).
 This dll exposes your character name, map name and map id, and x and y co-ordinates to the ProxChat client.
 
-Copy the config.json and ProxChatClient.exe to a location of your choosing.
+Copy the ProxChatTK folder to a location of your choosing.
+This program will automatically pull updates in the event that I put one up - disable this with the UpdateSettings.CheckForUpdates bool in config.json.
+
+I'm not paying for codesigning certs - expect smartscreen warnings.
 
 ====== Usage:
 
@@ -23,10 +26,12 @@ This means I'm not paying for that bandwidth and I can't access anything you say
 However, since we're not using any relay servers, the peer to peer connections will not work on every network type - this application is unlikely to work behind e.g. corporate or hotel networks that use symmetric NAT.
 Additionally, as there is no remote multiplexing, connecting to many peers means decoding many incoming audio streams simultaneously.  Weak hardware might struggle with this!
 
-Character names are shared between peers for display in the UI, but are never sent to the signalling server.  All ids are random and temporary: there shouldn't be any way for me or any peers to determine your alts from this application.
+Character names are shared between peers for display in the UI, but are never sent to the signalling server.  
+All ids are random and temporary: there shouldn't be any way for me or any peers to determine your alts from this application.
  
-As I cannot access any transferred audio nor track users, there's no way to police this.  Please be polite!
+As I can't access any transferred audio nor track users, there's no way to police this.  Please be polite!
 
 ======= Debugging
 
-Use the command line arg --log <filename> to print logs.
+Run the client with the command line arg --log <filename> to print logs. 
+Run NexusTK with the --debug command line args to print logs from the dll.

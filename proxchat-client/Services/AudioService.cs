@@ -772,7 +772,7 @@ public class AudioService : IDisposable
                 }
                 catch (Exception eventEx) 
                 { 
-                    _debugLog?.LogAudio($"Error invoking AudioLevelChanged in file callback: {eventEx.Message}"); 
+                    _debugLog.LogAudio($"Error invoking AudioLevelChanged in file callback: {eventEx.Message}"); 
                 }
             }
 
@@ -788,7 +788,7 @@ public class AudioService : IDisposable
                     }
                     catch (Exception eventEx) 
                     { 
-                        _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (threshold): {eventEx.Message}"); 
+                        _debugLog.LogAudio($"Error invoking EncodedAudioPacketAvailable (threshold): {eventEx.Message}"); 
                     }
                 }
                 return;
@@ -858,7 +858,7 @@ public class AudioService : IDisposable
                         }
                         catch (Exception eventEx) 
                         { 
-                            _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (opus): {eventEx.Message}"); 
+                            _debugLog.LogAudio($"Error invoking EncodedAudioPacketAvailable (opus): {eventEx.Message}"); 
                         }
                     }
                     }
@@ -873,7 +873,7 @@ public class AudioService : IDisposable
                             }
                             catch (Exception eventEx) 
                             { 
-                                _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (silence): {eventEx.Message}"); 
+                                _debugLog.LogAudio($"Error invoking EncodedAudioPacketAvailable (silence): {eventEx.Message}"); 
                             }
                         }
                     }
@@ -890,7 +890,7 @@ public class AudioService : IDisposable
                         }
                         catch (Exception eventEx) 
                         { 
-                            _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (encode error): {eventEx.Message}"); 
+                            _debugLog.LogAudio($"Error invoking EncodedAudioPacketAvailable (encode error): {eventEx.Message}"); 
                         }
                     }
                 }
@@ -906,7 +906,7 @@ public class AudioService : IDisposable
                     }
                     catch (Exception eventEx) 
                     { 
-                        _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable (no valid audio): {eventEx.Message}"); 
+                        _debugLog.LogAudio($"Error invoking EncodedAudioPacketAvailable (no valid audio): {eventEx.Message}"); 
                     }
                 }
             }
@@ -918,15 +918,15 @@ public class AudioService : IDisposable
             if (!_isDisposing)
             {
                 var silenceBuffer = new byte[0]; // Opus silence is empty packet
-                try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking EncodedAudioPacketAvailable: {eventEx.Message}"); }
-                try { AudioLevelChanged?.Invoke(this, 0.0f); } catch (Exception eventEx) { _debugLog?.LogAudio($"Error invoking AudioLevelChanged: {eventEx.Message}"); }
+                try { EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(silenceBuffer, 0)); } catch (Exception eventEx) { _debugLog.LogAudio($"Error invoking EncodedAudioPacketAvailable: {eventEx.Message}"); }
+                try { AudioLevelChanged?.Invoke(this, 0.0f); } catch (Exception eventEx) { _debugLog.LogAudio($"Error invoking AudioLevelChanged: {eventEx.Message}"); }
             }
         }
         }
         catch (Exception outerEx)
         {
-            _debugLog?.LogAudio($"[CRITICAL] Unhandled exception in AudioFilePlaybackCallback: {outerEx.Message}");
-            _debugLog?.LogAudio($"[CRITICAL] Stack trace: {outerEx.StackTrace}");
+            _debugLog.LogAudio($"[CRITICAL] Unhandled exception in AudioFilePlaybackCallback: {outerEx.Message}");
+            _debugLog.LogAudio($"[CRITICAL] Stack trace: {outerEx.StackTrace}");
             // Try to send silence but don't let this crash either
             if (!_isDisposing)
             {

@@ -1251,9 +1251,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async void HandleNearbyClients(object? sender, List<string> nearbyClients)
+    private void HandleNearbyClients(object? sender, List<string> nearbyClients)
     {
-        await App.Current.Dispatcher.InvokeAsync(async () =>
+        _ = App.Current.Dispatcher.InvokeAsync(() =>
         {
             var currentPeerIds = ConnectedPeers.Select(p => p.Id).ToList();
             var pendingPeerIds = _pendingPeers.Keys.ToList(); // Get all pending peer IDs
