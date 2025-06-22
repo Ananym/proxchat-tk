@@ -34,16 +34,16 @@ public class WebRtcService : IDisposable
     private VirtualAudioSource? _virtualAudioSource;
     private MediaStreamTrack? _audioTrack;
 
-    // CHANGE: Add semaphore to limit concurrent connection attempts
-    private readonly SemaphoreSlim _connectionSemaphore = new SemaphoreSlim(2, 2); // Max 2 concurrent connections
+    // max 2 concurrent connections
+    private readonly SemaphoreSlim _connectionSemaphore = new SemaphoreSlim(2, 2);
     
-    // Heartbeat mechanism for fast disconnect detection
+    // heartbeat mechanism for fast disconnect detection
     private readonly Timer _heartbeatTimer;
     private readonly ConcurrentDictionary<string, DateTime> _lastHeartbeatReceived = new();
-    private readonly TimeSpan _heartbeatInterval = TimeSpan.FromMilliseconds(500); // Send heartbeat every 500ms
-    private readonly TimeSpan _heartbeatTimeout = TimeSpan.FromSeconds(1); // Disconnect after 1 second without heartbeat
+    private readonly TimeSpan _heartbeatInterval = TimeSpan.FromMilliseconds(500); // send heartbeat every 500ms
+    private readonly TimeSpan _heartbeatTimeout = TimeSpan.FromSeconds(1); // disconnect after 1 second without heartbeat
     
-    // System resource monitoring for performance analysis
+    // system resource monitoring for performance analysis
     private static void LogSystemResources(string peerId, string phase, DebugLogService debugLog)
     {
         try
@@ -54,7 +54,6 @@ public class WebRtcService : IDisposable
             var cpuTime = currentProcess.TotalProcessorTime.TotalMilliseconds;
             var threadCount = currentProcess.Threads.Count;
             
-            // Get system-wide memory info
             var gcMemory = GC.GetTotalMemory(false) / (1024 * 1024); // MB
             var gcGen0 = GC.CollectionCount(0);
             var gcGen1 = GC.CollectionCount(1);
@@ -89,12 +88,10 @@ public class WebRtcService : IDisposable
     private class DataChannelMessage
     {
         public string Type { get; set; } = "";
-        // For position messages
         public int MapId { get; set; }
         public int X { get; set; }
         public int Y { get; set; }
         public string CharacterName { get; set; } = "";
-        // For heartbeat messages
         public long Timestamp { get; set; }
     }
 
@@ -106,16 +103,13 @@ public class WebRtcService : IDisposable
         _debugLog = debugLog;
         _isInitialized = false;
 
-        // Initialize audio system first
         InitializeAudioSystem();
 
         // VirtualAudioSource will connect directly to AudioService events
-        // No need for manual subscription here
+        // no need for manual subscription here
 
-        // Initialize immediately
         EnsureInitialized();
         
-        // Start heartbeat timer
         _heartbeatTimer = new Timer(SendHeartbeats, null, _heartbeatInterval, _heartbeatInterval);
     }
 
@@ -125,7 +119,6 @@ public class WebRtcService : IDisposable
 
         try
         {
-            // Subscribe to signaling events
             _signalingService.OfferReceived += OnOfferReceived;
             _signalingService.AnswerReceived += OnAnswerReceived;
             _signalingService.IceCandidateReceived += OnIceCandidateReceived;

@@ -11,7 +11,6 @@ use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
 use serde_json;
 
-// Client position data structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ClientPosition {
     client_id: String,
@@ -22,20 +21,17 @@ struct ClientPosition {
     game_id: i32, // int enum where NexusTK is value 0
 }
 
-// Message types for client -> server communication
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 enum ClientMessage {
     UpdatePosition(ClientPosition),
     RequestPeerRefresh, // request fresh nearby peer list (e.g., after failed connection)
-    // Add messages for sending signaling data
-    SendOffer { target_id: String, offer: String }, // Assuming offer is JSON string
-    SendAnswer { target_id: String, answer: String }, // Assuming answer is JSON string
-    SendIceCandidate { target_id: String, candidate: String }, // Assuming candidate is JSON string
+    SendOffer { target_id: String, offer: String }, // assuming offer is JSON string
+    SendAnswer { target_id: String, answer: String }, // assuming answer is JSON string
+    SendIceCandidate { target_id: String, candidate: String }, // assuming candidate is JSON string
     Disconnect,
 }
 
-// Add message types for server -> client communication
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", content = "data")]
 enum ServerMessage {
@@ -43,21 +39,20 @@ enum ServerMessage {
     ReceiveOffer { sender_id: String, offer: String },
     ReceiveAnswer { sender_id: String, answer: String },
     ReceiveIceCandidate { sender_id: String, candidate: String },
-    Error(String), // Optional: To send error messages back to client
+    Error(String), // optional: to send error messages back to client
 }
 
-// Shared state between all connections
+// shared state between all connections
 struct ServerState {
-    // Separate position data from connection channels
+    // separate position data from connection channels
     positions: HashMap<String, ClientPosition>,
     // cache last sent nearby lists to avoid redundant updates
     last_nearby_lists: HashMap<String, HashSet<String>>,
-    // Map connection_id (server-generated UUID) to a channel sender for sending messages *to* that client
+    // map connection_id (server-generated UUID) to a channel sender for sending messages *to* that client
     connections: HashMap<String, mpsc::Sender<ServerMessage>>,
-    // Map client_id (client-provided GUID) to connection_id (server-generated UUID)
-    // This is needed to route messages targeted by client_id
+    // map client_id (client-provided GUID) to connection_id (server-generated UUID)
+    // this is needed to route messages targeted by client_id
     client_id_to_connection_id: HashMap<String, String>,
-    // Track the last time a client sent an UpdatePosition
     last_update_time: HashMap<String, Instant>,
 }
 
@@ -73,15 +68,14 @@ impl ServerState {
     }
 
     // hysteresis-based proximity calculation to prevent connection flapping
-    // This prevents the "dicey" behavior when walking around the 20-tile boundary:
-    // - New peers are introduced when ≤20 units apart (INTRODUCTION_RANGE)
-    // - Existing peers stay connected until >25 units apart (DISCONNECTION_RANGE)  
-    // - This 5-unit buffer prevents constant connect/disconnect when hovering near the boundary
+    // this prevents the "dicey" behavior when walking around the 20-tile boundary:
+    // - new peers are introduced when ≤20 units apart (INTRODUCTION_RANGE)
+    // - existing peers stay connected until >25 units apart (DISCONNECTION_RANGE)  
+    // - this 5-unit buffer prevents constant connect/disconnect when hovering near the boundary
     fn get_nearby_clients_with_hysteresis(&self, pos: &ClientPosition) -> Vec<String> {
         const INTRODUCTION_RANGE_SQUARED: f32 = 20.0 * 20.0; // introduce new peers at ≤20 units
         const DISCONNECTION_RANGE_SQUARED: f32 = 25.0 * 25.0; // keep existing peers until >25 units
         
-        // get current nearby list for this client
         let current_nearby = self.last_nearby_lists.get(&pos.client_id).cloned().unwrap_or_default();
         
         self.positions
@@ -133,11 +127,9 @@ impl ServerState {
         let client_id = new_pos.client_id.clone();
         let mut notifications = Vec::new();
         
-        // update position and timestamp
         self.positions.insert(client_id.clone(), new_pos.clone());
         self.last_update_time.insert(client_id.clone(), Instant::now());
         
-        // get new nearby list for this client using hysteresis
         let nearby_for_sender = self.get_nearby_clients_with_hysteresis(&new_pos);
         let nearby_set: HashSet<String> = nearby_for_sender.iter().cloned().collect();
         
@@ -158,7 +150,6 @@ impl ServerState {
         // notify existing peers that this client is now nearby (introduction in reverse)
         for new_peer_id in new_peers {
             if let Some(peer_pos) = self.positions.get(&new_peer_id) {
-                // check if this moving client is NEW to the peer's nearby list
                 let peer_nearby = self.get_nearby_clients_with_hysteresis(peer_pos);
                 let peer_nearby_set: HashSet<String> = peer_nearby.iter().cloned().collect();
                 let peer_previous_nearby = self.last_nearby_lists.get(&new_peer_id).cloned().unwrap_or_default();
@@ -201,28 +192,28 @@ async fn handle_connection(
     info!("WebSocket connection established from: {}", addr);
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-    // Server-generated ID to uniquely identify this WebSocket connection instance
+    // server-generated ID to uniquely identify this WebSocket connection instance
     let connection_id = Uuid::new_v4().to_string();
 
-    // Create a channel for sending messages to this client's WebSocket task
-    let (tx, mut rx) = mpsc::channel::<ServerMessage>(100); // Buffer size 100
+    // create a channel for sending messages to this client's WebSocket task
+    let (tx, mut rx) = mpsc::channel::<ServerMessage>(100); // buffer size 100
 
-    // Store the sender tx in the shared state using the connection_id
+    // store the sender tx in the shared state using the connection_id
     {
         let mut state_write = state.write().await;
         state_write.connections.insert(connection_id.clone(), tx.clone());
         info!("Connection established: {} ({})", connection_id, addr);
     }
 
-    // Task: Sends messages from the channel `rx` to the client's WebSocket `ws_sender`
-    let send_task_connection_id = connection_id.clone(); // Clone for the send task
+    // task: sends messages from the channel `rx` to the client's WebSocket `ws_sender`
+    let send_task_connection_id = connection_id.clone(); // clone for the send task
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             match serde_json::to_string(&msg) {
                 Ok(msg_str) => {
                     if ws_sender.send(Message::Text(msg_str.into())).await.is_err() {
-                        // Error sending, client likely disconnected
-                        // Log with connection_id as client_id might not be known/relevant here
+                        // error sending, client likely disconnected
+                        // log with connection_id as client_id might not be known/relevant here
                         error!("Failed to send message to {}: WebSocket send error.", send_task_connection_id);
                         break;
                     }
@@ -232,19 +223,19 @@ async fn handle_connection(
                 }
             }
         }
-        // When rx closes or send fails, this task ends.
+        // when rx closes or send fails, this task ends.
     });
 
-    // Task: Receives messages from the client's WebSocket `ws_receiver` and handles them
+    // task: receives messages from the client's WebSocket `ws_receiver` and handles them
     let recv_task_state = Arc::clone(&state);
-    let recv_task_connection_id = connection_id.clone(); // Clone for the receive task
-    let recv_task_tx = tx.clone(); // Clone tx for sending messages back to this client
+    let recv_task_connection_id = connection_id.clone(); // clone for the receive task
+    let recv_task_tx = tx.clone(); // clone tx for sending messages back to this client
 
     let recv_task = tokio::spawn(async move {
         let state = recv_task_state;
         let connection_id = recv_task_connection_id;
         let tx = recv_task_tx;
-        // Store the client-provided ID once received
+        // store the client-provided ID once received
         let mut registered_client_id: Option<String> = None;
 
         while let Some(msg_result) = ws_receiver.next().await {
@@ -253,14 +244,14 @@ async fn handle_connection(
                 Err(e) => {
                     error!("WebSocket error receiving from {} ({}): {}",
                            registered_client_id.as_deref().unwrap_or(&connection_id), addr, e);
-                    break; // Exit loop on WebSocket error
+                    break; // exit loop on WebSocket error
                 }
             };
 
             if msg.is_close() {
                 info!("Received close frame from {} ({})",
                        registered_client_id.as_deref().unwrap_or(&connection_id), addr);
-                break; // Exit loop if client sent close frame
+                break; // exit loop if client sent close frame
             }
 
             if let Message::Text(text) = msg {
@@ -270,11 +261,11 @@ async fn handle_connection(
                         error!("Failed to parse message from {} ({}): {}. Message: '{}'",
                                registered_client_id.as_deref().unwrap_or(&connection_id), addr, e, text);
                         let _ = tx.send(ServerMessage::Error(format!("Invalid message format: {}", e))).await;
-                        continue; // Skip processing this message
+                        continue; // skip processing this message
                     }
                 };
 
-                // Ensure client has registered with UpdatePosition before processing other messages
+                // ensure client has registered with UpdatePosition before processing other messages
                 if registered_client_id.is_none() && !matches!(client_msg, ClientMessage::UpdatePosition(_)) {
                     error!("Received non-UpdatePosition message from unregistered connection {} ({}): {:?}",
                            connection_id, addr, client_msg);
@@ -347,8 +338,8 @@ async fn handle_connection(
                     }
                     ClientMessage::RequestPeerRefresh => {
                         if let Some(sender_id) = registered_client_id.as_ref() {
-                                                    // send current nearby peers regardless of cache
-                        let state_read = state.read().await;
+                            // send current nearby peers regardless of cache
+                            let state_read = state.read().await;
                         if let Some(client_pos) = state_read.positions.get(sender_id) {
                             let nearby_list = state_read.get_nearby_clients_with_hysteresis(client_pos);
                             drop(state_read);
@@ -375,7 +366,7 @@ async fn handle_connection(
                                         let _ = tx.send(ServerMessage::Error(format!("Failed to send offer to {}", target_id))).await;
                                     }
                                 } else {
-                                    // client_id_to_connection_id mapping exists, but connection doesn't? Should not happen.
+                                    // client_id_to_connection_id mapping exists, but connection doesn't? should not happen.
                                     error!("Internal state inconsistency: Connection {} not found for client {}", target_connection_id, target_id);
                                     let _ = tx.send(ServerMessage::Error(format!("Internal error relaying offer to {}", target_id))).await;
                                 }
@@ -416,52 +407,51 @@ async fn handle_connection(
                                 if let Some(target_tx) = state_read.connections.get(target_connection_id) {
                                     let candidate_msg = ServerMessage::ReceiveIceCandidate { sender_id: sender_id.clone(), candidate };
                                     if let Err(_e) = target_tx.send(candidate_msg).await {
-                                        // Don't log error for every ICE candidate failure, might be too noisy
-                                        // Don't notify sender either, usually transient
+                                        // don't log error for every ICE candidate failure, might be too noisy
+                                        // don't notify sender either, usually transient
                                     }
-                                } // else: Internal inconsistency or target disconnected, ignore ICE
-                            } // else: Target client not found, ignore ICE
+                                } // else: internal inconsistency or target disconnected, ignore ICE
+                            } // else: target client not found, ignore ICE
                          } else {
-                            // Ignore ICE if client not registered yet
+                            // ignore ICE if client not registered yet
                             // error!("SendIceCandidate received before client ID registration (connection {}).", connection_id);
                         }
                     }
                     ClientMessage::Disconnect => {
                         info!("Received Disconnect message from {} ({})",
                                registered_client_id.as_deref().unwrap_or(&connection_id), addr);
-                        break; // Exit the loop
+                        break; // exit the loop
                     }
                 }
             } else if msg.is_binary() {
                  warn!("Received unexpected binary message from {} ({})",
                        registered_client_id.as_deref().unwrap_or(&connection_id), addr);
-            } // Ignore Ping/Pong etc for now
+            } // ignore Ping/Pong etc for now
         }
 
-        // Return the connection_id and the registered client_id (if any) when the loop exits
+        // return the connection_id and the registered client_id (if any) when the loop exits
         (connection_id, registered_client_id)
     });
 
-    // Wait for the receiving task to finish.
+    // wait for the receiving task to finish.
     let (disconnected_connection_id, disconnected_client_id_option) = match recv_task.await {
         Ok(ids) => ids,
         Err(e) => {
-             // Use the original connection_id for cleanup in case of panic
+             // use the original connection_id for cleanup in case of panic
              error!("Receive task panicked for connection {}: {}", connection_id, e);
-             (connection_id, None) // Assume client_id was not registered if task panicked
+             (connection_id, None) // assume client_id was not registered if task panicked
         }
     };
 
-    // Abort the sending task as it's no longer needed and to close the channel
+    // abort the sending task as it's no longer needed and to close the channel
     send_task.abort();
 
-    // Clean up state
+    // clean up state
     {
         let mut state_write = state.write().await;
-        // Remove the connection channel using connection_id
         state_write.connections.remove(&disconnected_connection_id);
 
-        // If a client_id was registered for this connection, remove its mappings
+        // if a client_id was registered for this connection, remove its mappings
         if let Some(disconnected_client_id) = disconnected_client_id_option {
             state_write.positions.remove(&disconnected_client_id);
             state_write.last_update_time.remove(&disconnected_client_id);
@@ -470,24 +460,24 @@ async fn handle_connection(
             // remove this client from all other clients' cached nearby lists so they get reintroduced on reconnect
             state_write.remove_from_all_nearby_caches(&disconnected_client_id);
             
-            // Only remove the client_id -> connection_id mapping if it still points to *this* connection
-            // (Avoid removing it if the client reconnected quickly and the mapping was updated)
+            // only remove the client_id -> connection_id mapping if it still points to *this* connection
+            // (avoid removing it if the client reconnected quickly and the mapping was updated)
             if state_write.client_id_to_connection_id.get(&disconnected_client_id) == Some(&disconnected_connection_id) {
                 state_write.client_id_to_connection_id.remove(&disconnected_client_id);
             }
             info!("Client disconnected and cleaned up: ID {} (connection {}) ({}). Removed from all peer caches for proper reintroduction on reconnect.",
                   disconnected_client_id, disconnected_connection_id, addr);
         } else {
-            // Client disconnected before sending UpdatePosition or task panicked
+            // client disconnected before sending UpdatePosition or task panicked
             info!("Unregistered connection disconnected and cleaned up: {} ({})",
                   disconnected_connection_id, addr);
         }
     }
 }
 
-// Background task to check for client timeouts and periodic reintroductions
+// background task to check for client timeouts and periodic reintroductions
 async fn check_timeouts_and_reintroduce(state: Arc<RwLock<ServerState>>) {
-    let mut interval = time::interval(Duration::from_secs(5)); // Check every 5 seconds
+    let mut interval = time::interval(Duration::from_secs(5)); // check every 5 seconds
     const TIMEOUT_DURATION: Duration = Duration::from_secs(15);
     
     loop {
@@ -495,9 +485,9 @@ async fn check_timeouts_and_reintroduce(state: Arc<RwLock<ServerState>>) {
         let mut timed_out_clients = Vec::new();
         let mut reintroduction_notifications = Vec::new();
         
-        let state_read = state.read().await; // Read lock to check times
+        let state_read = state.read().await; // read lock to check times
 
-        // Check for timeouts
+        // check for timeouts
         for (client_id, last_time) in state_read.last_update_time.iter() {
             if last_time.elapsed() > TIMEOUT_DURATION {
                 info!("Client {} timed out (last update {:?})", client_id, last_time.elapsed());
@@ -505,8 +495,8 @@ async fn check_timeouts_and_reintroduce(state: Arc<RwLock<ServerState>>) {
             }
         }
         
-        // Simple periodic reintroductions - send fresh nearby lists to all clients every 5 seconds
-        // This handles stale connection states gracefully - clients ignore duplicate introductions
+        // simple periodic reintroductions - send fresh nearby lists to all clients every 5 seconds
+        // this handles stale connection states gracefully - clients ignore duplicate introductions
         for (client_id, client_pos) in state_read.positions.iter() {
             if let Some(connection_id) = state_read.client_id_to_connection_id.get(client_id) {
                 if let Some(tx) = state_read.connections.get(connection_id) {
@@ -516,11 +506,11 @@ async fn check_timeouts_and_reintroduce(state: Arc<RwLock<ServerState>>) {
             }
         }
         
-        drop(state_read); // Release read lock
+        drop(state_read); // release read lock
 
-        // Handle timeouts
+        // handle timeouts
         if !timed_out_clients.is_empty() {
-            let mut state_write = state.write().await; // Write lock to remove
+            let mut state_write = state.write().await; // write lock to remove
             for client_id in timed_out_clients {
                 warn!("Disconnecting timed out client: {}", client_id);
                 
@@ -532,7 +522,7 @@ async fn check_timeouts_and_reintroduce(state: Arc<RwLock<ServerState>>) {
                 state_write.remove_from_all_nearby_caches(&client_id);
                 
                 if let Some(connection_id) = state_write.client_id_to_connection_id.remove(&client_id) {
-                    // Removing the connection sender will cause the send_task for that client to terminate,
+                    // removing the connection sender will cause the send_task for that client to terminate,
                     // eventually leading to the handle_connection task finishing and cleaning up fully.
                     state_write.connections.remove(&connection_id); 
                     info!("Removed timed out client state: {} (connection {})", client_id, connection_id);
@@ -542,11 +532,11 @@ async fn check_timeouts_and_reintroduce(state: Arc<RwLock<ServerState>>) {
             }
         }
         
-        // Send periodic reintroductions to all clients
+        // send periodic reintroductions to all clients
         for (_client_id, tx, nearby_list) in reintroduction_notifications {
             let response = ServerMessage::NearbyPeers(nearby_list);
             if let Err(_e) = tx.send(response).await {
-                // Don't log this as error - client may have disconnected, that's normal
+                // don't log this as error - client may have disconnected, that's normal
                 // warn!("Failed to send periodic reintroduction to {}: {}", client_id, e);
             }
         }
@@ -555,24 +545,24 @@ async fn check_timeouts_and_reintroduce(state: Arc<RwLock<ServerState>>) {
 
 #[tokio::main]
 async fn main() {
-    // Initialize logging
+    // initialize logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    // Create shared state
+    // create shared state
     let state = Arc::new(RwLock::new(ServerState::new()));
 
-    // Spawn the timeout checking task
+    // spawn the timeout checking task
     let timeout_state = Arc::clone(&state);
     tokio::spawn(async move {
         check_timeouts_and_reintroduce(timeout_state).await;
     });
 
-    // Create WebSocket server
+    // create WebSocket server
     let addr = "0.0.0.0:8080";
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
     info!("WebSocket server listening on: {}", addr);
 
-    // Accept connections
+    // accept connections
     while let Ok((stream, addr)) = listener.accept().await {
         let state = Arc::clone(&state);
         tokio::spawn(async move {

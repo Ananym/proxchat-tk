@@ -17,7 +17,6 @@ public class OpusCodecService : IDisposable
     private readonly int _frameSize;
     private bool _disposed = false;
 
-    // opus constants
     internal const int DEFAULT_OPUS_SAMPLE_RATE = 48000;
     internal const int OPUS_CHANNELS = 1; // mono for voice chat
     internal const int OPUS_FRAME_SIZE_MS = 20; // standard WebRTC packet size
@@ -31,13 +30,11 @@ public class OpusCodecService : IDisposable
         _debugLog = debugLog;
         _sampleRate = sampleRate;
         
-        // calculate frame size in samples for the given sample rate
         // 20ms frame = sampleRate * 0.02
         _frameSize = _sampleRate * OPUS_FRAME_SIZE_MS / 1000;
         
         try
         {
-            // create encoder and decoder with VOIP application for voice chat
             _encoder = new OpusEncoder(_sampleRate, OPUS_CHANNELS, OpusPredefinedValues.OPUS_APPLICATION_VOIP);
             _decoder = new OpusDecoder(_sampleRate, OPUS_CHANNELS);
             
@@ -57,7 +54,6 @@ public class OpusCodecService : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(OpusCodecService));
         
-        // validate inputs
         if (pcmSamples == null)
         {
             throw new ArgumentNullException(nameof(pcmSamples));
@@ -75,14 +71,11 @@ public class OpusCodecService : IDisposable
         
         try
         {
-            // convert short array to byte array for OpusSharp
             byte[] pcmBytes = new byte[sampleCount * 2]; // 2 bytes per 16-bit sample
             Buffer.BlockCopy(pcmSamples, 0, pcmBytes, 0, pcmBytes.Length);
             
-            // create output buffer
             byte[] opusPacket = new byte[OPUS_MAX_PACKET_SIZE];
             
-            // encode using OpusSharp
             int encodedBytes = _encoder.Encode(pcmBytes, sampleCount, opusPacket, opusPacket.Length);
             
             if (encodedBytes > 0)
@@ -112,7 +105,6 @@ public class OpusCodecService : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(OpusCodecService));
         
-        // validate inputs
         if (opusPacket == null)
         {
             throw new ArgumentNullException(nameof(opusPacket));
@@ -130,21 +122,17 @@ public class OpusCodecService : IDisposable
         
         try
         {
-            // handle silence/empty packets
             if (packetLength == 0)
             {
                 return new short[_frameSize]; // return silence
             }
             
-            // create output buffer for decoded PCM bytes
             byte[] decodedBytes = new byte[_frameSize * 2]; // 2 bytes per 16-bit sample
             
-            // decode using OpusSharp
             int decodedSamples = _decoder.Decode(opusPacket, packetLength, decodedBytes, _frameSize, false);
             
             if (decodedSamples > 0)
             {
-                // convert byte array back to short array
                 short[] pcmSamples = new short[decodedSamples];
                 Buffer.BlockCopy(decodedBytes, 0, pcmSamples, 0, decodedSamples * 2);
                 return pcmSamples;

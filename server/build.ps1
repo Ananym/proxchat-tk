@@ -26,12 +26,10 @@ function Build-Local {
 function Build-Linux {
     Write-Host "Building Linux binary via cross-compilation..."
     
-    # Ensure output directory exists
     if (-not (Test-Path $Output)) {
         New-Item -ItemType Directory -Path $Output -Force | Out-Null
     }
     
-    # Check if Linux target is installed
     Write-Host "Checking for Linux target..."
     $targets = rustup target list --installed
     if ($targets -notcontains "x86_64-unknown-linux-gnu") {
@@ -42,7 +40,6 @@ function Build-Linux {
         }
     }
     
-    # Build for Linux
     Write-Host "Cross-compiling for x86_64-unknown-linux-gnu..."
     cargo build --release --target x86_64-unknown-linux-gnu
     
@@ -64,7 +61,6 @@ function Build-Linux {
         throw "Linux cross-compilation failed"
     }
     
-    # Copy binary to output directory
     $sourceBinary = "target\x86_64-unknown-linux-gnu\release\prox-chat-server"
     $targetBinary = Join-Path $Output "prox-chat-server-linux"
     
@@ -100,7 +96,6 @@ function Build-Docker-MultiArch {
     param($ImageName, $ShouldPush)
     Write-Host "Building multi-architecture Docker image (linux/amd64,linux/arm64)..."
     
-    # Create and use a new builder instance that supports multi-arch
     $builderName = "prox-chat-multiarch"
     docker buildx create --name $builderName --use --bootstrap 2>$null
     
@@ -109,8 +104,7 @@ function Build-Docker-MultiArch {
     if ($ShouldPush) {
         docker buildx build --platform linux/amd64,linux/arm64 -t $ImageName --push .
     } else {
-        # For local multi-arch builds without pushing, we can't use --load with multiple platforms
-        # So we'll build and keep in buildx cache
+        # for local multi-arch builds, we can't use --load with multiple platforms
         Write-Host "Building multi-arch image (cached only - use --Push to publish)"
         docker buildx build --platform linux/amd64,linux/arm64 -t $ImageName .
     }
@@ -123,7 +117,6 @@ function Build-Docker-MultiArch {
 function Setup-Buildx {
     Write-Host "Setting up Docker buildx for multi-architecture builds..."
     
-    # Check if our builder already exists
     $builderExists = docker buildx ls | Select-String "prox-chat-multiarch"
     
     if (-not $builderExists) {
@@ -151,20 +144,16 @@ function Build-DockerExtract {
     
     Write-Host "Building Docker image and extracting Linux binary..." -ForegroundColor Yellow
     
-    # Build Docker image first
     Build-Docker-Single -ImageName $ImageName -Platform "linux/amd64"
     
-    # Extract binary from the image
     Write-Host ""
     Write-Host "Extracting Linux binary from Docker image..." -ForegroundColor Yellow
     Write-Host "Image: $ImageName" -ForegroundColor Cyan
     
-    # Ensure output directory exists
     if (-not (Test-Path $OutputPath)) {
         New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
     }
     
-    # Create temporary container
     Write-Host "Creating temporary container..." -ForegroundColor Gray
     $containerId = docker create $ImageName
     if ($LASTEXITCODE -ne 0) {
@@ -172,7 +161,6 @@ function Build-DockerExtract {
     }
     
     try {
-        # Extract binary
         $targetBinary = Join-Path $OutputPath "prox-chat-server-linux"
         Write-Host "Extracting binary..." -ForegroundColor Gray
         docker cp "${containerId}:/usr/local/bin/prox-chat-server" $targetBinary
@@ -180,7 +168,6 @@ function Build-DockerExtract {
             throw "Failed to extract binary from container"
         }
         
-        # Check if binary was extracted
         if (-not (Test-Path $targetBinary)) {
             throw "Binary not found after extraction: $targetBinary"
         }

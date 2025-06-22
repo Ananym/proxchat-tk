@@ -62,7 +62,6 @@ function Clean-BuildArtifacts {
         Write-Host "Removed temp output directory: $TempOutput"
     }
     
-    # also clean any deployment temp files
     if (Test-Path ".\deployment\temp") {
         Remove-Item -Recurse -Force ".\deployment\temp"
         Write-Host "Removed deployment temp directory"
@@ -73,7 +72,6 @@ function Build-For-Release {
     Write-Host "Building optimized release version..." -ForegroundColor Green
     Write-Host "This may take a few minutes due to optimization..." -ForegroundColor Yellow
     
-    # Ensure temp output directory exists
     if (-not (Test-Path $TempOutput)) {
         New-Item -ItemType Directory -Path $TempOutput -Force | Out-Null
     }
@@ -86,7 +84,7 @@ function Build-For-Release {
         "--output", $TempOutput
     )
     
-    # Trimming is disabled by default for WPF apps (not recommended/supported)
+    # trimming is disabled by default for WPF apps (not recommended/supported)
     Write-Host "Trimming disabled - recommended for WPF apps" -ForegroundColor Cyan
     
     if ($Verbose) { 
@@ -98,7 +96,6 @@ function Build-For-Release {
         throw "Release build failed"
     }
     
-    # Find the executable
     $exePath = Join-Path $TempOutput "ProxChatClient.exe"
     
     if (Test-Path $exePath) {
@@ -112,8 +109,8 @@ function Build-For-Release {
         Write-Host "📦 Framework-dependent build - requires .NET 9 runtime" -ForegroundColor Yellow
         Write-Host "🚀 Single-file executable ready!" -ForegroundColor Green
         
-        # Note: Config files are NOT copied to output directory
-        # They will be added to distribution packages only (not update packages)
+        # config files are NOT copied to output directory
+        # they will be added to distribution packages only (not update packages)
         
         return $exePath
     } else {
@@ -122,7 +119,6 @@ function Build-For-Release {
 }
 
 function Get-ProjectVersion {
-    # get version from project file
     $csprojContent = Get-Content "ProxChatClient.csproj" -Raw
     if ($csprojContent -match '<Version>([^<]+)</Version>') {
         return $matches[1]
@@ -137,7 +133,6 @@ function Build-VelopackPackage {
     
     Write-Host "Creating Velopack update package..." -ForegroundColor Green
     
-    # ensure we have vpk tool
     $vpkPath = Get-Command "vpk" -ErrorAction SilentlyContinue
     if (-not $vpkPath) {
         Write-Host "Installing Velopack tools..." -ForegroundColor Yellow
@@ -147,14 +142,12 @@ function Build-VelopackPackage {
         }
     }
     
-    # create temp releases directory for vpk
     $tempReleasesDir = ".\deployment\temp\vpk"
     if (Test-Path $tempReleasesDir) {
         Remove-Item $tempReleasesDir -Recurse -Force
     }
     New-Item -ItemType Directory -Path $tempReleasesDir -Force | Out-Null
     
-    # build vpk command
     $vpkArgs = @(
         "pack",
         "--packId", "ProxChatTK",
@@ -180,7 +173,6 @@ function Organize-Artifacts {
     
     Write-Host "Organizing deployment artifacts..." -ForegroundColor Green
     
-    # create main deployment directory
     $deploymentDir = ".\deployment"
     if (Test-Path $deploymentDir) {
         # only remove non-temp files to preserve temp directory structure
@@ -189,14 +181,12 @@ function Organize-Artifacts {
         New-Item -ItemType Directory -Path $deploymentDir -Force | Out-Null
     }
     
-    # find the velopack-generated portable package
     $portableZipPath = Join-Path $TempReleasesPath "*-Portable.zip"
     $portableZipFiles = Get-ChildItem -Path $portableZipPath -ErrorAction SilentlyContinue
     if (-not $portableZipFiles -or $portableZipFiles.Count -eq 0) {
         throw "Velopack portable package not found in $TempReleasesPath"
     }
     
-    # create the versioned root directory structure
     $versionedAppDir = Join-Path $deploymentDir "proxchattk v$Version"
     $proxChatTKDir = Join-Path $versionedAppDir "ProxChatTK"
     

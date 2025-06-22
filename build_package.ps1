@@ -11,7 +11,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Paths
 $RootDir = Get-Location
 $DistDir = Join-Path $RootDir "dist"
 $ReleaseDir = Join-Path $DistDir "release"
@@ -66,7 +65,6 @@ function Clean-All {
         Write-Host "Removed dist directory"
     }
     
-    # Clean memory reading DLL
     Push-Location $MemoryDllDir
     try {
         if (Test-Path "build") {
@@ -77,7 +75,6 @@ function Clean-All {
         Pop-Location
     }
     
-    # Clean client
     Push-Location $ClientDir
     try {
         & .\build.ps1 -Clean | Out-Null
@@ -168,27 +165,22 @@ function Create-DistributionPackage {
     }
     New-Item -ItemType Directory -Path $ReleaseDir -Force | Out-Null
     
-    # Copy files to distribution folder
     Write-Host "Copying files to distribution folder..."
     
-    # Copy client executable
     $targetExe = Join-Path $ReleaseDir "ProxChatClient.exe"
     Copy-Item $ClientPaths.Exe $targetExe -Force
     $exeSize = [math]::Round((Get-Item $targetExe).Length / 1MB, 2)
     Write-Host "  ✓ ProxChatClient.exe ($exeSize MB)" -ForegroundColor Cyan
     
-    # Copy memory reading DLL
     $targetDll = Join-Path $ReleaseDir "VERSION.dll"
     Copy-Item $DllPath $targetDll -Force
     $dllSize = [math]::Round((Get-Item $targetDll).Length / 1KB, 2)
     Write-Host "  ✓ VERSION.dll ($dllSize KB)" -ForegroundColor Cyan
     
-    # Copy and rename config file (remove .default extension)
     $targetConfig = Join-Path $ReleaseDir "config.json"
     Copy-Item $ClientPaths.Config $targetConfig -Force
     Write-Host "  ✓ config.json (default configuration)" -ForegroundColor Cyan
     
-    # Copy user guide from client directory
     $userGuidePath = Join-Path $ClientDir "user_guide.txt"
     if (Test-Path $userGuidePath) {
         $targetUserGuide = Join-Path $ReleaseDir "user_guide.txt"

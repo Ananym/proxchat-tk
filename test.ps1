@@ -11,14 +11,12 @@ param(
 # test script for zeromq ipc communication
 Write-Host "=== ProxChat ZeroMQ Test Script ===" -ForegroundColor Green
 
-# check for mutually exclusive options
 if ($s -and $bs) {
     Write-Host "ERROR: -s and -bs are mutually exclusive" -ForegroundColor Red
     Write-Host "Use -s for server only, or -bs for build+server" -ForegroundColor Yellow
     exit 1
 }
 
-# show what we're going to do
 $actions = @()
 if ($bs) { $actions += "build dll + server" }
 elseif ($s) { $actions += "server" }
@@ -45,7 +43,6 @@ if ($actions.Count -eq 0) {
 Write-Host "Actions: $($actions -join ', ')" -ForegroundColor Cyan
 Write-Host ""
 
-# paths
 $projectRoot = $PSScriptRoot
 $clientNormalLogPath = "$projectRoot\normalmode.log"
 $clientDebugLogPath = "$projectRoot\debugmode.log"
@@ -59,7 +56,6 @@ $startedProcesses = @()
 
 # === BUILD PHASE ===
 
-# build memory reading dll if -bs specified
 if ($bs) {
     Write-Host "Building memory reading DLL..." -ForegroundColor Yellow
     
@@ -77,7 +73,6 @@ if ($bs) {
         Set-Location $originalDir
     }
     
-    # copy dll to game folder
     Write-Host "Copying VERSION.dll to game directory..." -ForegroundColor Yellow
     if (Test-Path $sourceDll) {
         Copy-Item $sourceDll $targetDll -Force
@@ -88,7 +83,6 @@ if ($bs) {
     }
 }
 
-# build proxchat client if -b specified
 if ($b) {
     Write-Host "Building ProxChat client..." -ForegroundColor Yellow
     
@@ -109,7 +103,6 @@ if ($b) {
 
 # === CLEANUP PHASE ===
 
-# clean dll log if server will be started
 if ($s -or $bs) {
     Write-Host "Cleaning server log..." -ForegroundColor Yellow
     if (Test-Path $dllLogPath) {
@@ -118,7 +111,6 @@ if ($s -or $bs) {
     }
 }
 
-# clean normal client log if -n specified
 if ($n) {
     Write-Host "Cleaning normal client log..." -ForegroundColor Yellow
     if (Test-Path $clientNormalLogPath) {
@@ -127,7 +119,6 @@ if ($n) {
     }
 }
 
-# clean debug client log if -d specified
 if ($d) {
     Write-Host "Cleaning debug client log..." -ForegroundColor Yellow
     if (Test-Path $clientDebugLogPath) {
@@ -138,7 +129,6 @@ if ($d) {
 
 # === EXECUTION PHASE ===
 
-# start server if -s or -bs specified
 if ($s -or $bs) {
     Write-Host "Starting NexusTK server..." -ForegroundColor Yellow
     
@@ -152,14 +142,12 @@ if ($s -or $bs) {
         exit 1
     }
     
-    # wait a bit before starting clients
     if ($n -or $d) {
         Write-Host "Waiting 3 seconds before starting clients..." -ForegroundColor Yellow
         Start-Sleep -Seconds 3
     }
 }
 
-# start normal client if -n specified
 if ($n) {
     Write-Host "Starting ProxChat client (normal mode)..." -ForegroundColor Yellow
     
@@ -174,7 +162,6 @@ if ($n) {
     }
 }
 
-# start debug client if -d specified
 if ($d) {
     Write-Host "Starting ProxChat client (debug mode)..." -ForegroundColor Yellow
     

@@ -8,7 +8,6 @@ public static class MuLawDecoder
 
     static MuLawDecoder()
     {
-        // Initialize the conversion table
         for (int i = 0; i < 256; i++)
         {
             MuLawToLinearTable[i] = Decode((byte)i);
@@ -22,7 +21,6 @@ public static class MuLawDecoder
 
     private static short Decode(byte mulaw)
     {
-        // Convert MuLaw to linear PCM
         mulaw = (byte)~mulaw;
 
         int sign = (mulaw & 0x80) >> 7;

@@ -42,7 +42,6 @@ public class SignalingService : IDisposable
 
     public SignalingService(WebSocketServerConfig config, DebugLogService debugLog)
     {
-        // trim trailing slash from host
         var host = config.Host.TrimEnd('/');
         
         // use wss:// for secure connections (port 443) or ws:// for insecure (other ports)
@@ -74,7 +73,6 @@ public class SignalingService : IDisposable
             _debugLog.LogSignaling("Connected to signaling server.");
             ConnectionStatusChanged?.Invoke(this, true);
 
-            // Start receiving messages
             _receiveCts = new CancellationTokenSource();
             _ = Task.Run(() => ReceiveMessages(_receiveCts.Token));
         }
@@ -177,7 +175,6 @@ public class SignalingService : IDisposable
                     {
                         _debugLog.LogSignaling($"Received nearby peers: {string.Join(", ", nearbyPeersData.Peers)}");
                         
-                        // check if our own client ID is in the list
                         if (nearbyPeersData.Peers.Contains(_clientId))
                         {
                             _debugLog.LogSignaling($"[BUG] Server sent our own client ID {_clientId} in nearby peers list!");
@@ -317,8 +314,6 @@ public class SignalingService : IDisposable
             
             var bytes = Encoding.UTF8.GetBytes(json);
             await _webSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
-            
-            // removed excessive "sent message" logging - only log errors now
         }
         catch (Exception ex)
         {
@@ -331,22 +326,18 @@ public class SignalingService : IDisposable
         _ = HandleDisconnect();
     }
 
-    // add method to regenerate client id and reconnect
     public async Task RegenerateClientIdAndReconnect()
     {
         _debugLog.LogSignaling("Regenerating client ID for anonymity and reconnecting...");
         
-        // disconnect first if connected
         if (IsConnected)
         {
             await HandleDisconnect();
         }
         
-        // generate new client id
         _clientId = Guid.NewGuid().ToString();
         _debugLog.LogSignaling($"Generated new client ID: {_clientId}");
         
-        // reconnect with new id
         await Connect();
     }
 } 
