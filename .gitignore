@@ -95,3 +95,4 @@ config.json
 
 # allow .def files in memoryreadingdll/
 !memoryreadingdll/*.def
+server/target/.rustc_info.json
