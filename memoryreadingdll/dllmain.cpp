@@ -12,10 +12,18 @@
 
 #include "memreader.h"
 
+
+// Include some explanatory strings in case person or scanner wants to take a look at the built dll
+const char* PURPOSE = "ProxChatTK - Proximity Voice Chat for NexusTK";
+const char* CONTACT_INFO = "Contact: 32470867+Ananym@users.noreply.github.com";
+const char* SOURCE_CODE = "Source: https://github.com/ananym/proxchattk";
+const char* FUNCTIONALITY_DESC = "Reads in-game character position to determine proximity for voice chat";
+const char* DEFINITELY_NOT_MALWARE = "This DLL does not: keylog, steal data, or modify game files";
+
 // --- logging setup ---
 std::ofstream logFile;
 std::mutex logMutex;
-const char* logFileName = "memoryreadingdll_log.txt";
+const char* logFileName = "proxchattk_dll.log";
 std::atomic<bool> debugLoggingEnabled(false);
 
 bool IsDebugFlagPresent() {
