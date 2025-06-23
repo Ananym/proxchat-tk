@@ -15,7 +15,6 @@ public interface IGameDataReader : IDisposable
 
 public class NamedPipeGameDataReader : IGameDataReader
 {
-    private const string PIPE_NAME = "gamedata";
     private const int MESSAGE_SIZE = 56; // sizeof(GameDataMessage) - gameId field replaced reserved1
     private const int PIPE_MESSAGE_SIZE = 72; // sizeof(PipeMessage)
     private const int HEARTBEAT_INTERVAL_MS = 3000;
@@ -28,6 +27,7 @@ public class NamedPipeGameDataReader : IGameDataReader
     private volatile bool _shouldStop = false;
     private volatile bool _connected = false;
     private readonly DebugLogService _debugLog;
+    private readonly string _pipeName;
     private readonly object _pipeLock = new object();
     private DateTime _lastHeartbeatSent = DateTime.MinValue;
     private DateTime _lastDataReceived = DateTime.MinValue;
@@ -46,22 +46,10 @@ public class NamedPipeGameDataReader : IGameDataReader
 
     public NamedPipeGameDataReader(string ipcChannelName, DebugLogService debugLog)
     {
+        _pipeName = ipcChannelName ?? throw new ArgumentNullException(nameof(ipcChannelName));
         _debugLog = debugLog;
         _debugLog.LogNamedPipe("CONSTRUCTOR CALLED");
-        _debugLog.LogNamedPipe($"STACK TRACE: {Environment.StackTrace}");
-        
-        // write stack trace to debug file for troubleshooting
-        try
-        {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            var debugInfo = $"[{timestamp}] NamedPipeGameDataReader Constructor Called\n";
-            debugInfo += new string('-', 80) + "\n\n";
-            File.AppendAllText(@"C:\proxdebug.txt", debugInfo);
-        }
-        catch
-        {
-            // ignore file write errors - don't let debug code break the app
-        }
+
         
         // initialize thread references to null
         _readThread = null;
@@ -276,9 +264,9 @@ public class NamedPipeGameDataReader : IGameDataReader
             
             try
             {
-                _debugLog.LogNamedPipe($"Attempting to connect to named pipe '{PIPE_NAME}'...");
+                _debugLog.LogNamedPipe($"Attempting to connect to named pipe '{_pipeName}'...");
                 
-                _pipeClient = new NamedPipeClientStream(".", PIPE_NAME, PipeDirection.InOut, PipeOptions.Asynchronous);
+                _pipeClient = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
                 
                 // try to connect with timeout
                 var connectTask = Task.Run(() => _pipeClient.Connect(CONNECTION_TIMEOUT_MS));

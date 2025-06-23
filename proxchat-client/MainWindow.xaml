@@ -311,12 +311,15 @@
         
             <!-- Status Bar (Row 5) -->
             <Grid Grid.Row="5" Margin="0,5,0,0">
-                <StatusBar>
-                <StatusBarItem>
-                    <TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis"/>
-                </StatusBarItem>
-            </StatusBar>
-        </Grid>
+                <Border Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                        Padding="8,4">
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               TextWrapping="Wrap"
+                               TextAlignment="Left"
+                               MinHeight="20"
+                               VerticalAlignment="Center"/>
+                </Border>
+            </Grid>
         </Grid>
 
         <!-- Right Column - Connected Peers -->

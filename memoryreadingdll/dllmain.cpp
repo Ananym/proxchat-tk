@@ -42,7 +42,7 @@ void LogToFile(const std::string& message) {
 }
 
 // named pipe communication
-const std::string PIPE_NAME = "\\\\.\\pipe\\gamedata";
+const std::string PIPE_NAME = "\\\\.\\pipe\\proxchattk";
 const DWORD PIPE_BUFFER_SIZE = 1024;
 const DWORD HEARTBEAT_INTERVAL_MS = 3000;
 
@@ -72,7 +72,7 @@ private:
             2,  // increased from 1 to allow better reconnection handling
             PIPE_BUFFER_SIZE,
             PIPE_BUFFER_SIZE,
-            0,  // default timeout
+            0,
             nullptr
         );
 
@@ -117,7 +117,6 @@ private:
                 }
             }
 
-            // wait for client connection
             LogToFile("Waiting for client connection...");
             OVERLAPPED connectOverlapped = {0};
             connectOverlapped.hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
@@ -126,7 +125,6 @@ private:
             DWORD connectError = GetLastError();
             
             if (!connectResult && connectError == ERROR_IO_PENDING) {
-                // wait for connection with timeout
                 DWORD waitResult = WaitForSingleObject(connectOverlapped.hEvent, 1000);
                 if (waitResult != WAIT_OBJECT_0) {
                     CloseHandle(connectOverlapped.hEvent);
@@ -145,7 +143,6 @@ private:
             lastHeartbeatReceived = std::chrono::steady_clock::now();
             LogToFile("Client connected to named pipe");
 
-            // handle client communication
             HandleClientCommunication();
         }
         
@@ -159,7 +156,6 @@ private:
         readOverlapped.hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
 
         while (running && connected) {
-            // try to read a message with timeout
             BOOL readResult = ReadFile(pipe, &incomingMsg, sizeof(PipeMessage), &bytesRead, &readOverlapped);
             DWORD readError = GetLastError();
 
@@ -168,7 +164,6 @@ private:
                 if (waitResult == WAIT_OBJECT_0) {
                     GetOverlappedResult(pipe, &readOverlapped, &bytesRead, FALSE);
                 } else {
-                    // timeout or error
                     CancelIo(pipe);
                     continue;
                 }
@@ -178,10 +173,7 @@ private:
             }
 
             if (bytesRead == sizeof(PipeMessage) && incomingMsg.messageType == 0) {
-                // received heartbeat
                 lastHeartbeatReceived = std::chrono::steady_clock::now();
-                
-                // send heartbeat response
                 SendHeartbeatResponse();
             }
         }
@@ -195,7 +187,7 @@ private:
         if (!connected || pipe == INVALID_HANDLE_VALUE) return;
 
         PipeMessage heartbeatMsg = {0};
-        heartbeatMsg.messageType = 0; // heartbeat
+        heartbeatMsg.messageType = 0;
         heartbeatMsg.dataSize = 0;
 
         DWORD bytesWritten;
@@ -283,7 +275,7 @@ public:
         }
 
         PipeMessage pipeMsg = {0};
-        pipeMsg.messageType = 1; // game data
+        pipeMsg.messageType = 1;
         pipeMsg.dataSize = sizeof(GameDataMessage);
         memcpy(pipeMsg.data, &gameMsg, sizeof(GameDataMessage));
 
@@ -323,17 +315,14 @@ std::unique_ptr<NamedPipeServer> pipeServer;
 std::atomic<bool> keepRunning(true);
 std::thread memoryPollingThread;
 
-// background thread function for polling memory
 void MemoryPollingLoop() {
     LogToFile("Memory polling thread started.");
     int messageCount = 0;
     int successCount = 0;
     
     while (keepRunning) {
-        // create structured message
         GameDataMessage gameMsg = CreateGameDataMessage();
         
-        // send via named pipe
         if (pipeServer && pipeServer->IsConnected()) {
             bool success = pipeServer->SendGameData(gameMsg);
             messageCount++;
@@ -359,7 +348,6 @@ void MemoryPollingLoop() {
              " messages, " + std::to_string(successCount) + " successful");
 }
 
-// setup named pipe server
 bool SetupNamedPipe() {
     LogToFile("Setting up named pipe server...");
     
@@ -377,7 +365,6 @@ bool SetupNamedPipe() {
     }
 }
 
-// cleanup named pipe
 void CleanupNamedPipe() {
     LogToFile("Cleaning up named pipe...");
     if (pipeServer) {
@@ -393,7 +380,6 @@ BOOL APIENTRY DllMain(HMODULE hModule,
                       LPVOID lpReserved) {
     switch (ul_reason_for_call) {
         case DLL_PROCESS_ATTACH:
-            // check if debug logging should be enabled
             debugLoggingEnabled = IsDebugFlagPresent();
             
             if (debugLoggingEnabled) {

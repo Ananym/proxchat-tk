@@ -1,9 +1,10 @@
 {
   "WebSocketServer": {
-    "Host": "prox-chat-tk.fly.dev"
+    "Host": "prox-chat-tk.fly.dev",
+    "Port": 443
   },
   "Channel": 0,
-  "GameDataIpcChannel": "game-data-channel",
+  "GameDataIpcChannel": "proxchattk",
   "AudioSettings": {
     "VolumeScale": 0.5,
     "InputVolumeScale": 1.0,
@@ -12,6 +13,11 @@
     "IsPushToTalk": false,
     "PushToTalkKey": "Oem5",
     "MuteSelfKey": "Ctrl+M"
+  },
+  "UpdateSettings": {
+    "CheckForUpdates": true,
+    "UpdateUrl": "https://github.com/ananym/prox-chat-tk/releases/latest/download",
+    "CheckIntervalMinutes": 60
   },
   "PeerSettings": {}
 } 

@@ -9,7 +9,7 @@ public class DebugLogService : IDisposable
 {
     private StreamWriter? _logWriter;
     private readonly object _logLock = new object();
-    private readonly string _logFilePath;
+    private readonly string? _logFilePath;
     private bool _disposed = false;
     
     // much more aggressive deduplication
@@ -22,20 +22,38 @@ public class DebugLogService : IDisposable
         if (string.IsNullOrEmpty(logFileName))
         {
             var args = Environment.GetCommandLineArgs();
-            logFileName = "debug";
+            bool logRequested = false;
             
-            // Look for log filename argument
-            for (int i = 0; i < args.Length - 1; i++)
+            // Look for log flag and optional filename
+            for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--log" || args[i] == "-l")
                 {
-                    logFileName = args[i + 1];
+                    logRequested = true;
+                    
+                    // check if next arg exists and is not another flag
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
+                    {
+                        logFileName = args[i + 1];
+                    }
+                    else
+                    {
+                        // --log flag present but no filename provided, default to "debug"
+                        logFileName = "debug";
+                    }
                     break;
                 }
             }
+            
+            // if no --log argument found, don't create any log file
+            if (!logRequested)
+            {
+                return;
+            }
         }
         
-        _logFilePath = Path.Combine(Directory.GetCurrentDirectory(), $"{logFileName}.log");
+        // use velopack-aware directory for log files
+        _logFilePath = Path.Combine(ConfigService.GetConfigDirectory(), $"{logFileName}.log");
         
         try
         {
@@ -66,7 +84,7 @@ public class DebugLogService : IDisposable
 
     public void Log(string message, string? category = null)
     {
-        if (_disposed || _logWriter == null) return;
+        if (_disposed || _logWriter == null || _logFilePath == null) return;
 
         var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
         var categoryPrefix = !string.IsNullOrEmpty(category) ? $"[{category}] " : "";

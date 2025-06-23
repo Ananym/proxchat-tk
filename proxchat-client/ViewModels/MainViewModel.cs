@@ -26,14 +26,15 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly WebRtcService _webRtcService;
     private readonly AudioService _audioService;
     private readonly GlobalHotkeyService _globalHotkeyService;
+    private readonly ConfigService _configService;
     private readonly Config _config;
-    private string _statusMessage = "Initializing..."; // Start with initializing status
+    private string _statusMessage = "Initializing...";
     private bool _isRunning;
     private float _audioLevel;
     private bool _isPushToTalk;
-    private HotkeyDefinition _pushToTalkHotkey = new(Key.OemBackslash); // Changed from Key.F12 to backslash
+    private HotkeyDefinition _pushToTalkHotkey = new(Key.OemBackslash); 
     private bool _isEditingPushToTalk;
-    private HotkeyDefinition _muteSelfHotkey = new(Key.M, ctrl: true); // Changed from Key.F11 to Ctrl+M
+    private HotkeyDefinition _muteSelfHotkey = new(Key.M, ctrl: true);
     private bool _isEditingMuteSelf; // Add editing state
     private bool _isPushToTalkActive; // Track if PTT is currently being pressed
     private float _volumeScale; // Will be initialized from config
@@ -48,7 +49,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _debugCharacterName = Guid.NewGuid().ToString().Substring(0, 8); // Default random string
     private int _debugX = 109; // Changed to int
     private int _debugY = 191; // Changed to int
-    private int _debugMapId = 0; // Map 0 is perfectly valid - it's the first map
+    private int _debugMapId = 0; 
     private bool _useWavInput; // Debug-only, not persisted
     private string? _selectedAudioFile; // Path to selected audio file
     private string _audioFileDisplayName = "No file selected"; // Display name for UI
@@ -68,7 +69,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _gameCharacterName = "Player";
     private int _gameId = 0;
 
-    private readonly string _peerSettingsFilePath; // Added for dedicated peer settings file
+
 
     // Add this field with the other private fields around line 30
     private DateTime _lastSuccessfulReadTime = DateTime.MinValue;
@@ -232,7 +233,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             _inputVolumeScale = Math.Clamp(value, 0.0f, 5.0f);
             _audioService.SetInputVolumeScale(_inputVolumeScale);
             _config.AudioSettings.InputVolumeScale = _inputVolumeScale; // Save to config
-            SaveConfig(); // Persist to file
+            _configService.SaveConfig(); // Persist to file
             OnPropertyChanged();
         }
     }
@@ -245,7 +246,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             _volumeScale = Math.Clamp(value, 0.0f, 1.0f); // Keep 0-1 range
             _audioService.SetOverallVolumeScale(_volumeScale);
             _config.AudioSettings.VolumeScale = _volumeScale; // Save to config
-            SaveConfig(); // Persist to file
+            _configService.SaveConfig(); // Persist to file
             OnPropertyChanged();
         }
     }
@@ -261,7 +262,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _audioService.SetPushToTalk(value); 
                 UpdateGlobalHotkeys(); // Update global hotkey service
                 _config.AudioSettings.IsPushToTalk = _isPushToTalk; // Save to config
-                SaveConfig(); // Persist to file
+                _configService.SaveConfig(); // Persist to file
                 OnPropertyChanged();
                 if (!value) IsEditingPushToTalk = false; 
                 ((RelayCommand)EditPushToTalkCommand).RaiseCanExecuteChanged();
@@ -279,7 +280,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _pushToTalkHotkey = value;
                 UpdateGlobalHotkeys(); // Update global hotkey service
                 _config.AudioSettings.PushToTalkKey = value.ToString(); // Save to config
-                SaveConfig(); // Persist to file
+                _configService.SaveConfig(); // Persist to file
                 OnPropertyChanged();
             }
         }
@@ -456,7 +457,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _minBroadcastThreshold = value;
                 _audioService.MinBroadcastThreshold = value;
                 _config.AudioSettings.MinBroadcastThreshold = _minBroadcastThreshold; // Save to config
-                SaveConfig(); // Persist to file
+                _configService.SaveConfig(); // Persist to file
                 OnPropertyChanged();
             }
         }
@@ -472,7 +473,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _muteSelfHotkey = value;
                 UpdateGlobalHotkeys(); // Update global hotkey service
                 _config.AudioSettings.MuteSelfKey = value.ToString(); // Save to config
-                SaveConfig(); // Persist to file
+                _configService.SaveConfig(); // Persist to file
                 OnPropertyChanged();
             }
         }
@@ -505,9 +506,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public MainViewModel(Config config, bool isDebugModeEnabled = false)
+    public MainViewModel(ConfigService configService, bool isDebugModeEnabled = false)
     {
-        _config = config;
+        _configService = configService;
+        _config = configService.Config;
         _isDebugModeEnabled = isDebugModeEnabled;
         
         // Initialize audio settings from config
@@ -537,24 +539,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         
         // UseWavInput is debug-only, not persisted
         _useWavInput = false;
-        
-        // Define path for peer settings, e.g., in user's app data or alongside main config
-        _peerSettingsFilePath = Path.Combine(AppContext.BaseDirectory, "PeerSettings.json");
-        LoadPeerSettings(); // Load settings on startup
 
-        // Get log file name from command line args
-        string? logFileName = null;
-        var args = Environment.GetCommandLineArgs();
-        for (int i = 0; i < args.Length - 1; i++)
-        {
-            if (args[i] == "--log" || args[i] == "-l")
-            {
-                logFileName = args[i + 1];
-                break;
-            }
-        }
-        
-        var debugLog = new DebugLogService(logFileName);
+        // DebugLogService will handle command line parsing internally
+        var debugLog = new DebugLogService();
         _debugLog = debugLog;
         _debugLog.LogMain("MainViewModel constructor started");
 
@@ -576,17 +563,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _debugLog.LogMain("NORMAL MODE: NamedPipeGameDataReader successfully created");
             }
             
-            // Use hardcoded max distance to match server's disconnect range
-            const float HARDCODED_MAX_DISTANCE = 25.0f; // Match server's disconnection range for consistency
-            
+            const float MAX_AUDIBLE_DISTANCE = 17.0f;
+            const float DISCONNECT_DISTANCE = 25.0f;
+
             _debugLog.LogMain("Initializing AudioService");
-            _audioService = new AudioService(debugLog, HARDCODED_MAX_DISTANCE, config);
+            _audioService = new AudioService(debugLog, MAX_AUDIBLE_DISTANCE, _config);
             
             _debugLog.LogMain("Initializing SignalingService");
-            _signalingService = new SignalingService(config.WebSocketServer, debugLog);
+            _signalingService = new SignalingService(_config.WebSocketServer, debugLog);
             
             _debugLog.LogMain("Initializing WebRtcService");
-            _webRtcService = new WebRtcService(_audioService, _signalingService, HARDCODED_MAX_DISTANCE, debugLog);
+            _webRtcService = new WebRtcService(_audioService, _signalingService, DISCONNECT_DISTANCE, debugLog);
             
             _debugLog.LogMain("Initializing GlobalHotkeyService");
             _globalHotkeyService = new GlobalHotkeyService(debugLog);
@@ -666,63 +653,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         InitializeMemoryReader();
     }
 
-    private void LoadPeerSettings()
-    {
-        try
-        {
-            if (File.Exists(_peerSettingsFilePath))
-            {
-                string json = File.ReadAllText(_peerSettingsFilePath);
-                var loadedSettings = JsonSerializer.Deserialize<Dictionary<string, PeerPersistentState>>(json);
-                if (loadedSettings != null)
-                {
-                    // We don't directly assign to _config.PeerSettings here if Config manages its own loading.
-                    // Instead, we'll keep them separate for this example or merge them if Config is the sole source of truth.
-                    // For now, let's assume _config.PeerSettings is the live one and we populate it.
-                    _config.PeerSettings = loadedSettings;
-                    Debug.WriteLine($"Loaded {loadedSettings.Count} peer settings from {_peerSettingsFilePath}");
-                }
-            }
-            else
-            {
-                _config.PeerSettings = new Dictionary<string, PeerPersistentState>();
-                Debug.WriteLine($"Peer settings file not found at {_peerSettingsFilePath}. Initializing new settings.");
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error loading peer settings: {ex.Message}");
-            _config.PeerSettings = new Dictionary<string, PeerPersistentState>(); // Initialize to empty on error
-        }
-    }
 
-    private void SavePeerSettings()
-    {
-        try
-        {
-            string json = JsonSerializer.Serialize(_config.PeerSettings, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_peerSettingsFilePath, json);
-            Debug.WriteLine($"Saved peer settings to {_peerSettingsFilePath}");
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error saving peer settings: {ex.Message}");
-        }
-    }
-
-    private void SaveConfig()
-    {
-        try
-        {
-            string json = JsonSerializer.Serialize(_config, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText("config.json", json);
-            Debug.WriteLine("Saved config to config.json");
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error saving config: {ex.Message}");
-        }
-    }
 
     private void ApplyPersistedSettings(PeerViewModel peerVm)
     {
@@ -755,33 +686,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (string.IsNullOrEmpty(characterName) || characterName == PeerViewModel.DefaultCharacterName) return;
 
-        bool changed = false;
-        if (_config.PeerSettings.TryGetValue(characterName, out var existingSettings))
-        {
-            // Check if anything actually changed
-            if (Math.Abs(existingSettings.Volume - volume) > 0.001f || existingSettings.IsMuted != isMuted)
-            {
-                existingSettings.Volume = volume;
-                existingSettings.IsMuted = isMuted;
-                changed = true;
-            }
-        }
-        else
-        {
-            // New entry, always save
-            _config.PeerSettings[characterName] = new PeerPersistentState { Volume = volume, IsMuted = isMuted };
-            changed = true;
-        }
-
-        if (changed)
-        {
-            SavePeerSettings();
-            Debug.WriteLine($"Updated and saved setting for {characterName}: Vol={volume}, Mute={isMuted}");
-        }
-        else
-        {
-            Debug.WriteLine($"Setting for {characterName} not changed. Vol={volume}, Mute={isMuted}. No save needed.");
-        }
+        _configService.UpdatePeerSetting(characterName, volume, isMuted);
     }
 
     private void InitializeMemoryReader()
@@ -795,7 +700,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         else
         {
-            StatusMessage = "Attempting to establish connection with game data provider...";
+            StatusMessage = "Attempting to connect to game data provider...";
             // memory reader initialization is now handled by the OnGameDataRead event
             // when the first successful read occurs, _isMemoryReaderInitialized will be set to true
         }
@@ -1035,7 +940,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 {
                     var processingTime = DateTime.UtcNow - startTime;
                     _isMemoryReaderInitialized = true;
-                    StatusMessage = "Game data connection established. Ready.";
+                    StatusMessage = "Data provider connection established. Ready.";
                     _debugLog.LogMain($"Memory reader initialized - status set to Ready. IsRunning={IsRunning}, ProcessingTime={processingTime.TotalMilliseconds:F1}ms");
                     Debug.WriteLine("GameMemoryReader successfully connected to MMF.");
                     
