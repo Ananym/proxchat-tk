@@ -17,7 +17,7 @@
 const char* PURPOSE = "ProxChatTK - Proximity Voice Chat for NexusTK";
 const char* CONTACT_INFO = "Contact: 32470867+Ananym@users.noreply.github.com";
 const char* SOURCE_CODE = "Source: https://github.com/ananym/proxchattk";
-const char* FUNCTIONALITY_DESC = "Reads in-game character position to determine proximity for voice chat";
+const char* FUNCTIONALITY_DESC = "Reads in-game character position to determine proximity to other players for separate voice chat program";
 const char* DEFINITELY_NOT_MALWARE = "This DLL does not: keylog, steal data, or modify game files";
 
 // --- logging setup ---
@@ -88,7 +88,7 @@ private:
             DWORD error = GetLastError();
             LogToFile("Failed to create named pipe: " + std::to_string(error));
             
-            // if pipe is busy, wait a bit and retry once
+            // if pipe is busy, wait a bit and retry
             if (error == ERROR_PIPE_BUSY) {
                 LogToFile("Pipe busy, waiting 100ms and retrying...");
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -419,9 +419,9 @@ BOOL APIENTRY DllMain(HMODULE hModule,
             LogToFile("Signalling polling thread to stop...");
             keepRunning = false;
             if (memoryPollingThread.joinable()) {
-                LogToFile("Waiting for polling thread to join...");
+                LogToFile("Waiting for polling thread to finish...");
                 memoryPollingThread.join();
-                LogToFile("Polling thread joined.");
+                LogToFile("Polling thread finished.");
             }
             CleanupNamedPipe();
             LogToFile("DLL_PROCESS_DETACH finished.");

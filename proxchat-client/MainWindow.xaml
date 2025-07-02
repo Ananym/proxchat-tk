@@ -33,6 +33,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -40,8 +41,30 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Audio Device Selection (Row 0) -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+        <!-- Update Button (Row 0) -->
+        <Button Grid.Row="0" 
+                Content="{Binding UpdateButtonText}"
+                Command="{Binding DownloadUpdateCommand}"
+                IsEnabled="{Binding IsUpdateButtonEnabled}"
+                Visibility="{Binding IsUpdateButtonVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                Margin="0,0,0,10"
+                Height="35"
+                FontWeight="Bold"
+                Background="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"
+                Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding UpdateState}" Value="ReadyToApply">
+                            <Setter Property="Command" Value="{Binding ApplyUpdateCommand}"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
+
+        <!-- Audio Device Selection (Row 1) -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,10">
             <Label Content="Input Device:"/>
             <ComboBox ItemsSource="{Binding InputDevices}"
                       SelectedItem="{Binding SelectedInputDevice}"
@@ -53,8 +76,8 @@
                     Margin="0,0,0,10"/>
         </StackPanel>
 
-        <!-- Audio Controls (Row 1) -->
-        <StackPanel Grid.Row="1" Margin="0,0,0,10">
+        <!-- Audio Controls (Row 2) -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,10">
             <Label>
                 <TextBlock>
                     <Run Text="Microphone Input Volume: ("/>
@@ -216,8 +239,8 @@
             </Border>
         </StackPanel>
 
-        <!-- Start/Stop Toggle Button (Row 2) -->
-        <Button Grid.Row="2" 
+        <!-- Start/Stop Toggle Button (Row 3) -->
+        <Button Grid.Row="3" 
                 Command="{Binding StartCommand}"
                 Margin="0,0,0,10"
                 Height="40"
@@ -235,8 +258,8 @@
             </Button.Style>
         </Button>
 
-            <!-- Game Position (Row 3) -->
-            <GroupBox Grid.Row="3" Header="Current Position" Margin="0,5,0,0">
+            <!-- Game Position (Row 4) -->
+            <GroupBox Grid.Row="4" Header="Current Position" Margin="0,5,0,0">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Map: " FontWeight="Bold" Margin="0,0,2,0"/>
                 <TextBlock Text="{Binding CurrentMapDisplay, FallbackValue=N/A}" Margin="0,0,10,0"/>
@@ -247,8 +270,8 @@
             </StackPanel>
         </GroupBox>
         
-            <!-- Debug Controls (Row 4) -->
-            <GroupBox Grid.Row="4" Header="Debug Controls" Margin="0,5,0,0"
+            <!-- Debug Controls (Row 5) -->
+            <GroupBox Grid.Row="5" Header="Debug Controls" Margin="0,5,0,0"
                   Visibility="{Binding IsDebugModeEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
             <StackPanel>
                 <Grid>
@@ -309,8 +332,8 @@
             </StackPanel>
             </GroupBox>
         
-            <!-- Status Bar (Row 5) -->
-            <Grid Grid.Row="5" Margin="0,5,0,0">
+            <!-- Status Bar (Row 6) -->
+            <Grid Grid.Row="6" Margin="0,5,0,0">
                 <Border Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                         Padding="8,4">
                     <TextBlock Text="{Binding StatusMessage}" 

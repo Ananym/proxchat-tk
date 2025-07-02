@@ -28,6 +28,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly GlobalHotkeyService _globalHotkeyService;
     private readonly ConfigService _configService;
     private readonly Config _config;
+    private readonly UpdateService _updateService;
     private string _statusMessage = "Initializing...";
     private bool _isRunning;
     private float _audioLevel;
@@ -95,6 +96,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     // debug counters for OnGameDataRead
     private int _debugSuccessCount = 0;
     private int _debugFailureCount = 0;
+
+    // update management fields
+    private UpdateState _updateState = UpdateState.Idle;
+    private int _downloadProgress = 0;
+    private string? _updateVersion;
 
     public ObservableCollection<PeerViewModel> ConnectedPeers { get; } = new();
     public ObservableCollection<string> InputDevices => _audioService.InputDevices;
@@ -332,6 +338,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand ToggleSelfMuteCommand { get; }
     public ICommand EditMuteSelfCommand { get; }
     public ICommand RefreshPeersCommand { get; }
+    public ICommand DownloadUpdateCommand { get; }
+    public ICommand ApplyUpdateCommand { get; }
 
     // UI properties that bind directly to source of truth
     public int CurrentMapId => IsDebugModeEnabled ? _debugMapId : _gameMapId;
@@ -506,10 +514,76 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public MainViewModel(ConfigService configService, bool isDebugModeEnabled = false)
+    // Update properties
+    public UpdateState UpdateState
+    {
+        get => _updateState;
+        private set
+        {
+            if (_updateState != value)
+            {
+                _updateState = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(UpdateButtonText));
+                OnPropertyChanged(nameof(IsUpdateButtonVisible));
+                OnPropertyChanged(nameof(IsUpdateButtonEnabled));
+                ((RelayCommand)DownloadUpdateCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)ApplyUpdateCommand).RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public int DownloadProgress
+    {
+        get => _downloadProgress;
+        private set
+        {
+            if (_downloadProgress != value)
+            {
+                _downloadProgress = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(UpdateButtonText));
+            }
+        }
+    }
+
+    public string? UpdateVersion
+    {
+        get => _updateVersion;
+        private set
+        {
+            if (_updateVersion != value)
+            {
+                _updateVersion = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(UpdateButtonText));
+            }
+        }
+    }
+
+    public bool IsUpdateButtonVisible => UpdateState == UpdateState.Available || UpdateState == UpdateState.Downloading || UpdateState == UpdateState.ReadyToApply;
+
+    public bool IsUpdateButtonEnabled => UpdateState != UpdateState.Downloading;
+
+    public string UpdateButtonText
+    {
+        get
+        {
+            return UpdateState switch
+            {
+                UpdateState.Available => $"Download Update ({UpdateVersion})",
+                UpdateState.Downloading => $"Downloading... {DownloadProgress}%",
+                UpdateState.ReadyToApply => "Close to Apply Update",
+                _ => "No Update"
+            };
+        }
+    }
+
+    public MainViewModel(ConfigService configService, UpdateService updateService, bool isDebugModeEnabled = false)
     {
         _configService = configService;
         _config = configService.Config;
+        _updateService = updateService;
         _isDebugModeEnabled = isDebugModeEnabled;
         
         // Initialize audio settings from config
@@ -612,6 +686,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         ToggleSelfMuteCommand = new RelayCommand(ToggleSelfMute);
         EditMuteSelfCommand = new RelayCommand(() => { IsEditingMuteSelf = !IsEditingMuteSelf; });
         RefreshPeersCommand = new RelayCommand(RefreshPeers);
+        DownloadUpdateCommand = new RelayCommand(DownloadUpdate, () => UpdateState == UpdateState.Available);
+        ApplyUpdateCommand = new RelayCommand(ApplyUpdate, () => UpdateState == UpdateState.ReadyToApply);
 
         // Initialize Debug Commands
         IncrementDebugXCommand = new RelayCommand(() => DebugX++);
@@ -638,6 +714,10 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         // Subscribe to global hotkey events
         _globalHotkeyService.PushToTalkStateChanged += HandlePushToTalkStateChanged;
         _globalHotkeyService.MuteToggleRequested += HandleMuteToggleRequested;
+
+        // Subscribe to update service events
+        _updateService.UpdateStateChanged += HandleUpdateStateChanged;
+        _updateService.DownloadProgressChanged += HandleDownloadProgressChanged;
         
         // Initialize hotkey settings
         UpdateGlobalHotkeys();
@@ -1568,6 +1648,62 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         Trace.TraceError($"Signaling Error: {errorMessage}");
     }
 
+    private void DownloadUpdate()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _updateService.DownloadUpdateAsync();
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogMain($"Error downloading update: {ex.Message}");
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    StatusMessage = $"Update download failed: {ex.Message}";
+                });
+            }
+        });
+    }
+
+    private void ApplyUpdate()
+    {
+        try
+        {
+            _updateService.ApplyUpdateAndRestart();
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogMain($"Error applying update: {ex.Message}");
+            StatusMessage = $"Update apply failed: {ex.Message}";
+        }
+    }
+
+    private void HandleUpdateStateChanged(object? sender, UpdateState state)
+    {
+        App.Current.Dispatcher.Invoke(() =>
+        {
+            UpdateState = state;
+            
+            // Update version info when update becomes available
+            if (state == UpdateState.Available)
+            {
+                UpdateVersion = _updateService.PendingUpdateVersion;
+            }
+            
+            _debugLog.LogMain($"Update state changed to: {state}");
+        });
+    }
+
+    private void HandleDownloadProgressChanged(object? sender, int progress)
+    {
+        App.Current.Dispatcher.Invoke(() =>
+        {
+            DownloadProgress = progress;
+        });
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -1587,6 +1723,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _audioService.PeerTransmissionChanged -= HandlePeerTransmissionChanged; // Unsubscribe from transmission events
         _audioService.Dispose();
         _globalHotkeyService?.Dispose(); // Dispose global hotkey service
+        _updateService.UpdateStateChanged -= HandleUpdateStateChanged; // Unsubscribe from update events
+        _updateService.DownloadProgressChanged -= HandleDownloadProgressChanged;
+        _updateService.Dispose(); // Dispose update service
         _memoryReader.Dispose(); // Now safe to dispose since we unsubscribed
         
         // Clear tracking collections

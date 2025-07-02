@@ -43,12 +43,11 @@ public partial class App : Application
         bool isDebugModeEnabled = false;
 #endif
 
-        // Create MainViewModel with debug mode status and config service
-        _mainViewModel = new MainViewModel(configService, isDebugModeEnabled);
-
         // initialize update service
         _updateService = new UpdateService(config);
-        _updateService.UpdateAvailabilityChanged += OnUpdateAvailabilityChanged;
+
+        // Create MainViewModel with debug mode status, config service, and update service
+        _mainViewModel = new MainViewModel(configService, _updateService, isDebugModeEnabled);
 
         // Get version from assembly
         var version = Assembly.GetExecutingAssembly().GetName().Version;
@@ -66,27 +65,6 @@ public partial class App : Application
         {
             await Task.Delay(2000); // wait 2s before checking
             await _updateService.CheckForUpdatesAsync();
-        });
-    }
-
-    private void OnUpdateAvailabilityChanged(object? sender, bool hasUpdate)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            if (Application.Current.MainWindow is MainWindow mainWindow)
-            {
-                var version = Assembly.GetExecutingAssembly().GetName().Version;
-                var versionString = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v?.?.?";
-                
-                if (hasUpdate)
-                {
-                    mainWindow.Title = $"ProxChatTK {versionString} - Update available, restart to apply";
-                }
-                else
-                {
-                    mainWindow.Title = $"ProxChatTK {versionString}";
-                }
-            }
         });
     }
 

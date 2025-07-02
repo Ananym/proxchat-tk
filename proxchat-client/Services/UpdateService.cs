@@ -12,12 +12,15 @@ public class UpdateService
     private readonly UpdateManager _updateManager;
     private readonly Config _config;
     private readonly System.Timers.Timer _updateTimer;
-    private bool _hasUpdateAvailable = false;
+    private UpdateState _currentState = UpdateState.Idle;
     private UpdateInfo? _pendingUpdate = null;
 
-    public event EventHandler<bool>? UpdateAvailabilityChanged;
+    public event EventHandler<UpdateState>? UpdateStateChanged;
+    public event EventHandler<int>? DownloadProgressChanged;
 
-    public bool HasUpdateAvailable => _hasUpdateAvailable;
+    public UpdateState CurrentState => _currentState;
+    public UpdateInfo? PendingUpdate => _pendingUpdate;
+    public string? PendingUpdateVersion => _pendingUpdate?.TargetFullRelease?.Version?.ToString();
 
     public UpdateService(Config config)
     {
@@ -37,51 +40,79 @@ public class UpdateService
 
     public async Task CheckForUpdatesAsync()
     {
-        if (!_config.UpdateSettings.CheckForUpdates)
+        if (!_config.UpdateSettings.CheckForUpdates || _currentState == UpdateState.Downloading)
         {
             return;
         }
 
         try
         {
+            SetState(UpdateState.Checking);
+            
             // check for new version
             var newVersion = await _updateManager.CheckForUpdatesAsync();
             if (newVersion != null)
             {
                 _pendingUpdate = newVersion;
-                SetUpdateAvailable(true);
-                
-                // download in background
-                await _updateManager.DownloadUpdatesAsync(_pendingUpdate);
-                Trace.TraceInformation($"Update downloaded: {newVersion.TargetFullRelease?.Version}");
+                SetState(UpdateState.Available);
+                Trace.TraceInformation($"Update available: {newVersion.TargetFullRelease?.Version}");
             }
             else
             {
-                SetUpdateAvailable(false);
+                SetState(UpdateState.UpToDate);
             }
         }
         catch (Exception ex)
         {
             Trace.TraceError($"Failed to check for updates: {ex.Message}");
-            SetUpdateAvailable(false);
+            SetState(UpdateState.Error);
+        }
+    }
+
+    public async Task DownloadUpdateAsync()
+    {
+        if (_pendingUpdate == null || _currentState != UpdateState.Available)
+        {
+            return;
+        }
+
+        try
+        {
+            SetState(UpdateState.Downloading);
+            
+            // download with progress reporting
+            await _updateManager.DownloadUpdatesAsync(_pendingUpdate, OnDownloadProgress);
+            
+            SetState(UpdateState.ReadyToApply);
+            Trace.TraceInformation($"Update downloaded: {_pendingUpdate.TargetFullRelease?.Version}");
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceError($"Failed to download update: {ex.Message}");
+            SetState(UpdateState.Error);
         }
     }
 
     public void ApplyUpdateAndRestart()
     {
-        if (_pendingUpdate != null)
+        if (_pendingUpdate != null && _currentState == UpdateState.ReadyToApply)
         {
             Trace.TraceInformation($"Applying update: {_pendingUpdate.TargetFullRelease?.Version}");
             _updateManager.ApplyUpdatesAndRestart(_pendingUpdate);
         }
     }
 
-    private void SetUpdateAvailable(bool available)
+    private void OnDownloadProgress(int progressPercentage)
     {
-        if (_hasUpdateAvailable != available)
+        DownloadProgressChanged?.Invoke(this, progressPercentage);
+    }
+
+    private void SetState(UpdateState newState)
+    {
+        if (_currentState != newState)
         {
-            _hasUpdateAvailable = available;
-            UpdateAvailabilityChanged?.Invoke(this, available);
+            _currentState = newState;
+            UpdateStateChanged?.Invoke(this, newState);
         }
     }
 
@@ -90,4 +121,15 @@ public class UpdateService
         _updateTimer?.Stop();
         _updateTimer?.Dispose();
     }
+}
+
+public enum UpdateState
+{
+    Idle,
+    Checking,
+    UpToDate,
+    Available,
+    Downloading,
+    ReadyToApply,
+    Error
 } 
