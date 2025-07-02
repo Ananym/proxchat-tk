@@ -340,6 +340,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand RefreshPeersCommand { get; }
     public ICommand DownloadUpdateCommand { get; }
     public ICommand ApplyUpdateCommand { get; }
+    public ICommand OpenReleasePageCommand { get; }
 
     // UI properties that bind directly to source of truth
     public int CurrentMapId => IsDebugModeEnabled ? _debugMapId : _gameMapId;
@@ -527,8 +528,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(UpdateButtonText));
                 OnPropertyChanged(nameof(IsUpdateButtonVisible));
                 OnPropertyChanged(nameof(IsUpdateButtonEnabled));
+                OnPropertyChanged(nameof(IsReleasePageLinkVisible));
+                OnPropertyChanged(nameof(ReleasePageUrl));
                 ((RelayCommand)DownloadUpdateCommand).RaiseCanExecuteChanged();
                 ((RelayCommand)ApplyUpdateCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)OpenReleasePageCommand).RaiseCanExecuteChanged();
             }
         }
     }
@@ -557,13 +561,36 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 _updateVersion = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(UpdateButtonText));
+                OnPropertyChanged(nameof(ReleasePageUrl));
+                ((RelayCommand)OpenReleasePageCommand).RaiseCanExecuteChanged();
             }
         }
     }
 
-    public bool IsUpdateButtonVisible => UpdateState == UpdateState.Available || UpdateState == UpdateState.Downloading || UpdateState == UpdateState.ReadyToApply;
+    public bool IsUpdateButtonVisible => (UpdateState == UpdateState.Available || UpdateState == UpdateState.Downloading || UpdateState == UpdateState.ReadyToApply || UpdateState == UpdateState.Error) && !string.IsNullOrEmpty(UpdateVersion);
 
     public bool IsUpdateButtonEnabled => UpdateState != UpdateState.Downloading;
+
+    public bool IsReleasePageLinkVisible => IsUpdateButtonVisible;
+
+    public string? ReleasePageUrl
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(UpdateVersion)) return null;
+            
+            // extract base github repo url from the update url
+            var updateUrl = _config.UpdateSettings.UpdateUrl;
+            var releasesIndex = updateUrl.IndexOf("/releases/");
+            if (releasesIndex > 0)
+            {
+                var baseUrl = updateUrl.Substring(0, releasesIndex);
+                return $"{baseUrl}/releases/tag/v{UpdateVersion}";
+            }
+            
+            return null;
+        }
+    }
 
     public string UpdateButtonText
     {
@@ -688,6 +715,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         RefreshPeersCommand = new RelayCommand(RefreshPeers);
         DownloadUpdateCommand = new RelayCommand(DownloadUpdate, () => UpdateState == UpdateState.Available);
         ApplyUpdateCommand = new RelayCommand(ApplyUpdate, () => UpdateState == UpdateState.ReadyToApply);
+        OpenReleasePageCommand = new RelayCommand(OpenReleasePage, () => !string.IsNullOrEmpty(ReleasePageUrl));
 
         // Initialize Debug Commands
         IncrementDebugXCommand = new RelayCommand(() => DebugX++);
@@ -1677,6 +1705,27 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             _debugLog.LogMain($"Error applying update: {ex.Message}");
             StatusMessage = $"Update apply failed: {ex.Message}";
+        }
+    }
+
+    private void OpenReleasePage()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(ReleasePageUrl))
+            {
+                var processInfo = new ProcessStartInfo
+                {
+                    FileName = ReleasePageUrl,
+                    UseShellExecute = true
+                };
+                Process.Start(processInfo);
+                _debugLog.LogMain($"Opened release page: {ReleasePageUrl}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogMain($"Error opening release page: {ex.Message}");
         }
     }
 
