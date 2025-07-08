@@ -43,29 +43,16 @@
 
         <!-- Update Button with Release Link (Row 0) -->
         <StackPanel Grid.Row="0" 
-                    Orientation="Horizontal"
+                    Orientation="Vertical"
                     Visibility="{Binding IsUpdateButtonVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
                     Margin="0,0,0,10">
             <Button Content="{Binding UpdateButtonText}"
                     Command="{Binding DownloadUpdateCommand}"
-                    IsEnabled="{Binding IsUpdateButtonEnabled}"
                     Height="35"
-                    FontWeight="Bold"
-                    Background="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"
-                    Foreground="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"
-                    Margin="0,0,10,0">
-                <Button.Style>
-                    <Style TargetType="Button">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding UpdateState}" Value="ReadyToApply">
-                                <Setter Property="Command" Value="{Binding ApplyUpdateCommand}"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Button.Style>
-            </Button>
+                    HorizontalAlignment="Stretch"
+                    Margin="0,0,0,5"/>
             
-            <TextBlock VerticalAlignment="Center"
+            <TextBlock HorizontalAlignment="Center"
                        Visibility="{Binding IsReleasePageLinkVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <Hyperlink Command="{Binding OpenReleasePageCommand}"
                            ToolTip="{Binding ReleasePageUrl}">

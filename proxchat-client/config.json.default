@@ -16,7 +16,7 @@
   },
   "UpdateSettings": {
     "CheckForUpdates": true,
-    "UpdateUrl": "https://github.com/ananym/prox-chat-tk/releases/latest/download",
+    "UpdateUrl": "https://github.com/ananym/proxchat-tk/releases/latest/download/",
     "CheckIntervalMinutes": 60
   },
   "PeerSettings": {}

@@ -39,6 +39,6 @@ public class AudioConfig
 public class UpdateConfig
 {
     public bool CheckForUpdates { get; set; } = true;
-    public string UpdateUrl { get; set; } = "https://github.com/ananym/prox-chat-tk/releases/latest/download";
+    public string UpdateUrl { get; set; } = "https://github.com/Ananym/proxchat-tk/releases/latest/download/";
     public int CheckIntervalMinutes { get; set; } = 60;
 } 

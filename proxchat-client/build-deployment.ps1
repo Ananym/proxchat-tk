@@ -253,14 +253,14 @@ function Organize-Artifacts {
         Write-Host "⚠️  Failed to create zip: $_" -ForegroundColor Yellow
     }
     
-    # move and rename nupkg file (contains only core app files)
+    # move nupkg file (contains only core app files) - keep original Velopack name
     $nupkgPath = Join-Path $TempReleasesPath "*.nupkg"
     $nupkgFiles = Get-ChildItem -Path $nupkgPath -ErrorAction SilentlyContinue
     if ($nupkgFiles -and $nupkgFiles.Count -gt 0) {
         $sourceNupkg = $nupkgFiles[0]
-        $targetNupkg = Join-Path $deploymentDir "proxchattk v$Version.nupkg"
+        $targetNupkg = Join-Path $deploymentDir $sourceNupkg.Name
         Copy-Item $sourceNupkg.FullName $targetNupkg -Force
-        Write-Host "  ✓ Update package (.nupkg) - core app files only" -ForegroundColor Cyan
+        Write-Host "  ✓ Update package ($($sourceNupkg.Name)) - core app files only" -ForegroundColor Cyan
     }
     
     # move modern releases file (releases.win.json)
@@ -279,6 +279,44 @@ function Organize-Artifacts {
     return $deploymentDir
 }
 
+function Create-Shortcut {
+    param($DeploymentPath, $Version)
+    
+    Write-Host "Creating launcher with --log proxchat argument..." -ForegroundColor Green
+    
+    $versionedAppDir = Join-Path $DeploymentPath "proxchattk v$Version"
+    $proxChatTKDir = Join-Path $versionedAppDir "ProxChatTK"
+    
+    # target executable path - exactly as specified
+    $targetExe = Join-Path $proxChatTKDir "ProxChatTK.exe"
+    
+    # batch file launcher path
+    $batchPath = Join-Path $proxChatTKDir "ProxChatTK - with logging.bat"
+    
+    if (Test-Path $targetExe) {
+        try {
+            # create batch file content
+            $batchContent = @"
+@echo off
+cd /d "%~dp0"
+start "" "ProxChatTK.exe" --log proxchat
+"@
+            
+            # write batch file
+            Set-Content -Path $batchPath -Value $batchContent -Encoding ASCII
+            
+            Write-Host "  ✓ Created launcher: ProxChatTK - with logging.bat" -ForegroundColor Cyan
+            Write-Host "  → Target: ProxChatTK.exe" -ForegroundColor Gray
+            Write-Host "  → Arguments: --log proxchat" -ForegroundColor Gray
+            
+        } catch {
+            Write-Host "  ⚠️  Failed to create launcher: $_" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  ⚠️  Target executable not found: $targetExe" -ForegroundColor Yellow
+    }
+}
+
 function Show-Results {
     param($DeploymentPath, $Version)
     
@@ -288,7 +326,7 @@ function Show-Results {
     
     $versionedAppDir = Join-Path $DeploymentPath "proxchattk v$Version"
     $zipPath = Join-Path $DeploymentPath "proxchattk v$Version.zip"
-    $nupkgPath = Join-Path $DeploymentPath "proxchattk v$Version.nupkg"
+    $nupkgPath = Get-ChildItem -Path (Join-Path $DeploymentPath "*.nupkg") -ErrorAction SilentlyContinue | Select-Object -First 1
     $releasesPath = Join-Path $DeploymentPath "releases.win.json"
     
     # show portable app folder structure
@@ -338,6 +376,12 @@ function Show-Results {
             if (Test-Path $configFile) {
                 Write-Host "📄 ProxChatTK/config.json - persistent across updates" -ForegroundColor Cyan
             }
+            
+            # check for launcher
+            $batchPath = Join-Path $proxChatTKDir "ProxChatTK - with logging.bat"
+            if (Test-Path $batchPath) {
+                Write-Host "🚀 ProxChatTK/ProxChatTK - with logging.bat - launcher with --log proxchat" -ForegroundColor Green
+            }
         }
     }
     
@@ -350,10 +394,9 @@ function Show-Results {
     }
     
     # show update package
-    if (Test-Path $nupkgPath) {
-        $nupkgInfo = Get-Item $nupkgPath
-        Write-Host "📦 Update package: proxchattk v$Version.nupkg" -ForegroundColor Cyan
-        Write-Host "📊 Package size: $([math]::Round($nupkgInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
+    if ($nupkgPath -and (Test-Path $nupkgPath.FullName)) {
+        Write-Host "📦 Update package: $($nupkgPath.Name)" -ForegroundColor Cyan
+        Write-Host "📊 Package size: $([math]::Round($nupkgPath.Length / 1MB, 2)) MB" -ForegroundColor Cyan
         Write-Host "   → Contains: Core app files only (no VERSION.dll)" -ForegroundColor Gray
     }
     
@@ -370,6 +413,7 @@ function Show-Results {
     Write-Host "• Upload releases.win.json + .nupkg to your update server" -ForegroundColor White
     Write-Host "• Distribute .zip or app folder to users" -ForegroundColor White
     Write-Host "• Users copy VERSION.dll to their game directory" -ForegroundColor White
+    Write-Host "• Batch launcher created with --log proxchat argument for easy debugging" -ForegroundColor White
 }
 
 try {
@@ -389,6 +433,7 @@ try {
     $version = Get-ProjectVersion
     $releasesDir = Build-VelopackPackage -PublishPath $TempOutput -Version $version
     $deploymentDir = Organize-Artifacts -PublishPath $TempOutput -TempReleasesPath $releasesDir -Version $version
+    Create-Shortcut -DeploymentPath $deploymentDir -Version $version
     Show-Results -DeploymentPath $deploymentDir -Version $version
     
 } catch {

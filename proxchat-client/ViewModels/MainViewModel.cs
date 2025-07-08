@@ -527,7 +527,6 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(UpdateButtonText));
                 OnPropertyChanged(nameof(IsUpdateButtonVisible));
-                OnPropertyChanged(nameof(IsUpdateButtonEnabled));
                 OnPropertyChanged(nameof(IsReleasePageLinkVisible));
                 OnPropertyChanged(nameof(ReleasePageUrl));
                 ((RelayCommand)DownloadUpdateCommand).RaiseCanExecuteChanged();
@@ -562,33 +561,42 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(UpdateButtonText));
                 OnPropertyChanged(nameof(ReleasePageUrl));
+                OnPropertyChanged(nameof(IsReleasePageLinkVisible));
                 ((RelayCommand)OpenReleasePageCommand).RaiseCanExecuteChanged();
             }
         }
     }
 
-    public bool IsUpdateButtonVisible => (UpdateState == UpdateState.Available || UpdateState == UpdateState.Downloading || UpdateState == UpdateState.ReadyToApply || UpdateState == UpdateState.Error) && !string.IsNullOrEmpty(UpdateVersion);
+    public bool IsUpdateButtonVisible 
+    { 
+        get 
+        {
+            bool result = (UpdateState == UpdateState.Available || UpdateState == UpdateState.Downloading || UpdateState == UpdateState.ReadyToApply || UpdateState == UpdateState.Error) && !string.IsNullOrEmpty(UpdateVersion);
+            return result;
+        }
+    }
 
-    public bool IsUpdateButtonEnabled => UpdateState != UpdateState.Downloading;
 
-    public bool IsReleasePageLinkVisible => IsUpdateButtonVisible;
+
+    public bool IsReleasePageLinkVisible 
+    { 
+        get 
+        {
+            return IsUpdateButtonVisible;
+        }
+    }
 
     public string? ReleasePageUrl
     {
         get
         {
-            if (string.IsNullOrEmpty(UpdateVersion)) return null;
-            
-            // extract base github repo url from the update url
-            var updateUrl = _config.UpdateSettings.UpdateUrl;
-            var releasesIndex = updateUrl.IndexOf("/releases/");
-            if (releasesIndex > 0)
+            if (string.IsNullOrEmpty(UpdateVersion)) 
             {
-                var baseUrl = updateUrl.Substring(0, releasesIndex);
-                return $"{baseUrl}/releases/tag/v{UpdateVersion}";
+                return null;
             }
             
-            return null;
+            // Simply return the static latest release URL
+            return "https://github.com/Ananym/proxchat-tk/releases/latest";
         }
     }
 
@@ -600,18 +608,22 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 UpdateState.Available => $"Download Update ({UpdateVersion})",
                 UpdateState.Downloading => $"Downloading... {DownloadProgress}%",
-                UpdateState.ReadyToApply => "Close to Apply Update",
+                UpdateState.ReadyToApply => "Restart to Apply Update",
                 _ => "No Update"
             };
         }
     }
 
-    public MainViewModel(ConfigService configService, UpdateService updateService, bool isDebugModeEnabled = false)
+    public MainViewModel(ConfigService configService, UpdateService updateService, DebugLogService debugLog, bool isDebugModeEnabled = false)
     {
         _configService = configService;
         _config = configService.Config;
         _updateService = updateService;
         _isDebugModeEnabled = isDebugModeEnabled;
+        
+        // Use shared debug log service
+        _debugLog = debugLog;
+        _debugLog.LogMain("MainViewModel constructor started");
         
         // Initialize audio settings from config
         _volumeScale = _config.AudioSettings.VolumeScale > 0 ? _config.AudioSettings.VolumeScale : 0.5f; // Default to 0.5f if not set
@@ -641,11 +653,6 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         // UseWavInput is debug-only, not persisted
         _useWavInput = false;
 
-        // DebugLogService will handle command line parsing internally
-        var debugLog = new DebugLogService();
-        _debugLog = debugLog;
-        _debugLog.LogMain("MainViewModel constructor started");
-
         try
         {
             // choose appropriate game data reader implementation based on debug mode
@@ -668,16 +675,16 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             const float DISCONNECT_DISTANCE = 25.0f;
 
             _debugLog.LogMain("Initializing AudioService");
-            _audioService = new AudioService(debugLog, MAX_AUDIBLE_DISTANCE, _config);
+            _audioService = new AudioService(_debugLog, MAX_AUDIBLE_DISTANCE, _config);
             
             _debugLog.LogMain("Initializing SignalingService");
-            _signalingService = new SignalingService(_config.WebSocketServer, debugLog);
+            _signalingService = new SignalingService(_config.WebSocketServer, _debugLog);
             
             _debugLog.LogMain("Initializing WebRtcService");
-            _webRtcService = new WebRtcService(_audioService, _signalingService, DISCONNECT_DISTANCE, debugLog);
+            _webRtcService = new WebRtcService(_audioService, _signalingService, DISCONNECT_DISTANCE, _debugLog);
             
             _debugLog.LogMain("Initializing GlobalHotkeyService");
-            _globalHotkeyService = new GlobalHotkeyService(debugLog);
+            _globalHotkeyService = new GlobalHotkeyService(_debugLog);
             
             _debugLog.LogMain("Services initialized successfully");
         }
@@ -713,7 +720,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         ToggleSelfMuteCommand = new RelayCommand(ToggleSelfMute);
         EditMuteSelfCommand = new RelayCommand(() => { IsEditingMuteSelf = !IsEditingMuteSelf; });
         RefreshPeersCommand = new RelayCommand(RefreshPeers);
-        DownloadUpdateCommand = new RelayCommand(DownloadUpdate, () => UpdateState == UpdateState.Available);
+        DownloadUpdateCommand = new RelayCommand(ExecuteUpdateAction, () => UpdateState == UpdateState.Available || UpdateState == UpdateState.ReadyToApply);
         ApplyUpdateCommand = new RelayCommand(ApplyUpdate, () => UpdateState == UpdateState.ReadyToApply);
         OpenReleasePageCommand = new RelayCommand(OpenReleasePage, () => !string.IsNullOrEmpty(ReleasePageUrl));
 
@@ -746,6 +753,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         // Subscribe to update service events
         _updateService.UpdateStateChanged += HandleUpdateStateChanged;
         _updateService.DownloadProgressChanged += HandleDownloadProgressChanged;
+        _debugLog.LogMain("Update service events subscribed");
+        
+        // Start automatic update checking now that event subscriptions are complete
+        _updateService.StartAutomaticUpdateChecking();
+        _debugLog.LogMain("Automatic update checking started");
         
         // Initialize hotkey settings
         UpdateGlobalHotkeys();
@@ -759,6 +771,14 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         
         // initialize memory reader status
         InitializeMemoryReader();
+        
+        // trigger initial update check now that all subscriptions are complete
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(2000); // wait 2s to ensure UI is fully loaded
+            _debugLog.LogMain("MainViewModel triggering initial update check after full initialization");
+            await _updateService.CheckForUpdatesAsync();
+        });
     }
 
 
@@ -1676,6 +1696,18 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         Trace.TraceError($"Signaling Error: {errorMessage}");
     }
 
+    private void ExecuteUpdateAction()
+    {
+        if (UpdateState == UpdateState.Available)
+        {
+            DownloadUpdate();
+        }
+        else if (UpdateState == UpdateState.ReadyToApply)
+        {
+            ApplyUpdate();
+        }
+    }
+
     private void DownloadUpdate()
     {
         _ = Task.Run(async () =>
@@ -1731,23 +1763,39 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void HandleUpdateStateChanged(object? sender, UpdateState state)
     {
-        App.Current.Dispatcher.Invoke(() =>
+        try
         {
-            UpdateState = state;
-            
-            // Update version info when update becomes available
-            if (state == UpdateState.Available)
-            {
-                UpdateVersion = _updateService.PendingUpdateVersion;
-            }
-            
             _debugLog.LogMain($"Update state changed to: {state}");
-        });
+            
+            App.Current.Dispatcher.BeginInvoke(() =>
+            {
+                try
+                {
+                    UpdateState = state;
+                    
+                    // Update version info when update becomes available
+                    if (state == UpdateState.Available)
+                    {
+                        var pendingVersion = _updateService.PendingUpdateVersion;
+                        UpdateVersion = pendingVersion;
+                        _debugLog.LogMain($"Update available: version {UpdateVersion}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _debugLog.LogMain($"Exception in update state handling: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogMain($"Exception in HandleUpdateStateChanged: {ex.Message}");
+        }
     }
 
     private void HandleDownloadProgressChanged(object? sender, int progress)
     {
-        App.Current.Dispatcher.Invoke(() =>
+        App.Current.Dispatcher.BeginInvoke(() =>
         {
             DownloadProgress = progress;
         });

@@ -43,11 +43,17 @@ public partial class App : Application
         bool isDebugModeEnabled = false;
 #endif
 
-        // initialize update service
-        _updateService = new UpdateService(config);
+        // initialize debug log service (shared instance for all services)
+        var debugLog = new DebugLogService();
+        debugLog.LogMain("*** App.xaml.cs: Creating shared DebugLogService ***");
 
-        // Create MainViewModel with debug mode status, config service, and update service
-        _mainViewModel = new MainViewModel(configService, _updateService, isDebugModeEnabled);
+        // initialize update service
+        debugLog.LogMain("*** App.xaml.cs: Creating UpdateService ***");
+        _updateService = new UpdateService(config, debugLog);
+
+        // Create MainViewModel with debug mode status, config service, update service, and shared debug log
+        debugLog.LogMain("*** App.xaml.cs: Creating MainViewModel ***");
+        _mainViewModel = new MainViewModel(configService, _updateService, debugLog, isDebugModeEnabled);
 
         // Get version from assembly
         var version = Assembly.GetExecutingAssembly().GetName().Version;
@@ -60,12 +66,7 @@ public partial class App : Application
         };
         mainWindow.Show();
 
-        // check for updates after window is shown
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(2000); // wait 2s before checking
-            await _updateService.CheckForUpdatesAsync();
-        });
+        // MainViewModel will handle initial update check after it finishes initializing
     }
 
 
