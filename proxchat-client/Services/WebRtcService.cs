@@ -30,7 +30,20 @@ public class WebRtcService : IDisposable
     private static readonly Random _random = new Random(); // For probabilistic logging
     private const double LOG_PROBABILITY = 0.02; // Enable some logging to debug core issue
 
-    private static readonly RTCIceServer _stunServer = new RTCIceServer { urls = "stun:stun.l.google.com:19302" };
+    private static readonly List<RTCIceServer> _stunServers = new List<RTCIceServer>
+    {
+        // Primary - Most reliable
+        new RTCIceServer { urls = "stun:stun.cloudflare.com:3478" },
+        new RTCIceServer { urls = "stun:stun.l.google.com:19302" },
+        
+        // Backup Google servers
+        new RTCIceServer { urls = "stun:stun1.l.google.com:19302" },
+        new RTCIceServer { urls = "stun:stun2.l.google.com:19302" },
+        
+        // Additional reliable alternatives
+        new RTCIceServer { urls = "stun:freestun.net:3478" },
+        new RTCIceServer { urls = "stun:stunserver2024.stunprotocol.org:3478" }
+    };
     private VirtualAudioSource? _virtualAudioSource;
     private MediaStreamTrack? _audioTrack;
 
@@ -219,7 +232,7 @@ public class WebRtcService : IDisposable
             await Task.Run(async () =>
             {
                 var peerConnectionCreateStart = DateTime.UtcNow;
-                var pc = new RTCPeerConnection(new RTCConfiguration { iceServers = new List<RTCIceServer> { _stunServer } });
+                var pc = new RTCPeerConnection(new RTCConfiguration { iceServers = _stunServers });
                 var peerConnectionCreateTime = DateTime.UtcNow - peerConnectionCreateStart;
                 _debugLog.LogWebRtc($"[PERF] RTCPeerConnection creation for {peerId}: {peerConnectionCreateTime.TotalMilliseconds:F1}ms");
                 LogSystemResources(peerId, "RTCPC_CREATED", _debugLog);
