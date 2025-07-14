@@ -15,8 +15,15 @@ public class DebugLogService : IDisposable
     // much more aggressive deduplication
     private readonly ConcurrentDictionary<string, DateTime> _lastLoggedTimes = new();
     private readonly TimeSpan _minLogInterval = TimeSpan.FromSeconds(10); // don't repeat same message for 10 seconds
+    
+    // category flags - readonly after construction for performance
+    private readonly bool _audioEnabled;
+    private readonly bool _webRtcEnabled;
+    private readonly bool _signalingEnabled;
+    private readonly bool _mainEnabled;
+    private readonly bool _namedPipeEnabled;
 
-    public DebugLogService(string? logFileName = null)
+    public DebugLogService(string? logFileName = null, bool enableAudio = false, bool enableWebRtc = true, bool enableSignaling = true, bool enableMain = true, bool enableNamedPipe = true)
     {
         // Get command line args to determine log file name if not provided
         if (string.IsNullOrEmpty(logFileName))
@@ -48,6 +55,12 @@ public class DebugLogService : IDisposable
             // if no --log argument found, don't create any log file
             if (!logRequested)
             {
+                // set readonly category flags even when not logging
+                _audioEnabled = enableAudio;
+                _webRtcEnabled = enableWebRtc;
+                _signalingEnabled = enableSignaling;
+                _mainEnabled = enableMain;
+                _namedPipeEnabled = enableNamedPipe;
                 return;
             }
         }
@@ -65,6 +78,13 @@ public class DebugLogService : IDisposable
         {
             System.Diagnostics.Debug.WriteLine($"Failed to initialize debug logging: {ex.Message}");
         }
+        
+        // set readonly category flags
+        _audioEnabled = enableAudio;
+        _webRtcEnabled = enableWebRtc;
+        _signalingEnabled = enableSignaling;
+        _mainEnabled = enableMain;
+        _namedPipeEnabled = enableNamedPipe;
     }
 
     private bool ShouldLog(string key)
@@ -113,25 +133,43 @@ public class DebugLogService : IDisposable
 
     // log all WebRTC events
     public void LogWebRtc(string message, string? peerId = null)
-            {
-                Log(message, "WEBRTC");
+    {
+        if (!_webRtcEnabled) return;
+        Log(message, "WEBRTC");
     }
 
     // log all signaling events
     public void LogSignaling(string message, string? connectionId = null)
-            {
-                Log(message, "SIGNALING");
+    {
+        if (!_signalingEnabled) return;
+        Log(message, "SIGNALING");
     }
 
     // log all audio events
     public void LogAudio(string message, string? deviceId = null)
-            {
-                Log(message, "AUDIO");
+    {
+        if (!_audioEnabled) return;
+        Log(message, "AUDIO");
+    }
+
+    // category control methods
+    public bool IsCategoryEnabled(string category)
+    {
+        return category.ToUpperInvariant() switch
+        {
+            "AUDIO" => _audioEnabled,
+            "WEBRTC" => _webRtcEnabled,
+            "SIGNALING" => _signalingEnabled,
+            "MAIN" => _mainEnabled,
+            "NAMEDPIPE" => _namedPipeEnabled,
+            _ => true // unknown categories default to enabled
+        };
     }
 
     // main events
     public void LogMain(string message)
     {
+        if (!_mainEnabled) return;
         string key = $"MAIN_{message.Substring(0, Math.Min(40, message.Length))}";
         if (ShouldLog(key))
         {
@@ -155,6 +193,7 @@ public class DebugLogService : IDisposable
     // add specific method for named pipe logging that's not filtered
     public void LogNamedPipe(string message)
     {
+        if (!_namedPipeEnabled) return;
         Log(message, "NAMEDPIPE");
     }
 
