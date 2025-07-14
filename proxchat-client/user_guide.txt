@@ -9,29 +9,31 @@ Copy the VERSION.dll into the same directory as NexusTK.exe (probably C:\Program
 This dll exposes your character name, map name and map id, and x and y co-ordinates to the ProxChat client.
 
 Copy the ProxChatTK folder to a location of your choosing.
-This program will automatically pull updates in the event that I put one up - disable this with the UpdateSettings.CheckForUpdates bool in config.json.
+
+The ProxChat client will alert you if an update is available for automatic download and install.
+If VERSION.dll ever needs updating, like if we ever got a client update (jk), that will need a manual redownload.
 
 I'm not paying for codesigning certs - expect smartscreen warnings.
 
 ====== Usage:
 
-Run NexusTK and log into a character, then run the ProxChat client and confirm position data is being read successfully.
+Run NexusTK and log into a character, then run the ProxChat client and check that your position is being read successfully.
 Click start to connect to the signalling server, then walk near other Proxchat users to begin chatting.
 
 ====== Bear in mind:
 
-The signalling server is only used to introduce peers - all audio transfer is direct peer to peer.
+The signalling server is only used to introduce peers - all audio is direct peer to peer.
 This means I'm not paying for that bandwidth and I can't access anything you say whatsoever.
 
 However, since we're not using any relay servers, the peer to peer connections will not work on every network type - this application is unlikely to work behind e.g. corporate or hotel networks that use symmetric NAT.
 Additionally, as there is no remote multiplexing, connecting to many peers means decoding many incoming audio streams simultaneously.  Weak hardware might struggle with this!
 
 Character names are shared between peers for display in the UI, but are never sent to the signalling server.  
-All ids are random and temporary: there shouldn't be any way for me or any peers to determine your alts from this application.
+All ids are random and temporary - there shouldn't be any way for me or any peers to determine your alts from this application.
  
 As I can't access any transferred audio nor track users, there's no way to police this.  Please be polite!
 
 ======= Debugging
 
-Run the client with the command line arg --log <filename> to print logs. 
-Run NexusTK with the --debug command line args to print logs from the dll.
+Run the client with the command line arg --log <filename> to print logs.
+Run NexusTK with the --debug command line args to print logs from the dll into the .exe folder.
