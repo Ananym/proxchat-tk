@@ -22,7 +22,10 @@ public class AudioService : IDisposable
     private readonly ConcurrentDictionary<string, DateTime> _lastAudioReceived = new();
     // Track current transmission state for each peer (separate from packet timing)
     private readonly ConcurrentDictionary<string, bool> _peerTransmissionStates = new();
+    // Track last time each peer had meaningful audio (above threshold)
+    private readonly ConcurrentDictionary<string, DateTime> _lastMeaningfulAudio = new();
     private readonly TimeSpan _transmissionTimeout = TimeSpan.FromMilliseconds(300); // Consider peer not transmitting after 300ms of silence
+    private readonly TimeSpan _silenceWindow = TimeSpan.FromMilliseconds(200); // Keep indicator on for 200ms after silence
     private Timer? _transmissionCheckTimer;
 
     private readonly WaveFormat _captureFormat = new WaveFormat(48000, 16, 1); // Default microphone capture format
@@ -1033,16 +1036,34 @@ public class AudioService : IDisposable
             }
         }
 
-        // Track transmission status based on actual audio content
-        // We need to track the current transmission state separately from packet reception
-        bool isCurrentlyTransmitting = hasAudio;
+        // Track transmission status with silence window logic
+        var currentTime = DateTime.UtcNow;
+        
+        // If we have meaningful audio, update the last meaningful audio time
+        if (hasAudio)
+        {
+            _lastMeaningfulAudio[peerId] = currentTime;
+        }
+        
+        // Determine if we should show as transmitting based on silence window
+        bool shouldShowTransmitting = false;
+        if (hasAudio)
+        {
+            // Currently has audio - definitely transmitting
+            shouldShowTransmitting = true;
+        }
+        else if (_lastMeaningfulAudio.TryGetValue(peerId, out var lastMeaningfulTime))
+        {
+            // no current audio, but check if we're still within the silence window
+            shouldShowTransmitting = (currentTime - lastMeaningfulTime) < _silenceWindow;
+        }
         
         // Check if transmission state has changed
         bool wasTransmitting = _peerTransmissionStates.GetValueOrDefault(peerId, false);
-        if (isCurrentlyTransmitting != wasTransmitting)
+        if (shouldShowTransmitting != wasTransmitting)
         {
-            _peerTransmissionStates[peerId] = isCurrentlyTransmitting;
-            PeerTransmissionChanged?.Invoke(this, (peerId, isCurrentlyTransmitting));
+            _peerTransmissionStates[peerId] = shouldShowTransmitting;
+            PeerTransmissionChanged?.Invoke(this, (peerId, shouldShowTransmitting));
         }
 
         if (!playback.IsMuted && hasAudio && pcmSamples.Length > 0)
@@ -1131,6 +1152,7 @@ public class AudioService : IDisposable
         // Clean up transmission tracking
         _lastAudioReceived.TryRemove(peerId, out _);
         _peerTransmissionStates.TryRemove(peerId, out _);
+        _lastMeaningfulAudio.TryRemove(peerId, out _);
         
         // Force garbage collection to clean up any audio-related resources
         try
@@ -1474,6 +1496,25 @@ public class AudioService : IDisposable
                 }
                 _lastAudioReceived.TryRemove(peerId, out _);
                 _peerTransmissionStates.TryRemove(peerId, out _);
+                _lastMeaningfulAudio.TryRemove(peerId, out _);
+            }
+        }
+        
+        // Check for peers whose silence window has expired
+        foreach (var kvp in _lastMeaningfulAudio.ToList())
+        {
+            var peerId = kvp.Key;
+            var lastMeaningfulTime = kvp.Value;
+            
+            // only check if peer is currently showing as transmitting
+            if (_peerTransmissionStates.GetValueOrDefault(peerId, false))
+            {
+                if ((now - lastMeaningfulTime) >= _silenceWindow)
+                {
+                    // silence window has expired - turn off transmission indicator
+                    peersToUpdate.Add(peerId);
+                    _peerTransmissionStates[peerId] = false;
+                }
             }
         }
         
