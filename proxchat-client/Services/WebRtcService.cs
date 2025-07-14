@@ -231,21 +231,24 @@ public class WebRtcService : IDisposable
             // Run intensive WebRTC initialization on thread pool to prevent UI blocking
             await Task.Run(async () =>
             {
-                var peerConnectionCreateStart = DateTime.UtcNow;
-                var pc = new RTCPeerConnection(new RTCConfiguration { iceServers = _stunServers });
-                var peerConnectionCreateTime = DateTime.UtcNow - peerConnectionCreateStart;
-                _debugLog.LogWebRtc($"[PERF] RTCPeerConnection creation for {peerId}: {peerConnectionCreateTime.TotalMilliseconds:F1}ms");
-                LogSystemResources(peerId, "RTCPC_CREATED", _debugLog);
-
-                var state = new PeerConnectionState { PeerConnection = pc };
-                if (!_peerConnections.TryAdd(peerId, state))
-                {
-                    pc.Close("Failed to add to dictionary");
-                    return;
-                }
-
+                RTCPeerConnection? pc = null;
                 try
                 {
+                    var peerConnectionCreateStart = DateTime.UtcNow;
+                    pc = new RTCPeerConnection(new RTCConfiguration { iceServers = _stunServers });
+                    var peerConnectionCreateTime = DateTime.UtcNow - peerConnectionCreateStart;
+                    _debugLog.LogWebRtc($"[PERF] RTCPeerConnection creation for {peerId}: {peerConnectionCreateTime.TotalMilliseconds:F1}ms");
+                    LogSystemResources(peerId, "RTCPC_CREATED", _debugLog);
+
+                    var state = new PeerConnectionState { PeerConnection = pc };
+                    if (!_peerConnections.TryAdd(peerId, state))
+                    {
+                        pc.Close("Failed to add to dictionary");
+                        return;
+                    }
+
+                    try
+                    {
                     // --- Media Tracks ---
                     var addTrackStart = DateTime.UtcNow;
                     pc.addTrack(_audioTrack);
@@ -457,13 +460,43 @@ public class WebRtcService : IDisposable
                     var setupCompleteTime = DateTime.UtcNow - connectionStartTime;
                     _debugLog.LogWebRtc($"[PERF] Connection setup phase complete for {peerId}: {setupCompleteTime.TotalMilliseconds:F1}ms");
                     LogSystemResources(peerId, "SETUP_COMPLETE", _debugLog);
+                    }
+                    catch (Exception ex)
+                    {
+                        _debugLog.LogWebRtc($"Error in CreatePeerConnection for {peerId}: {ex.Message}");
+                        RemovePeerConnection(peerId);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _debugLog.LogWebRtc($"Error in CreatePeerConnection for {peerId}: {ex.Message}");
+                    _debugLog.LogWebRtc($"CRITICAL: Unhandled exception during WebRTC connection creation for {peerId}: {ex.Message}");
+                    _debugLog.LogWebRtc($"Stack trace: {ex.StackTrace}");
+                    
+                    // Clean up the peer connection if it was created
+                    if (pc != null)
+                    {
+                        try
+                        {
+                            pc.Close("Exception during initialization");
+                        }
+                        catch (Exception cleanupEx)
+                        {
+                            _debugLog.LogWebRtc($"Error during cleanup for {peerId}: {cleanupEx.Message}");
+                        }
+                    }
+                    
+                    // Remove from dictionary if it was added
                     RemovePeerConnection(peerId);
                 }
             });
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogWebRtc($"CRITICAL: Outer exception during WebRTC connection creation for {peerId}: {ex.Message}");
+            _debugLog.LogWebRtc($"Stack trace: {ex.StackTrace}");
+            
+            // Ensure cleanup happens even if Task.Run fails
+            RemovePeerConnection(peerId);
         }
         finally
         {
@@ -559,6 +592,8 @@ public class WebRtcService : IDisposable
 
         _ = Task.Run(async () => // Ensure async Task
         {
+            try
+            {
             var offerProcessingStart = DateTime.UtcNow;
             _debugLog.LogWebRtc($"[PERF] Starting offer processing from {payload.SenderId} at {offerProcessingStart:HH:mm:ss.fff}");
             
@@ -641,6 +676,18 @@ public class WebRtcService : IDisposable
                 _debugLog.LogWebRtc($"Error processing offer from {peerId}: {ex.Message}");
                 RemovePeerConnection(peerId);
             }
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogWebRtc($"CRITICAL: Unhandled exception in OnOfferReceived for {payload.SenderId}: {ex.Message}");
+                _debugLog.LogWebRtc($"Stack trace: {ex.StackTrace}");
+                
+                // Ensure cleanup happens
+                if (payload.SenderId != null)
+                {
+                    RemovePeerConnection(payload.SenderId);
+                }
+            }
         });
     }
 
@@ -650,6 +697,8 @@ public class WebRtcService : IDisposable
 
         _ = Task.Run(() => // remove async since no await is used
         {
+            try
+            {
             var answerProcessingStart = DateTime.UtcNow;
             _debugLog.LogWebRtc($"[PERF] Starting answer processing from {payload.SenderId} at {answerProcessingStart:HH:mm:ss.fff}");
             
@@ -690,6 +739,18 @@ public class WebRtcService : IDisposable
                     RemovePeerConnection(peerId);
                 }
             }
+            }
+            catch (Exception ex)
+            {
+                _debugLog.LogWebRtc($"CRITICAL: Unhandled exception in OnAnswerReceived for {payload.SenderId}: {ex.Message}");
+                _debugLog.LogWebRtc($"Stack trace: {ex.StackTrace}");
+                
+                // Ensure cleanup happens
+                if (payload.SenderId != null)
+                {
+                    RemovePeerConnection(payload.SenderId);
+                }
+            }
         });
     }
 
@@ -709,7 +770,11 @@ public class WebRtcService : IDisposable
         }
         catch (Exception ex)
         {
-            _debugLog.LogWebRtc($"Error processing ICE candidate from {peerId}: {ex.Message}");
+            _debugLog.LogWebRtc($"CRITICAL: Unhandled exception in OnIceCandidateReceived for {peerId}: {ex.Message}");
+            _debugLog.LogWebRtc($"Stack trace: {ex.StackTrace}");
+            
+            // Clean up the problematic peer connection
+            RemovePeerConnection(peerId);
         }
     }
 
