@@ -34,15 +34,15 @@ public class WebRtcService : IDisposable
     {
         // Primary - Most reliable
         new RTCIceServer { urls = "stun:stun.cloudflare.com:3478" },
-        new RTCIceServer { urls = "stun:stun.l.google.com:19302" },
+        // new RTCIceServer { urls = "stun:stun.l.google.com:19302" },
         
-        // Backup Google servers
-        new RTCIceServer { urls = "stun:stun1.l.google.com:19302" },
-        new RTCIceServer { urls = "stun:stun2.l.google.com:19302" },
+        // // Backup Google servers
+        // new RTCIceServer { urls = "stun:stun1.l.google.com:19302" },
+        // new RTCIceServer { urls = "stun:stun2.l.google.com:19302" },
         
-        // Additional reliable alternatives
-        new RTCIceServer { urls = "stun:freestun.net:3478" },
-        new RTCIceServer { urls = "stun:stunserver2024.stunprotocol.org:3478" }
+        // // Additional reliable alternatives
+        // new RTCIceServer { urls = "stun:freestun.net:3478" },
+        // new RTCIceServer { urls = "stun:stunserver2024.stunprotocol.org:3478" }
     };
     private VirtualAudioSource? _virtualAudioSource;
     private MediaStreamTrack? _audioTrack;
