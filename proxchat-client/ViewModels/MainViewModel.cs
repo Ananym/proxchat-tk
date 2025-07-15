@@ -54,6 +54,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _useWavInput; // Debug-only, not persisted
     private string? _selectedAudioFile; // Path to selected audio file
     private string _audioFileDisplayName = "No file selected"; // Display name for UI
+    
+    // Debug local playback for audio comparison
+    private bool _debugLocalPlayback = false;
 
     // Fields to track last sent position for conditional updates
     private int? _lastSentMapId;
@@ -390,7 +393,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                     return;
                 }
                 
-                // UseWavInput is debug-only, not persisted to config
+                // UseWavInput is debug-only, not persisted
                 OnPropertyChanged();
             }
         }
@@ -446,11 +449,22 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public string AudioFileDisplayName
     {
         get => _audioFileDisplayName;
+        private set
+        {
+            _audioFileDisplayName = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool DebugLocalPlayback
+    {
+        get => _debugLocalPlayback;
         set
         {
-            if (_audioFileDisplayName != value)
+            if (_debugLocalPlayback != value)
             {
-                _audioFileDisplayName = value;
+                _debugLocalPlayback = value;
+                _audioService.DebugLocalPlayback = value;
                 OnPropertyChanged();
             }
         }

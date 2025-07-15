@@ -6,6 +6,7 @@ using ProxChatClient.Models;
 using System.IO;
 using NAudio.Utils; // For CircularBuffer
 using NAudio.MediaFoundation; // For MP3 support
+using OpusSharp.Core; // For OpusPredefinedValues
 
 namespace ProxChatClient.Services;
 
@@ -66,6 +67,10 @@ public class AudioService : IDisposable
     // Add this field with the other private fields
     private int _audioFileCallbackCount = 0;
     private volatile bool _isDisposing = false; // Flag to prevent callbacks during disposal
+
+    // Debug local playback for comparison
+    private bool _debugLocalPlayback = false;
+    private PeerPlayback? _debugLocalPlaybackStream;
 
     // Static constructor to initialize MediaFoundation for MP3 support
     static AudioService()
@@ -344,8 +349,9 @@ public class AudioService : IDisposable
                 
                 try
                 {
-                    _fileOpusCodec = new OpusCodecService(_debugLog, targetSampleRate);
-                    _debugLog.LogAudio($"[FILE] Created file-specific Opus codec: {fileSampleRate}Hz source -> {targetSampleRate}Hz Opus");
+                    // use AUDIO mode for file input to preserve music quality instead of VOIP mode
+                    _fileOpusCodec = new OpusCodecService(_debugLog, targetSampleRate, OpusPredefinedValues.OPUS_APPLICATION_AUDIO);
+                    _debugLog.LogAudio($"[FILE] Created file-specific Opus codec: {fileSampleRate}Hz source -> {targetSampleRate}Hz Opus (AUDIO mode for music quality)");
                 }
                 catch (Exception codecEx)
                 {
@@ -626,7 +632,25 @@ public class AudioService : IDisposable
                 if (opusPacket.Length > 0)
                 {
                     EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
-    
+                    
+                    // Debug local playback: decode and play the same audio we're broadcasting
+                    if (_debugLocalPlayback && _debugLocalPlaybackStream != null)
+                    {
+                        try
+                        {
+                            short[] decodedSamples = _opusCodec.Decode(opusPacket, opusPacket.Length);
+                            if (decodedSamples.Length > 0)
+                            {
+                                byte[] monoPcmBuffer = OpusCodecService.ShortsToBytes(decodedSamples, decodedSamples.Length);
+                                byte[] stereoPcmBuffer = ConvertMonoToStereoWithPanning(monoPcmBuffer, monoPcmBuffer.Length, 0.0f);
+                                _debugLocalPlaybackStream.Buffer?.AddSamples(stereoPcmBuffer, 0, stereoPcmBuffer.Length);
+                            }
+                        }
+                        catch (Exception debugEx)
+                        {
+                            _debugLog.LogAudio($"Error in debug local playback (microphone): {debugEx.Message}");
+                        }
+                    }
                 }
                 else
                 {
@@ -752,12 +776,24 @@ public class AudioService : IDisposable
                 
                 if (bytesRead > 0)
                 {
-                    // Apply input volume scaling to source PCM data before conversion
+                    // Apply input volume scaling to source PCM data
                     ApplyInputVolumeScaling(sourcePcmData, bytesRead, sourceFormat);
                     
-                    // Convert to mono and resample if needed for Opus compatibility
-                    (pcmData, calculatedLevel) = ConvertToMonoAndResample(sourcePcmData, bytesRead, sourceFormat, activeCodec);
-                    hasValidAudio = pcmData.Length > 0;
+                    // Assume file is already 48kHz mono - use data directly
+                    int targetBytes = activeCodec.FrameSize * 2; // target frame size in bytes
+                    int bytesToUse = Math.Min(bytesRead, targetBytes);
+                    
+                    Array.Copy(sourcePcmData, pcmData, bytesToUse);
+                    
+                    // pad with silence if we didn't get enough data
+                    if (bytesToUse < targetBytes)
+                    {
+                        Array.Fill(pcmData, (byte)0, bytesToUse, targetBytes - bytesToUse);
+                    }
+                    
+                    // calculate audio level from the PCM data
+                    calculatedLevel = CalculateLevelFromPcm(pcmData, bytesToUse);
+                    hasValidAudio = bytesToUse > 0;
                 }
                 else
                 {
@@ -858,6 +894,31 @@ public class AudioService : IDisposable
                         try 
                         {
                             EncodedAudioPacketAvailable?.Invoke(this, new EncodedAudioPacketEventArgs(opusPacket, opusPacket.Length));
+                            
+                            // Debug local playback: decode and play the same audio we're broadcasting
+                            if (_debugLocalPlayback && _debugLocalPlaybackStream != null)
+                            {
+                                try
+                                {
+                                    // TEMPORARY: Skip Opus encode/decode and NAudio conversion for testing
+                                    // Use original PCM data directly to isolate the source of harshness
+                                    byte[] stereoPcmBuffer = ConvertMonoToStereoWithPanning(pcmData, pcmData.Length, 0.0f);
+                                    _debugLocalPlaybackStream.Buffer?.AddSamples(stereoPcmBuffer, 0, stereoPcmBuffer.Length);
+                                    
+                                    // Original code (commented out for testing):
+                                    // short[] decodedSamples = activeCodec.Decode(opusPacket, opusPacket.Length);
+                                    // if (decodedSamples.Length > 0)
+                                    // {
+                                    //     byte[] monoPcmBuffer = OpusCodecService.ShortsToBytes(decodedSamples, decodedSamples.Length);
+                                    //     byte[] stereoPcmBuffer = ConvertMonoToStereoWithPanning(monoPcmBuffer, monoPcmBuffer.Length, 0.0f);
+                                    //     _debugLocalPlaybackStream.Buffer?.AddSamples(stereoPcmBuffer, 0, stereoPcmBuffer.Length);
+                                    // }
+                                }
+                                catch (Exception debugEx)
+                                {
+                                    _debugLog.LogAudio($"Error in debug local playback: {debugEx.Message}");
+                                }
+                            }
                         }
                         catch (Exception eventEx) 
                         { 
@@ -1460,6 +1521,9 @@ public class AudioService : IDisposable
     {
         _isDisposing = true; // Set flag to prevent callbacks from running
         StopCapture();
+        
+        // Clean up debug local playback
+        StopDebugLocalPlayback();
 
         foreach (var peerId in _peerPlaybackStreams.Keys.ToList())
         {
@@ -1549,8 +1613,9 @@ public class AudioService : IDisposable
     // helper methods for audio level calculation and processing
     private void ApplyInputVolumeScaling(byte[] pcmData, int validBytes, WaveFormat format)
     {
+        
         // only apply scaling if it's not 1.0 and we have valid data
-        if (_inputVolumeScale == 1.0f || validBytes <= 0 || pcmData == null || format.BitsPerSample != 16)
+        if (Math.Abs(_inputVolumeScale - 1.0f) < 0.001f || validBytes <= 0 || pcmData == null || format.BitsPerSample != 16)
         {
             return;
         }
@@ -1629,118 +1694,7 @@ public class AudioService : IDisposable
         return Math.Clamp(maxSample, 0.0f, 1.0f);
     }
 
-    private (byte[] monoData, float level) ConvertToMonoAndResample(byte[] sourcePcmData, int validBytes, WaveFormat sourceFormat, OpusCodecService codec)
-    {
-        try
-        {
-            // validate input data
-            if (sourcePcmData == null || validBytes <= 0 || sourceFormat == null)
-            {
-                _debugLog.LogAudio($"Invalid input to ConvertToMonoAndResample: data={sourcePcmData != null}, validBytes={validBytes}, format={sourceFormat != null}");
-                return (new byte[0], 0.0f);
-            }
-            
-            // calculate level from source PCM
-            float sourceLevel = CalculateLevelFromPcm(sourcePcmData, validBytes);
-            
-            // target format for the codec
-            var targetFormat = new WaveFormat(codec.SampleRate, 16, 1); // mono at codec sample rate
-            int targetBytes = codec.FrameSize * 2; // target frame size in bytes
-            
-            // check if we need resampling
-            bool needsResampling = sourceFormat.SampleRate != codec.SampleRate;
-            bool needsChannelConversion = sourceFormat.Channels != 1;
-            
-            if (!needsResampling && !needsChannelConversion)
-            {
-                // already correct format - just take what we need
-                int bytesToTake = Math.Min(validBytes, targetBytes);
-                byte[] monoData = new byte[targetBytes];
-                Array.Copy(sourcePcmData, monoData, bytesToTake);
-                
-                return (monoData, sourceLevel);
-            }
-            
-            // use NAudio for format conversion with proper buffering
-            try
-            {
-                // validate source format before attempting conversion
-                if (sourceFormat.SampleRate <= 0 || sourceFormat.Channels <= 0 || sourceFormat.BitsPerSample <= 0)
-                {
-                    _debugLog.LogAudio($"Invalid source format for conversion: {sourceFormat.SampleRate}Hz, {sourceFormat.Channels}ch, {sourceFormat.BitsPerSample}bit");
-                    byte[] invalidFormatSilence = new byte[targetBytes];
-                    Array.Fill(invalidFormatSilence, (byte)0);
-                    return (invalidFormatSilence, 0.0f);
-                }
-                
-                // additional validation for NAudio compatibility
-                if (sourceFormat.Encoding != WaveFormatEncoding.Pcm && sourceFormat.Encoding != WaveFormatEncoding.IeeeFloat)
-                {
-                    _debugLog.LogAudio($"Unsupported audio encoding for conversion: {sourceFormat.Encoding}");
-                    byte[] unsupportedSilence = new byte[targetBytes];
-                    Array.Fill(unsupportedSilence, (byte)0);
-                    return (unsupportedSilence, 0.0f);
-                }
-                
-                using var rawSourceStream = new RawSourceWaveStream(sourcePcmData, 0, validBytes, sourceFormat);
-                using var convertedStream = new WaveFormatConversionStream(targetFormat, rawSourceStream);
-                
-                // read in smaller chunks to avoid timing issues
-                byte[] convertedData = new byte[targetBytes];
-                int totalBytesRead = 0;
-                int chunkSize = Math.Min(targetBytes, 4096); // read in 4KB chunks max
-                
-                while (totalBytesRead < targetBytes)
-                {
-                    int bytesToRead = Math.Min(chunkSize, targetBytes - totalBytesRead);
-                    int bytesRead = convertedStream.Read(convertedData, totalBytesRead, bytesToRead);
-                    
-                    if (bytesRead == 0) break; // end of stream
-                    totalBytesRead += bytesRead;
-                }
-                
-                if (totalBytesRead > 0)
-                {
-                    // pad with silence if we didn't get enough data
-                    if (totalBytesRead < targetBytes)
-                    {
-                        Array.Fill(convertedData, (byte)0, totalBytesRead, targetBytes - totalBytesRead);
-                    }
-                    
-                    return (convertedData, sourceLevel);
-                }
-                else
-                {
-                    _debugLog.LogAudio($"Format conversion failed: no data read from conversion stream");
-                    // fallback: return silence of correct size
-                    byte[] silenceData = new byte[targetBytes];
-                    Array.Fill(silenceData, (byte)0);
-                    return (silenceData, 0.0f);
-                }
-            }
-            catch (Exception ex)
-            {
-                _debugLog.LogAudio($"Error in format conversion: {ex.Message}");
-                _debugLog.LogAudio($"Source format details: {sourceFormat.SampleRate}Hz, {sourceFormat.Channels}ch, {sourceFormat.BitsPerSample}bit, {sourceFormat.Encoding}");
-                _debugLog.LogAudio($"Target format details: {targetFormat.SampleRate}Hz, {targetFormat.Channels}ch, {targetFormat.BitsPerSample}bit");
-                
-                // fallback: return silence of correct size
-                byte[] silenceData = new byte[targetBytes];
-                Array.Fill(silenceData, (byte)0);
-                return (silenceData, 0.0f);
-            }
-        }
-        catch (Exception ex)
-        {
-            _debugLog.LogAudio($"Error in ConvertToMonoAndResample: {ex.Message}");
-            _debugLog.LogAudio($"Source format: {sourceFormat?.SampleRate}Hz, {sourceFormat?.Channels}ch, {sourceFormat?.BitsPerSample}bit, validBytes={validBytes}");
-            
-            // fallback: return silence of correct size
-            byte[] fallbackSilence = new byte[codec.FrameSize * 2];
-            Array.Fill(fallbackSilence, (byte)0);
-            return (fallbackSilence, 0.0f);
-        }
-    }
+
 
 
 
@@ -1842,6 +1796,67 @@ public class AudioService : IDisposable
             {
                 return $"Microphone ready: {_selectedInputDeviceName}";
             }
+        }
+    }
+
+    /// <summary>
+    /// Debug feature: enable local playback of processed audio for comparison
+    /// </summary>
+    public bool DebugLocalPlayback
+    {
+        get => _debugLocalPlayback;
+        set
+        {
+            if (_debugLocalPlayback != value)
+            {
+                _debugLocalPlayback = value;
+                
+                if (_debugLocalPlayback)
+                {
+                    StartDebugLocalPlayback();
+                }
+                else
+                {
+                    StopDebugLocalPlayback();
+                }
+            }
+        }
+    }
+
+    private void StartDebugLocalPlayback()
+    {
+        try
+        {
+            if (_debugLocalPlaybackStream != null) return; // Already started
+            
+            _debugLocalPlaybackStream = CreatePeerPlayback("DEBUG_LOCAL");
+            if (_debugLocalPlaybackStream != null)
+            {
+                _debugLocalPlaybackStream.UiVolumeSetting = 0.5f; // Set reasonable volume
+                _debugLog.LogAudio("Started debug local playback - you should hear processed audio locally");
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error starting debug local playback: {ex.Message}");
+        }
+    }
+
+    private void StopDebugLocalPlayback()
+    {
+        try
+        {
+            if (_debugLocalPlaybackStream != null)
+            {
+                _debugLocalPlaybackStream.WaveOut?.Stop();
+                _debugLocalPlaybackStream.WaveOut?.Dispose();
+                _debugLocalPlaybackStream = null;
+                _debugLog.LogAudio("Stopped debug local playback");
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugLog.LogAudio($"Error stopping debug local playback: {ex.Message}");
         }
     }
 

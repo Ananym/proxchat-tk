@@ -26,6 +26,11 @@ public class OpusCodecService : IDisposable
     public int FrameSize => _frameSize;
 
     public OpusCodecService(DebugLogService debugLog, int sampleRate = DEFAULT_OPUS_SAMPLE_RATE)
+        : this(debugLog, sampleRate, OpusPredefinedValues.OPUS_APPLICATION_VOIP)
+    {
+    }
+
+    public OpusCodecService(DebugLogService debugLog, int sampleRate, OpusPredefinedValues applicationMode)
     {
         _debugLog = debugLog;
         _sampleRate = sampleRate;
@@ -35,10 +40,18 @@ public class OpusCodecService : IDisposable
         
         try
         {
-            _encoder = new OpusEncoder(_sampleRate, OPUS_CHANNELS, OpusPredefinedValues.OPUS_APPLICATION_VOIP);
+            _encoder = new OpusEncoder(_sampleRate, OPUS_CHANNELS, applicationMode);
             _decoder = new OpusDecoder(_sampleRate, OPUS_CHANNELS);
             
-            _debugLog.LogAudio($"OpusSharp codec initialized: {_sampleRate}Hz, {OPUS_CHANNELS} channel(s), frame size: {_frameSize} samples");
+            string appModeStr = applicationMode switch
+            {
+                OpusPredefinedValues.OPUS_APPLICATION_VOIP => "VOIP",
+                OpusPredefinedValues.OPUS_APPLICATION_AUDIO => "AUDIO", 
+                OpusPredefinedValues.OPUS_APPLICATION_RESTRICTED_LOWDELAY => "RESTRICTED_LOWDELAY",
+                _ => $"UNKNOWN({applicationMode})"
+            };
+            
+            _debugLog.LogAudio($"OpusSharp codec initialized: {_sampleRate}Hz, {OPUS_CHANNELS} channel(s), frame size: {_frameSize} samples, mode: {appModeStr}");
         }
         catch (Exception ex)
         {

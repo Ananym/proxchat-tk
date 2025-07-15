@@ -23,7 +23,7 @@ public class DebugLogService : IDisposable
     private readonly bool _mainEnabled;
     private readonly bool _namedPipeEnabled;
 
-    public DebugLogService(string? logFileName = null, bool enableAudio = false, bool enableWebRtc = true, bool enableSignaling = true, bool enableMain = true, bool enableNamedPipe = true)
+    public DebugLogService(string? logFileName = null, bool enableAudio = true, bool enableWebRtc = true, bool enableSignaling = true, bool enableMain = true, bool enableNamedPipe = true)
     {
         // Get command line args to determine log file name if not provided
         if (string.IsNullOrEmpty(logFileName))
