@@ -1261,10 +1261,10 @@ public class AudioService : IDisposable
 
     private float CalculateStereoPanning(float distance, float xOffset)
     {
-        // cubic panning curve - gets stronger as distance increases
         float normalizedDistance = Math.Clamp(distance / _maxDistance, 0.0f, 1.0f);
-        float panningStrength = normalizedDistance * normalizedDistance * normalizedDistance; // cubic curve
-        
+        float panningStrength = normalizedDistance * normalizedDistance;
+        // think squared is a bit more impactful than cubic here
+
         // determine direction: negative = left, positive = right
         float direction = Math.Sign(xOffset);
         
