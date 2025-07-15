@@ -253,7 +253,18 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         set
         {
             _volumeScale = Math.Clamp(value, 0.0f, 1.0f); // Keep 0-1 range
-            _audioService.SetOverallVolumeScale(_volumeScale);
+            
+            // CRITICAL: Pass current peer distances to maintain proper volume calculation
+            // This ensures distance attenuation is preserved when overall volume changes
+            var peerDistances = new Dictionary<string, float>();
+            foreach (var peer in ConnectedPeers)
+            {
+                // Handle "different map" case (-1) by using max distance
+                float distance = peer.Distance >= 0 ? peer.Distance : float.MaxValue;
+                peerDistances[peer.Id] = distance;
+            }
+            _audioService.SetOverallVolumeScaleWithDistances(_volumeScale, peerDistances);
+            
             _config.AudioSettings.VolumeScale = _volumeScale; // Save to config
             _configService.SaveConfig(); // Persist to file
             OnPropertyChanged();
@@ -1856,13 +1867,18 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var peerVm = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
         if (peerVm != null && peerVm.CharacterName != PeerViewModel.DefaultCharacterName)
         {
-            _audioService.SetPeerUiVolume(peerId, volume); // Assuming this updates live volume
+            // CRITICAL: Pass current distance to maintain proper volume calculation
+            // This ensures distance attenuation is preserved when UI volume changes
+            float distance = peerVm.Distance >= 0 ? peerVm.Distance : float.MaxValue; // Handle "different map" case
+            _audioService.SetPeerUiVolume(peerId, volume, distance);
             UpdateAndSavePeerSetting(peerVm.CharacterName, volume, peerVm.IsMuted);
         }
         else if (peerVm != null)
         {
             Debug.WriteLine($"UpdatePeerVolumeFromViewModel: Character name for {peerId} not yet known. Volume change not persisted yet.");
-            _audioService.SetPeerUiVolume(peerId, volume); // Still apply live volume
+            // Still pass distance even for unnamed peers to maintain proper volume calculation
+            float distance = peerVm.Distance >= 0 ? peerVm.Distance : float.MaxValue;
+            _audioService.SetPeerUiVolume(peerId, volume, distance);
         }
     }
 
@@ -1872,6 +1888,8 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var peerVm = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
         if (peerVm != null && peerVm.CharacterName != PeerViewModel.DefaultCharacterName)
         {
+            // NOTE: SetPeerMuteState doesn't need distance because it sets volume to 0 when muted
+            // and calls ApplyVolumeSettings with the current distance when unmuted
             _audioService.SetPeerMuteState(peerId, isMuted); // Tell audio service to mute/unmute
             UpdateAndSavePeerSetting(peerVm.CharacterName, peerVm.Volume, isMuted);
         }
