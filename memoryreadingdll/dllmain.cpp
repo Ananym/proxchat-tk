@@ -49,7 +49,6 @@ void LogToFile(const std::string& message) {
     }
 }
 
-// named pipe communication
 const std::string PIPE_NAME = "\\\\.\\pipe\\proxchattk";
 const DWORD PIPE_BUFFER_SIZE = 1024;
 const DWORD HEARTBEAT_INTERVAL_MS = 3000;
@@ -77,7 +76,7 @@ private:
             PIPE_NAME.c_str(),
             PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
-            2,  // increased from 1 to allow better reconnection handling
+            2,
             PIPE_BUFFER_SIZE,
             PIPE_BUFFER_SIZE,
             0,
@@ -318,7 +317,6 @@ public:
     }
 };
 
-// global variables
 std::unique_ptr<NamedPipeServer> pipeServer;
 std::atomic<bool> keepRunning(true);
 std::thread memoryPollingThread;
@@ -382,7 +380,6 @@ void CleanupNamedPipe() {
     LogToFile("Named pipe cleanup finished.");
 }
 
-// --- dll entry point ---
 BOOL APIENTRY DllMain(HMODULE hModule,
                       DWORD  ul_reason_for_call,
                       LPVOID lpReserved) {
