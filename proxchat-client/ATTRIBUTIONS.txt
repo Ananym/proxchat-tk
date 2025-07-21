@@ -1,0 +1,113 @@
+ProxChatTK - Third-Party Software Attributions
+==============================================
+
+This software contains the following third-party components:
+
+C# Client Dependencies (ProxChatClient):
+---------------------------------------
+
+NetMQ 4.0.1.15
+- License: Mozilla Public License 2.0 (MPL-2.0)
+- Copyright: Various contributors
+- Description: ZeroMQ .NET port for high-performance messaging
+
+NAudio 2.2.1
+- License: Microsoft Public License (Ms-PL)
+- Copyright: Mark Heath and contributors
+- Description: Audio processing library for .NET
+
+Newtonsoft.Json 13.0.3
+- License: MIT License
+- Copyright: James Newton-King
+- Description: JSON serialization framework for .NET
+
+OpusSharp 1.5.6
+- License: MIT License
+- Copyright: Logan Stromberg
+- Description: C# wrapper for Opus audio codec
+
+SIPSorcery 6.0.4
+- License: BSD 3-Clause License
+- Copyright: Aaron Clauson and contributors
+- Description: WebRTC implementation for .NET
+
+SIPSorceryMedia.Windows 6.0.4
+- License: BSD 3-Clause License
+- Copyright: Aaron Clauson and contributors
+- Description: Windows-specific media components for SIPSorcery
+
+Websocket.Client 5.1.1
+- License: MIT License
+- Copyright: Mariusz Kotas
+- Description: WebSocket client implementation
+
+Velopack 0.0.1298
+- License: MIT License
+- Copyright: Caelan Sayler
+- Description: Application deployment and automatic updates
+
+Rust Server Dependencies (prox-chat-server):
+--------------------------------------------
+
+tokio 1.45
+- License: MIT License
+- Copyright: Tokio Contributors
+- Description: Asynchronous runtime for Rust
+
+tokio-tungstenite 0.27
+- License: MIT License
+- Copyright: Various contributors
+- Description: WebSocket server implementation for Tokio
+
+serde 1.0
+- License: MIT OR Apache-2.0
+- Copyright: Erick Tryzelaar and David Tolnay
+- Description: Serialization framework for Rust
+
+serde_json 1.0
+- License: MIT OR Apache-2.0
+- Copyright: Erick Tryzelaar and David Tolnay
+- Description: JSON support for serde
+
+futures 0.3
+- License: MIT OR Apache-2.0
+- Copyright: Various contributors
+- Description: Futures and streams abstractions
+
+futures-util 0.3
+- License: MIT OR Apache-2.0
+- Copyright: Various contributors
+- Description: Utilities for working with futures
+
+log 0.4
+- License: MIT OR Apache-2.0
+- Copyright: The Rust Project Developers
+- Description: Lightweight logging facade
+
+env_logger 0.11
+- License: MIT OR Apache-2.0
+- Copyright: Various contributors
+- Description: Logger implementation for the log crate
+
+uuid 1.17
+- License: Apache-2.0 OR MIT
+- Copyright: Various contributors
+- Description: UUID generation and parsing
+
+Memory Reading DLL Dependencies:
+--------------------------------
+
+Windows System Libraries (kernel32.dll, ws2_32.dll, version.dll, advapi32.dll)
+- License: Microsoft Windows SDK License
+- Copyright: Microsoft Corporation
+- Description: Windows system libraries for named pipes and version information
+
+Complete License Texts:
+-----------------------
+Complete license texts for all components are available at:
+https://github.com/your-repo/LICENSES/
+
+This software is provided "as-is" without warranty of any kind.
+All trademarks are the property of their respective owners.
+
+Generated automatically during build process.

@@ -15,7 +15,7 @@
 
 // Include some explanatory strings in case person or scanner wants to take a look at the built dll
 const char* PURPOSE = "ProxChatTK - Proximity Voice Chat for NexusTK";
-const char* CONTACT_INFO = "Contact: 32470867+Ananym@users.noreply.github.com";
+const char* CONTACT_INFO = "Contact: ananym32470867@outlook.com";
 const char* SOURCE_CODE = "Source: https://github.com/ananym/proxchattk";
 const char* FUNCTIONALITY_DESC = "Reads in-game character position to determine proximity to other players for separate voice chat program";
 const char* DEFINITELY_NOT_MALWARE = "This DLL does not: keylog, steal data, or modify game files";
@@ -49,7 +49,6 @@ void LogToFile(const std::string& message) {
     }
 }
 
-// named pipe communication
 const std::string PIPE_NAME = "\\\\.\\pipe\\proxchattk";
 const DWORD PIPE_BUFFER_SIZE = 1024;
 const DWORD HEARTBEAT_INTERVAL_MS = 3000;
@@ -77,7 +76,7 @@ private:
             PIPE_NAME.c_str(),
             PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
-            2,  // increased from 1 to allow better reconnection handling
+            2,
             PIPE_BUFFER_SIZE,
             PIPE_BUFFER_SIZE,
             0,
@@ -318,7 +317,6 @@ public:
     }
 };
 
-// global variables
 std::unique_ptr<NamedPipeServer> pipeServer;
 std::atomic<bool> keepRunning(true);
 std::thread memoryPollingThread;
@@ -382,7 +380,6 @@ void CleanupNamedPipe() {
     LogToFile("Named pipe cleanup finished.");
 }
 
-// --- dll entry point ---
 BOOL APIENTRY DllMain(HMODULE hModule,
                       DWORD  ul_reason_for_call,
                       LPVOID lpReserved) {

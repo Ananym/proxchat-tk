@@ -243,6 +243,15 @@ function Organize-Artifacts {
         Write-Host "  ⚠️  config.json.default not found" -ForegroundColor Yellow
     }
     
+    # add attributions file (inside ProxChatTK folder)
+    if (Test-Path "ATTRIBUTIONS.txt") {
+        $targetAttributions = Join-Path $proxChatTKDir "ATTRIBUTIONS.txt"
+        Copy-Item "ATTRIBUTIONS.txt" $targetAttributions -Force
+        Write-Host "  ✓ ATTRIBUTIONS.txt - third-party license information (ProxChatTK folder)" -ForegroundColor Cyan
+    } else {
+        Write-Host "  ⚠️  ATTRIBUTIONS.txt not found" -ForegroundColor Yellow
+    }
+    
     # create versioned zip (now includes all distribution files + stub launcher)
     $zipPath = Join-Path $deploymentDir "proxchattk v$Version.zip"
     try {
@@ -377,6 +386,11 @@ function Show-Results {
                 Write-Host "📄 ProxChatTK/config.json - persistent across updates" -ForegroundColor Cyan
             }
             
+            $attributionsFile = Join-Path $proxChatTKDir "ATTRIBUTIONS.txt"
+            if (Test-Path $attributionsFile) {
+                Write-Host "📄 ProxChatTK/ATTRIBUTIONS.txt - third-party license information" -ForegroundColor Cyan
+            }
+            
             # check for launcher
             $batchPath = Join-Path $proxChatTKDir "ProxChatTK - with logging.bat"
             if (Test-Path $batchPath) {
@@ -390,7 +404,7 @@ function Show-Results {
         $zipInfo = Get-Item $zipPath
         Write-Host "📦 Distribution zip: proxchattk v$Version.zip" -ForegroundColor Cyan
         Write-Host "📊 Zip size: $([math]::Round($zipInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
-        Write-Host "   → Contains: VERSION.dll + user guide + ProxChatTK/ (with Update.exe stub + app)" -ForegroundColor Gray
+        Write-Host "   → Contains: VERSION.dll + user guide + ProxChatTK/ (with Update.exe stub + app + attributions)" -ForegroundColor Gray
     }
     
     # show update package

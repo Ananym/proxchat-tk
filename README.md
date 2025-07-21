@@ -1,186 +1,53 @@
-# ProxChat Voice Chat System
+# ProxChatTK
 
-A proximity-based voice chat system with WebSocket signaling server and Windows client.
+This program captures character location from the NexusTK client and uses it to provide a webrtc-based proximity voice chat.
 
-## System Overview
+Project Components:
 
-- **Server**: Rust WebSocket signaling server with channel-based proximity matching
-- **Client**: .NET 8 WPF Windows application with memory reading and voice chat
-- **Memory Reading**: C++ DLL for reading player coordinates from memory
+- Signalling server for introducing peers and negotiating webrtc connections
+- Desktop application to provide the voice chat
+- DLL to pull the character location information from the NexusTK client
 
-## Quick Start
+## Contributing
 
-### Complete Package Build
+This project is pure slop but go for it
+I promise to maintain this exactly as much as NTK is maintained
 
-```powershell
-# Build everything and create distribution package
-.\build_package.ps1 -Version "v1.0"
-```
+## Download
 
-### Server Deployment Options
+Find the latest release [here](https://github.com/Ananym/proxchat-tk/releases)
+You want the zip file, other files are for the autoupdater.
 
-#### Option 1: VPS Deployment (Recommended - Cost Effective)
+## User Guide
 
-```powershell
-# Build Linux binary for VPS deployment
-cd server
-.\build.ps1 -DockerExtract
+### Setup:
 
-# Upload dist/prox-chat-server-linux to your VPS
-# See server/VPS-DEPLOYMENT-GUIDE.md for complete instructions
-```
+This application requires the .NET 9 runtime. Get it here (win x64): https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-9.0.5-windows-x64-installer
 
-**VPS Benefits:**
+Copy the VERSION.dll into the same directory as NexusTK.exe (probably C:\Program Files (x86)\Kru\NexusTK).
+This dll exposes your character name, map name and map id, and x and y co-ordinates to the ProxChat client.
 
-- 60-80% less expensive than containers
-- $3-6/month vs $15-30/month for AWS Fargate
-- Simple binary deployment
-- Perfect for small-scale usage
+Copy the ProxChatTK folder to a location of your choosing.
 
-#### Option 2: Container Deployment (AWS ECS/Fargate)
+The ProxChat client will alert you if an update is available for automatic download and install.
+If VERSION.dll ever needs updating, like if we ever got a client update (jk), that will need a manual redownload.
 
-```powershell
-# Multi-architecture container build
-cd server
-.\build.ps1 -Docker -MultiArch -Push -Registry "your-registry" -Tag "v1.0"
+I'm not paying for codesigning certs - expect smartscreen warnings.
 
-# See server/AWS-deployment-guide.md for complete instructions
-```
+### Usage:
 
-### Client Setup
+Run NexusTK and log into a character, then run the ProxChat client and check that your position is being read successfully.
+Click start to connect to the signalling server, then walk near other Proxchat users to begin chatting.
 
-```powershell
-# Build optimized single-file executable
-cd proxchat-client
-.\build.ps1 -Release
+### Bear in mind:
 
-# Edit config.json to point to your server
-# Requires .NET 8 Desktop Runtime on target machines
-```
+The signalling server is only used to introduce peers - all audio is direct peer to peer.
+This means I'm not paying for that bandwidth and I can't access anything you say whatsoever.
 
-## Repository Structure
+However, since we're not using any relay servers, the peer to peer connections will not work on every network type - this application is unlikely to work behind e.g. corporate or hotel networks that use symmetric NAT.
+Additionally, as there is no remote multiplexing, connecting to many peers means decoding many incoming audio streams simultaneously. Weak hardware might struggle with this!
 
-```
-prox-chat-tk/
-├── server/                     # Rust signaling server
-│   ├── build.ps1              # Build script with VPS + container support
-│   ├── extract-binary.ps1     # Extract Linux binary from Docker image
-│   ├── VPS-DEPLOYMENT-GUIDE.md # Complete VPS deployment guide
-│   └── AWS-deployment-guide.md # Container deployment guide
-├── proxchat-client/           # .NET 8 WPF client
-│   ├── build.ps1             # Client build script
-│   ├── config.json.default   # Default configuration
-│   └── CONFIG-README.md      # Configuration guide
-├── memoryreadingdll/          # C++ memory reading component
-│   └── build.ps1             # DLL build script
-├── build_package.ps1          # Complete package build script
-└── PACKAGE-BUILD-README.md    # Package build documentation
-```
+Character names are shared between peers for display in the UI, but are never sent to the signalling server.  
+All ids are random and temporary - there shouldn't be any way for me or any peers to determine your alts from this application.
 
-## Configuration
-
-### Server Port Configuration
-
-- Default port: **8080**
-- Firewall configuration varies by VPS provider
-- See `server/VPS-DEPLOYMENT-GUIDE.md` for port setup instructions
-
-### Client Configuration
-
-Edit `config.json`:
-
-```json
-{
-  "WebSocketServer": {
-    "Host": "your-server-ip-or-domain",
-    "Port": 8080
-  },
-  "Channel": 0,
-  "AudioSettings": {
-    "VolumeScale": 0.5,
-    "InputVolumeScale": 1.0,
-    "IsPushToTalk": false,
-    "PushToTalkKey": "F12"
-  }
-}
-```
-
-## Channel System
-
-Players are separated into different voice chat channels:
-
-- **Channel 0**: Default channel for all new connections
-- **Channel 1, 2, 3...**: Separate voice chat groups
-- Players only hear others in the same channel
-- Configurable per client in `config.json`
-
-## Dependencies
-
-### Server Dependencies
-
-- **Standalone binary** - only requires basic system libraries
-- Linux: `glibc`, `libssl`, `libcrypto` (usually pre-installed)
-- **No special runtime** required
-
-### Client Dependencies
-
-- **Windows 10 1809+** (x64 only)
-- **.NET 8.0 Desktop Runtime** (framework-dependent deployment)
-- **Microphone and speakers**
-
-## Build Requirements
-
-### For Server:
-
-- **Rust** (for local builds)
-- **Docker** (for VPS binary extraction - recommended)
-
-### For Client:
-
-- **.NET 8 SDK**
-- **Visual Studio Build Tools** (for memory reading DLL)
-- **CMake**
-
-## Cost Comparison
-
-| Deployment Option | Monthly Cost | Setup Complexity | Scalability |
-| ----------------- | ------------ | ---------------- | ----------- |
-| **VPS Binary**    | $3-6         | Low              | Manual      |
-| **AWS Fargate**   | $15-30       | Medium           | Automatic   |
-| **Local Hosting** | $0           | Low              | None        |
-
-## Documentation
-
-- 📦 [Package Build Guide](PACKAGE-BUILD-README.md)
-- 🖥️ [VPS Deployment Guide](server/VPS-DEPLOYMENT-GUIDE.md)
-- ☁️ [AWS Container Deployment](server/AWS-deployment-guide.md)
-- ⚙️ [Client Configuration](proxchat-client/CONFIG-README.md)
-- 🚀 [Distribution Guide](proxchat-client/DISTRIBUTION-README.md)
-
-## Troubleshooting
-
-### Server Issues
-
-- **Connection refused**: Check firewall rules and VPS provider settings
-- **Port conflicts**: Verify port 8080 is available
-- **Missing dependencies**: Install `openssl` and `libssl3`
-
-### Client Issues
-
-- **Audio problems**: Check microphone permissions and audio device selection
-- **Connection timeouts**: Verify server address and network connectivity
-- **Missing .NET runtime**: Install .NET 8.0 Desktop Runtime
-
-## Development Workflow
-
-1. **Make changes** to server or client code
-2. **Test locally** with `.\build.ps1 -Docker -Run` (server) and `.\build.ps1 -Debug` (client)
-3. **Build for deployment**:
-   - VPS: `.\build.ps1 -DockerExtract`
-   - Container: `.\build.ps1 -Docker -MultiArch`
-4. **Create distribution package** with `.\build_package.ps1 -Version "vX.X"`
-5. **Deploy and test** on target environment
-
-## License
-
-[Add your license information here]
+As I can't access any transferred audio nor track users, there's no way to police this. Please be polite!
