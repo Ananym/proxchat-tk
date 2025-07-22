@@ -1330,35 +1330,24 @@ public class AudioService : IDisposable
         return Math.Clamp(volumeScale, 0.0f, 1.0f);
     }
 
-    private float CalculateFinalVolume(PeerPlayback playback, float? distance = null)
+    private float CalculateFinalVolume(PeerPlayback playback, float distance)
     {
         if (playback == null) return 0.0f;
 
         if (playback.IsMuted) return 0.0f;
 
-        // CRITICAL: Distance factor calculation
-        // When distance is not provided, we default to 1.0f which means NO distance attenuation
-        // This can cause the volume calculation bug where changing UI settings temporarily
-        // overrides distance attenuation until the next position update
-        float distanceFactor = 1.0f;
-        if (distance.HasValue)
-        {
-            distanceFactor = CalculateDistanceFactor(distance.Value);
-        }
+        float distanceFactor = CalculateDistanceFactor(distance);
 
-        // FINAL VOLUME CALCULATION - ALL FACTORS MUST BE INCLUDED:
-        // - distance factor (0-1, exponential falloff) - MUST be provided to prevent bugs
+        // FINAL VOLUME CALCULATION - ALL FACTORS INCLUDED:
+        // - distance factor (0-1, exponential falloff)
         // - peer UI volume setting (0-1, user adjustable per peer, default 0.5)
         // - overall volume scale (0-1, global setting, default 0.5)
-        // 
-        // WARNING: If distance is not provided, this calculation will be incorrect
-        // until the next position update. Always pass distance when available!
         float finalVolume = distanceFactor * playback.UiVolumeSetting * _volumeScale;
         
         return Math.Clamp(finalVolume, 0.0f, 1.0f);
     }
 
-    private void ApplyVolumeSettings(PeerPlayback playback, float? distance = null)
+    private void ApplyVolumeSettings(PeerPlayback playback, float distance)
     {
         if (playback?.WaveOut == null) return;
 
@@ -1395,7 +1384,7 @@ public class AudioService : IDisposable
         }
     }
 
-    public void SetPeerMuteState(string peerId, bool isMuted)
+    public void SetPeerMuteState(string peerId, bool isMuted, float distance)
     {
         if (_peerPlaybackStreams.TryGetValue(peerId, out var playback))
         {
@@ -1411,59 +1400,23 @@ public class AudioService : IDisposable
                 else
                 {
                     // when unmuting, apply normal volume settings with smooth transition
-                    ApplyVolumeSettings(playback);
+                    ApplyVolumeSettings(playback, distance);
                 }
             }
         }
     }
 
-    public void TogglePeerMute(string peerId)
-    {
-        if (_peerPlaybackStreams.TryGetValue(peerId, out var playback))
-        {
-            playback.IsMuted = !playback.IsMuted;
-            ApplyVolumeSettings(playback);
-        }
-    }
 
-    public void SetPeerUiVolume(string peerId, float uiVolume, float? distance = null)
+    public void SetPeerUiVolume(string peerId, float uiVolume, float distance)
     {
         if (_peerPlaybackStreams.TryGetValue(peerId, out var playback))
         {
             playback.UiVolumeSetting = Math.Clamp(uiVolume, 0.0f, 1.0f);
-            // CRITICAL: Pass distance to maintain proper volume calculation
-            // This ensures distance attenuation is preserved when UI volume changes
             ApplyVolumeSettings(playback, distance);
         }
     }
 
-    /// <summary>
-    /// sets peer volume immediately without smooth transition
-    /// useful for cases where instant feedback is needed
-    /// </summary>
-    public void SetPeerUiVolumeImmediate(string peerId, float uiVolume, float? distance = null)
-    {
-        if (_peerPlaybackStreams.TryGetValue(peerId, out var playback))
-        {
-            playback.UiVolumeSetting = Math.Clamp(uiVolume, 0.0f, 1.0f);
-            
-            // CRITICAL: Pass distance to maintain proper volume calculation
-            // This ensures distance attenuation is preserved when UI volume changes
-            ApplyVolumeSettings(playback, distance);
-        }
-    }
 
-    public void SetOverallVolumeScale(float scale)
-    {
-        _volumeScale = Math.Clamp(scale, 0.0f, 1.0f);
-        // NOTE: This version doesn't have distance information, so volume calculation
-        // may be incorrect until next position update. Use SetOverallVolumeScaleWithDistances
-        // from MainViewModel when possible to maintain proper distance attenuation.
-        foreach (var playback in _peerPlaybackStreams.Values)
-        {
-            ApplyVolumeSettings(playback);
-        }
-    }
 
     /// <summary>
     /// Sets overall volume scale with distance information to maintain proper volume calculation
@@ -1471,16 +1424,13 @@ public class AudioService : IDisposable
     public void SetOverallVolumeScaleWithDistances(float scale, Dictionary<string, float> peerDistances)
     {
         _volumeScale = Math.Clamp(scale, 0.0f, 1.0f);
-        // CRITICAL: Pass distance for each peer to maintain proper volume calculation
-        // This ensures distance attenuation is preserved when overall volume changes
+        // Apply volume changes only to peers that have distance information
         foreach (var playback in _peerPlaybackStreams.Values)
         {
-            float? distance = null;
             if (playback.PeerId != null && peerDistances.TryGetValue(playback.PeerId, out float peerDistance))
             {
-                distance = peerDistance;
+                ApplyVolumeSettings(playback, peerDistance);
             }
-            ApplyVolumeSettings(playback, distance);
         }
     }
 

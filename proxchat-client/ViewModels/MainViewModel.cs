@@ -47,7 +47,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     // Debug Mode Fields - read-only after construction
     private readonly bool _isDebugModeEnabled;
     private DebugGameDataReader? _debugReader; // cast reference for debug mode event triggering
-    private string _debugCharacterName = Guid.NewGuid().ToString().Substring(0, 8); // Default random string
+    private string _debugCharacterName = "Tree";
     private int _debugX = 109; // Changed to int
     private int _debugY = 191; // Changed to int
     private int _debugMapId = 0; 
@@ -1888,15 +1888,13 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         var peerVm = ConnectedPeers.FirstOrDefault(p => p.Id == peerId);
         if (peerVm != null && peerVm.CharacterName != PeerViewModel.DefaultCharacterName)
         {
-            // NOTE: SetPeerMuteState doesn't need distance because it sets volume to 0 when muted
-            // and calls ApplyVolumeSettings with the current distance when unmuted
-            _audioService.SetPeerMuteState(peerId, isMuted); // Tell audio service to mute/unmute
+            _audioService.SetPeerMuteState(peerId, isMuted, peerVm.Distance);
             UpdateAndSavePeerSetting(peerVm.CharacterName, peerVm.Volume, isMuted);
         }
          else if (peerVm != null)
         {
             Debug.WriteLine($"UpdatePeerMuteStateFromViewModel: Character name for {peerId} not yet known. Mute change not persisted yet.");
-            _audioService.SetPeerMuteState(peerId, isMuted); // Still apply live mute
+            _audioService.SetPeerMuteState(peerId, isMuted, peerVm.Distance);
         }
     }
 
