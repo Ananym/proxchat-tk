@@ -1,21 +1,25 @@
 # ProxChatTK
 
+![Client Screenshot](client_screenshot.png)
+
 This program captures character location from the NexusTK client and uses it to provide a webrtc-based proximity voice chat.
 
 Project Components:
 
-- Signalling server for introducing peers and negotiating webrtc connections
-- Desktop application to provide the voice chat
-- DLL to pull the character location information from the NexusTK client
+- Rust signalling server for introducing peers and negotiating webrtc connections
+- C#/dotnet desktop application to provide the voice chat
+- Dll to pull the character location information from the NexusTK client
 
 ## Contributing
 
 This project is pure slop but go for it
+
 I promise to maintain this exactly as much as NTK is maintained
 
 ## Download
 
 Find the latest release [here](https://github.com/Ananym/proxchat-tk/releases)
+
 You want the zip file, other files are for the autoupdater.
 
 ## User Guide

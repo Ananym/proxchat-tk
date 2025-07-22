@@ -50,7 +50,7 @@ $dllLogPath = "$projectRoot\memoryreadingdll_log.txt"
 $sourceDll = "$projectRoot\memoryreadingdll\build\Release\VERSION.dll"
 $targetDll = "E:\NexusTK\VERSION.dll"
 $clientExe = "$projectRoot\proxchat-client\bin\Debug\net9.0-windows10.0.17763.0\win-x64\ProxChatClient.exe"
-$gameExe = "E:\NexusTK\NexusTK.exe"  # adjust this path if needed
+$gameExe = "E:\NexusTK\NexusTK.exe"  
 
 $startedProcesses = @()
 
