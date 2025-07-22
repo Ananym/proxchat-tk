@@ -8,8 +8,8 @@ param(
     [switch]$b = $false    # build proxchat client only
 )
 
-# test script for zeromq ipc communication
-Write-Host "=== ProxChat ZeroMQ Test Script ===" -ForegroundColor Green
+# test script for named pipe ipc communication
+Write-Host "=== ProxChat Named Pipe Test Script ===" -ForegroundColor Green
 
 if ($s -and $bs) {
     Write-Host "ERROR: -s and -bs are mutually exclusive" -ForegroundColor Red
