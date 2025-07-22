@@ -48,7 +48,7 @@ public class WebRtcService : IDisposable
     private MediaStreamTrack? _audioTrack;
 
     // max 2 concurrent connections
-    private readonly SemaphoreSlim _connectionSemaphore = new SemaphoreSlim(2, 2);
+    private readonly SemaphoreSlim _connectionSemaphore = new SemaphoreSlim(3, 3);
     
     // heartbeat mechanism for fast disconnect detection
     private readonly Timer _heartbeatTimer;
