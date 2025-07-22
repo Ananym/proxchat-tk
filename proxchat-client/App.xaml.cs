@@ -2,6 +2,7 @@
 using System.Data;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Windows;
 using ProxChatClient.ViewModels;
@@ -81,6 +82,16 @@ public partial class App : Application
         catch { }
     }
 
+    private bool IsShutdownException(Exception ex)
+    {
+        return ex is SocketException se && se.ErrorCode == 995 ||
+               ex is OperationCanceledException ||
+               ex is TaskCanceledException ||
+               ex.InnerException is SocketException se2 && se2.ErrorCode == 995 ||
+               ex.InnerException is OperationCanceledException ||
+               ex.InnerException is TaskCanceledException;
+    }
+
     private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
         Trace.TraceError($"AppDomain Unhandled Exception: {e.ExceptionObject}");
@@ -90,8 +101,11 @@ public partial class App : Application
 
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
-        Trace.TraceError($"TaskScheduler Unobserved Exception: {e.Exception}");
-        LogFatalException(e.Exception, "UnobservedTaskException");
+        if (!IsShutdownException(e.Exception))
+        {
+            Trace.TraceError($"TaskScheduler Unobserved Exception: {e.Exception}");
+            LogFatalException(e.Exception, "UnobservedTaskException");
+        }
         e.SetObserved();
     }
 
