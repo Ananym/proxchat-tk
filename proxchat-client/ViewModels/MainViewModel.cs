@@ -587,19 +587,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(UpdateButtonText));
                 OnPropertyChanged(nameof(ReleasePageUrl));
                 OnPropertyChanged(nameof(IsReleasePageLinkVisible));
+                OnPropertyChanged(nameof(IsUpdateButtonVisible));
                 ((RelayCommand)OpenReleasePageCommand).RaiseCanExecuteChanged();
             }
         }
     }
 
-    public bool IsUpdateButtonVisible 
-    { 
-        get 
-        {
-            bool result = (UpdateState == UpdateState.Available || UpdateState == UpdateState.Downloading || UpdateState == UpdateState.ReadyToApply || UpdateState == UpdateState.Error) && !string.IsNullOrEmpty(UpdateVersion);
-            return result;
-        }
-    }
+    public bool IsUpdateButtonVisible => 
+        UpdateState == UpdateState.Available || 
+        UpdateState == UpdateState.Downloading || 
+        UpdateState == UpdateState.ReadyToApply || 
+        UpdateState == UpdateState.Error;
 
 
 
@@ -631,7 +629,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             return UpdateState switch
             {
-                UpdateState.Available => $"Download Update ({UpdateVersion})",
+                UpdateState.Available => string.IsNullOrEmpty(UpdateVersion) ? "Download Update" : $"Download Update ({UpdateVersion})",
                 UpdateState.Downloading => $"Downloading... {DownloadProgress}%",
                 UpdateState.ReadyToApply => "Restart to Apply Update",
                 _ => "No Update"
